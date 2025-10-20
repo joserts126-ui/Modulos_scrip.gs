@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <title>Administrar Contactos y Clientes</title>
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+</head>
+
+<body>
+
+    <div id="modalOverlay" class="modal-overlay" style="display: none;" onclick="ocultarTodosLosModales()"></div>
+    
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Modulos</a>
+            <h1>Administración de Clientes y Contactos</h1>
+        </div>
+    </div>
+
+    <div class="contenido-servicios">
+        
+        <h2>Lista de Clientes (RUC)</h2>
+
+        <div style="margin-bottom: 15px;">
+            <input type="text" id="filtroCliente" placeholder="Buscar por RUC o Nombre..." style="padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px;">
+        </div>
+        
+        <table id="tablaClientes" class="tabla-listado servicios-tabla">
+            <thead>
+                <tr>
+                    <th style="width: 150px; min-width: 150px;">RUC</th>
+                    <th>NOMBRE/RAZÓN SOCIAL</th>
+                    <th style="width: 100px;">ACCIÓN</th>
+                </tr>
+            </thead>
+            <tbody id="cuerpoTablaClientes">
+                </tbody>
+        </table>
+        
+        
+        <div id="modalCliente" class="card modal-flotante modal-largo" style="display:none;">
+            <button class="modal-close-btn" onclick="ocultarTodosLosModales()">✖</button>
+            
+            <h3 id="tituloDetalleCliente">Gestión de Cliente, Contactos y Direcciones</h3>
+            
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+
+            <h4>Datos del Cliente</h4>
+            <div class="formulario-campos" style="margin-bottom: 20px;">
+                <div style="flex: 1 1 100%;">
+                    <label>RUC:</label> <strong id="clienteRUCDisplay"></strong>
+                </div>
+                <div>
+                    <label>Razón Social:</label>
+                    <input type="text" id="clienteNombreInput" placeholder="Razón Social del Cliente" style="width: 100%;">
+                </div>
+                <div style="flex: 1 1 calc(50% - 10px);">
+                    <button onclick="guardarClientePrincipal()" class="btn-guardar-top">Guardar Cliente</button>
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;">
+
+            <h4>Contactos 
+                <button onclick="mostrarFormularioContacto('nuevo')" class="btn-agregar-linea" style="padding: 5px 10px;">➕ Añadir Contacto</button>
+            </h4>
+            <table id="tablaContactos" class="tabla-listado servicios-tabla">
+                <thead>
+                    <tr>
+                        <th style="width: 150px;">Nombre</th>
+                        <th>Email</th>
+                        <th style="width: 120px;">Teléfono</th>
+                        <th style="width: 120px;">Cargo</th>
+                        <th style="width: 80px;">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpoTablaContactos">
+                    <tr><td colspan="5" style="text-align: center;">Cargando contactos...</td></tr>
+                </tbody>
+            </table>
+
+            <br>
+            
+            <h4>Direcciones 
+                <button onclick="mostrarFormularioDireccion('nuevo')" class="btn-agregar-linea" style="padding: 5px 10px;">➕ Añadir Dirección</button>
+            </h4>
+            <table id="tablaDirecciones" class="tabla-listado servicios-tabla">
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Tipo</th>
+                        <th>Dirección Completa</th>
+                        <th style="width: 150px;">Ciudad</th>
+                        <th style="width: 80px;">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpoTablaDirecciones">
+                    <tr><td colspan="4" style="text-align: center;">Cargando direcciones...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="modalContacto" class="card modal-flotante modal-pequeno" style="display:none;">
+            <button class="modal-close-btn" onclick="ocultarModal('modalContacto')">✖</button>
+            <h3>Detalles del Contacto</h3>
+            <form id="formContacto" class="formulario-campos">
+                <input type="hidden" id="contactoRUC" name="RUC">
+                <input type="hidden" id="contactoID" name="rowIndex"> 
+                
+                <h2>NOMBRE</h2>
+                <input type="text" id="nombreContacto" name="NOMBRE" placeholder="Juan Pérez" required>
+
+                <h2>CARGO</h2>
+                <input type="text" id="cargoContacto" name="CARGO" placeholder="Gerente de Compras" required>
+
+                <h2>EMAIL</h2>
+                <input type="email" id="emailContacto" name="EMAIL" placeholder="juan@cliente.com">
+
+                <h2>TELÉFONO</h2>
+                <input type="text" id="telefonoContacto" name="TELEFONO" placeholder="+51 987 654 321">
+
+                <div style="width: 100%; display: flex; justify-content: space-between; margin-top: 15px;">
+                    <button type="button" onclick="guardarContacto()" class="btn-guardar-top">Guardar Contacto</button>
+                    <button type="button" onclick="ocultarModal('modalContacto')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+        
+        <div id="modalDireccion" class="card modal-flotante modal-pequeno" style="display:none;">
+            <button class="modal-close-btn" onclick="ocultarModal('modalDireccion')">✖</button>
+            <h3>Detalles de la Dirección</h3>
+            <form id="formDireccion" class="formulario-campos">
+                <input type="hidden" id="direccionRUC" name="RUC">
+                <input type="hidden" id="direccionID" name="rowIndex">
+                
+                <h2>TIPO</h2>
+                <select id="tipoDireccion" name="TIPO">
+                    <option value="FISCAL">FISCAL</option>
+                    <option value="ENTREGA">ENTREGA</option>
+                    <option value="OFICINA">OFICINA</option>
+                </select>
+
+                <h2>DIRECCIÓN COMPLETA</h2>
+                <input type="text" id="dirCompleta" name="DIRECCION" placeholder="Av. Los Pinos 123, Urb. San Martín" required>
+
+                <h2>CIUDAD / DISTRITO</h2>
+                <input type="text" id="ciudadDireccion" name="CIUDAD" placeholder="Lima / Surco" required>
+
+                <div style="width: 100%; display: flex; justify-content: space-between; margin-top: 15px;">
+                    <button type="button" onclick="guardarDireccion()" class="btn-guardar-top">Guardar Dirección</button>
+                    <button type="button" onclick="ocultarModal('modalDireccion')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+        
+    </div>
+
+    <script>
+        let dataClientes = [];
+        let RUC_ACTUAL = null;
+        let NOMBRE_ACTUAL = null;
+
+        document.addEventListener("DOMContentLoaded", function() {
+            google.script.run.withSuccessHandler(cargarTablaClientes).getListaClientes();
+            document.getElementById("filtroCliente").addEventListener("keyup", filtrarClientes);
+        });
+
+        // ----------------------------------------------------------------------
+        // --- FUNCIONES CORE DE MODALES ---
+        // ----------------------------------------------------------------------
+        
+        function mostrarModal(id) {
+            document.getElementById('modalOverlay').style.display = 'block';
+            document.getElementById(id).style.display = 'block';
+        }
+        
+        function ocultarModal(id) {
+            document.getElementById(id).style.display = 'none';
+            
+            // Ocultar el overlay solo si ningún otro modal está visible
+            if (
+                document.getElementById('modalCliente').style.display !== 'block' &&
+                document.getElementById('modalContacto').style.display !== 'block' &&
+                document.getElementById('modalDireccion').style.display !== 'block'
+            ) {
+                document.getElementById('modalOverlay').style.display = 'none';
+            }
+        }
+        
+        function ocultarTodosLosModales() {
+            document.getElementById('modalCliente').style.display = 'none';
+            document.getElementById('modalContacto').style.display = 'none';
+            document.getElementById('modalDireccion').style.display = 'none';
+            document.getElementById('modalOverlay').style.display = 'none';
+            RUC_ACTUAL = null; 
+            NOMBRE_ACTUAL = null;
+        }
+
+
+        // ----------------------------------------------------------------------
+        // --- SECCIÓN MAESTRO: LISTA DE CLIENTES (sin cambios sustanciales) ---
+        // ----------------------------------------------------------------------
+
+        function cargarTablaClientes(data) {
+            const tbody = document.getElementById("cuerpoTablaClientes");
+            tbody.innerHTML = ''; 
+            dataClientes = data;
+
+            if (!data || data.length <= 1) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px;">No hay clientes registrados.</td></tr>';
+                return; 
+            }
+            
+            renderizarFilasClientes(data.slice(1)); 
+        }
+        
+        function renderizarFilasClientes(filas) {
+            const tbody = document.getElementById("cuerpoTablaClientes");
+            tbody.innerHTML = '';
+            
+            if (filas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px;">No se encontraron clientes.</td></tr>';
+                return;
+            }
+
+            filas.forEach((filaDatos, index) => {
+                const RUC = filaDatos[0];
+                const NOMBRE = filaDatos[1];
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${RUC}</td> 
+                    <td>${NOMBRE}</td> 
+                    <td><button onclick="seleccionarCliente('${RUC}', '${NOMBRE}')">Ver Detalle</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function filtrarClientes() {
+            const filtro = document.getElementById("filtroCliente").value.toLowerCase();
+            const filasFiltradas = dataClientes.slice(1).filter(fila => {
+                const ruc = String(fila[0]).toLowerCase();
+                const nombre = String(fila[1]).toLowerCase();
+                return ruc.includes(filtro) || nombre.includes(filtro);
+            });
+            renderizarFilasClientes(filasFiltradas);
+        }
+
+        // ----------------------------------------------------------------------
+        // --- MODAL MAESTRO DEL CLIENTE Y CARGAR DETALLES (sin cambios sustanciales) ---
+        // ----------------------------------------------------------------------
+
+        function seleccionarCliente(ruc, nombre) {
+            RUC_ACTUAL = ruc;
+            NOMBRE_ACTUAL = nombre;
+            
+            document.getElementById("tituloDetalleCliente").textContent = `Gestión de Cliente: ${nombre} (RUC: ${ruc})`;
+            document.getElementById("clienteRUCDisplay").textContent = ruc;
+            document.getElementById("clienteNombreInput").value = nombre;
+            
+            mostrarModal('modalCliente');
+            cargarDetallesCliente();
+        }
+        
+        function cargarDetallesCliente() {
+            document.getElementById("cuerpoTablaContactos").innerHTML = '<tr><td colspan="5" style="text-align: center;">Cargando contactos...</td></tr>';
+            document.getElementById("cuerpoTablaDirecciones").innerHTML = '<tr><td colspan="4" style="text-align: center;">Cargando direcciones...</td></tr>';
+            
+            google.script.run
+                .withSuccessHandler(cargarTablasDetalle)
+                .getContactosYDirecciones(RUC_ACTUAL);
+        }
+
+        function cargarTablasDetalle(datos) {
+            // 1. Cargar Contactos
+            const tbodyContactos = document.getElementById("cuerpoTablaContactos");
+            tbodyContactos.innerHTML = '';
+            
+            if (datos.contactos && datos.contactos.length > 1) { 
+                datos.contactos.slice(1).forEach((contacto) => {
+                    // El rowIndex (posición 6) es el número de fila real para la edición
+                    const rowIndex = contacto[contacto.length - 1]; 
+                    
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${contacto[2]}</td> 
+                        <td>${contacto[3]}</td> 
+                        <td>${contacto[4]}</td> 
+                        <td>${contacto[5]}</td> 
+                        <td>
+                            <button onclick="editarContacto(${rowIndex})">Edit</button>
+                        </td>
+                    `;
+                    tbodyContactos.appendChild(tr);
+                });
+            } else {
+                tbodyContactos.innerHTML = '<tr><td colspan="5" style="text-align: center;">No hay contactos registrados para este cliente.</td></tr>';
+            }
+
+            // 2. Cargar Direcciones
+            const tbodyDirecciones = document.getElementById("cuerpoTablaDirecciones");
+            tbodyDirecciones.innerHTML = '';
+            
+            if (datos.direcciones && datos.direcciones.length > 1) { 
+                datos.direcciones.slice(1).forEach((direccion) => {
+                    // El rowIndex (última posición) es el número de fila real para la edición
+                    const rowIndex = direccion[direccion.length - 1]; 
+                    
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${direccion[2]}</td> 
+                        <td>${direccion[3]}</td> 
+                        <td>${direccion[4]}</td> 
+                        <td>
+                            <button onclick="editarDireccion(${rowIndex})">Edit</button>
+                        </td>
+                    `;
+                    tbodyDirecciones.appendChild(tr);
+                });
+            } else {
+                tbodyDirecciones.innerHTML = '<tr><td colspan="4" style="text-align: center;">No hay direcciones registradas para este cliente.</td></tr>';
+            }
+        }
+        
+        // ----------------------------------------------------------------------
+        // --- GESTIÓN DE SUB-MODALES (CONTACTO / DIRECCIÓN) - NUEVO CÓDIGO CLAVE ---
+        // ----------------------------------------------------------------------
+        
+        /** Muestra el formulario de Contacto y lo configura para Nuevo o Edición. */
+        function mostrarFormularioContacto(modo, rowIndex = '') {
+            if (!RUC_ACTUAL) {
+                alert("Por favor, selecciona un cliente primero.");
+                return;
+            }
+            
+            document.getElementById('formContacto').reset();
+            document.getElementById('contactoRUC').value = RUC_ACTUAL;
+            document.getElementById('contactoID').value = rowIndex; // RowIndex (edición) o vacío (nuevo)
+            
+            if (modo === 'nuevo') {
+                document.getElementById('modalContacto').querySelector('h3').textContent = 'Añadir Nuevo Contacto';
+                mostrarModal('modalContacto');
+            } 
+            // Para edición, el modal se muestra dentro de editarContacto
+        }
+        
+        /**
+         * Llama al servidor para obtener los datos del Contacto por fila.
+         */
+        function editarContacto(rowIndex) {
+            if (!RUC_ACTUAL) return;
+            
+            document.getElementById('modalContacto').querySelector('h3').textContent = 'Cargando datos del Contacto...';
+            mostrarModal('modalContacto');
+            
+            google.script.run
+                .withSuccessHandler(cargarFormularioContacto)
+                .getFilaPorRowIndex(RUC_ACTUAL, rowIndex, 'contacto');
+        }
+
+        /** Recibe los datos del Contacto y los carga en el modal. */
+        function cargarFormularioContacto(data) {
+            if (!data || !data.row) {
+                alert("Error al cargar los datos del contacto.");
+                ocultarModal('modalContacto');
+                return;
+            }
+            
+            // 1. Asignar Título y RowIndex
+            document.getElementById('modalContacto').querySelector('h3').textContent = 'Editar Contacto';
+            document.getElementById('contactoID').value = data.rowIndex; 
+            
+            // 2. Llenar los campos (índices basados en la estructura de la hoja: [ID, RUC, NOMBRE, EMAIL, TELEFONO, CARGO])
+            document.getElementById('nombreContacto').value = data.row[2] || '';
+            document.getElementById('emailContacto').value = data.row[3] || '';
+            document.getElementById('telefonoContacto').value = data.row[4] || '';
+            document.getElementById('cargoContacto').value = data.row[5] || '';
+            document.getElementById('contactoRUC').value = data.row[1];
+        }
+
+
+        function guardarContacto() {
+            const form = document.getElementById('formContacto');
+            const data = {};
+            const formData = new FormData(form);
+
+            for (let [key, value] of formData.entries()) {
+                data[key] = value;
+            }
+            
+            // Llama a la función del servidor para guardar/actualizar
+            google.script.run
+                .withSuccessHandler(refrescarDetallesCliente)
+                .guardarOActualizarContacto(data);
+        }
+        
+        /** Muestra el formulario de Dirección y lo configura para Nuevo o Edición. */
+        function mostrarFormularioDireccion(modo, rowIndex = '') {
+            if (!RUC_ACTUAL) {
+                alert("Por favor, selecciona un cliente primero.");
+                return;
+            }
+            
+            document.getElementById('formDireccion').reset();
+            document.getElementById('direccionRUC').value = RUC_ACTUAL;
+            document.getElementById('direccionID').value = rowIndex; // RowIndex (edición) o vacío (nuevo)
+            
+            if (modo === 'nuevo') {
+                document.getElementById('modalDireccion').querySelector('h3').textContent = 'Añadir Nueva Dirección';
+                mostrarModal('modalDireccion');
+            }
+            // Para edición, el modal se muestra dentro de editarDireccion
+        }
+        
+        /**
+         * Llama al servidor para obtener los datos de la Dirección por fila.
+         */
+        function editarDireccion(rowIndex) {
+            if (!RUC_ACTUAL) return;
+
+            document.getElementById('modalDireccion').querySelector('h3').textContent = 'Cargando datos de la Dirección...';
+            mostrarModal('modalDireccion');
+            
+            google.script.run
+                .withSuccessHandler(cargarFormularioDireccion)
+                .getFilaPorRowIndex(RUC_ACTUAL, rowIndex, 'direccion');
+        }
+
+        /** Recibe los datos de la Dirección y los carga en el modal. */
+        function cargarFormularioDireccion(data) {
+            if (!data || !data.row) {
+                alert("Error al cargar los datos de la dirección.");
+                ocultarModal('modalDireccion');
+                return;
+            }
+            
+            // 1. Asignar Título y RowIndex
+            document.getElementById('modalDireccion').querySelector('h3').textContent = 'Editar Dirección';
+            document.getElementById('direccionID').value = data.rowIndex; 
+            
+            // 2. Llenar los campos (índices basados en la estructura de la hoja: [ID, RUC, TIPO, DIRECCION, CIUDAD])
+            document.getElementById('tipoDireccion').value = data.row[2] || 'FISCAL';
+            document.getElementById('dirCompleta').value = data.row[3] || '';
+            document.getElementById('ciudadDireccion').value = data.row[4] || '';
+            document.getElementById('direccionRUC').value = data.row[1];
+        }
+
+        function guardarDireccion() {
+            const form = document.getElementById('formDireccion');
+            const data = {};
+            const formData = new FormData(form);
+
+            for (let [key, value] of formData.entries()) {
+                data[key] = value;
+            }
+            
+            // Llama a la función del servidor para guardar/actualizar
+            google.script.run
+                .withSuccessHandler(refrescarDetallesCliente)
+                .guardarOActualizarDireccion(data);
+        }
+
+        // Función auxiliar para recargar contactos y direcciones después de un guardado
+        function refrescarDetallesCliente() {
+            ocultarModal('modalContacto');
+            ocultarModal('modalDireccion');
+            cargarDetallesCliente(); 
+        }
+        
+        // ----------------------------------------------------------------------
+        // --- GUARDADO DE DATOS DEL CLIENTE PRINCIPAL (sin implementar) ---
+        // ----------------------------------------------------------------------
+
+        function guardarClientePrincipal() {
+            const nuevoNombre = document.getElementById("clienteNombreInput").value;
+            if (!nuevoNombre || !RUC_ACTUAL) {
+                 alert("El RUC y el Nombre son obligatorios.");
+                 return;
+            }
+            
+            alert(`Guardando cambio de Razón Social para ${RUC_ACTUAL} a ${nuevoNombre}. (Función de Apps Script 'actualizarNombreCliente' pendiente).`);
+            // Aquí iría google.script.run.withSuccessHandler(refrescarTablaMaestro).actualizarNombreCliente(RUC_ACTUAL, nuevoNombre);
+        }
+
+        function refrescarTablaMaestro() {
+            google.script.run.withSuccessHandler(cargarTablaClientes).getListaClientes();
+            ocultarTodosLosModales();
+        }
+
+    </script>
+</body>
+
+</html>

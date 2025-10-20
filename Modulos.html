@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Módulos</title>
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+</head>
+<body>
+
+<div class="barraTopComercial">
+    <div class="topBarra-izquierda">
+        <h1>Módulos Principales</h1>
+    </div>
+</div>
+
+<div class="contenedorModulos">
+    
+    <div class="gridModulos">
+        <? var url = getScriptUrl(); ?>
+
+        <a href='<?= url ?>?page=ResumenComercial' class="boxModulos">
+            <span class="icono-modulo">💼</span> <span class="nombre-modulo">Comercial</span>
+        </a>
+
+        <a href='<?= url ?>?page=Servicios' class="boxModulos">
+            <span class="icono-modulo">🛠️</span> <span class="nombre-modulo">Servicios</span>
+        </a>
+        
+        <a href='<?= url ?>?page=Contactos' class="boxModulos">
+            <span class="icono-modulo">👥</span> <span class="nombre-modulo">Contactos</span>
+        </a>
+        
+        <a href='<?= url ?>?page=Reportes' class="boxModulos">
+            <span class="icono-modulo">📈</span> <span class="nombre-modulo">Reportes</span>
+        </a>
+        
+        <a href='<?= url ?>?page=Configuracion' class="boxModulos">
+            <span class="icono-modulo">⚙️</span> <span class="nombre-modulo">Configuración</span>
+        </a>
+
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Órdenes de Trabajo</title>
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+</head>
+
+<body>
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=Servicios' class="retornarModulos iconoTopBarra">← Volver a Servicios</a>
+            <h1>Órdenes de Trabajo</h1>
+        </div>
+        <div class="topBarra-derecha">
+            <button onclick="navegarARegistrarOT()" class="boton-nuevo-pedido">
+                📋 Registrar OT
+            </button>
+            <button onclick="recargarDatos()" class="btn-info" style="background-color: #17a2b8; color: white; margin-left: 10px;">
+                🔄 Actualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="contenedorModulos">
+        <div class="card">
+            <h2>Lista de Órdenes de Trabajo</h2>
+            
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="filtroOT" placeholder="Buscar por número OT, cliente o servicio..." 
+                       style="padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px;">
+                <span id="contadorOT" style="color: #666; font-size: 14px;">
+                    Cargando...
+                </span>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table id="tablaOT" class="tabla-resumen">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">N° OT</th>
+                            <th style="width: 150px;">Fecha</th>
+                            <th style="min-width: 200px;">Cliente</th>
+                            <th style="min-width: 200px;">Servicio/Máquina</th>
+                            <th style="width: 120px;">Pedido</th>
+                            <th style="width: 100px;">Horas Trab.</th>
+                            <th style="width: 150px;">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoTablaOT">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 20px;">
+                                <div class="loading-spinner">
+                                    <p>Cargando órdenes de trabajo...</p>
+                                    <div class="spinner"></div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <p id="loadingText">Cargando...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <script>
+        let datosOT = [];
+
+        document.addEventListener("DOMContentLoaded", function() {
+            console.log("🔄 OT.html CARGADO");
+            cargarDatosOT();
+            
+            document.getElementById("filtroOT").addEventListener("input", filtrarOT);
+            
+            // Agregar evento para recargar con F5
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+                    e.preventDefault();
+                    recargarDatos();
+                }
+            });
+        });
+
+        function cargarDatosOT() {
+            mostrarLoading(true, "Cargando órdenes de trabajo...");
+            
+            google.script.run
+                .withSuccessHandler(function(datos) {
+                    mostrarLoading(false);
+                    datosOT = datos;
+                    renderizarTablaOT(datos);
+                    actualizarContador();
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    console.error("Error cargando OT:", error);
+                    mostrarError("Error al cargar las órdenes de trabajo: " + error.message);
+                })
+                .getListaOT();
+        }
+
+        function renderizarTablaOT(datos) {
+            const tbody = document.getElementById("cuerpoTablaOT");
+            tbody.innerHTML = "";
+
+            if (!datos || datos.length <= 1) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 30px; color: #666;">
+                            <div style="text-align: center;">
+                                <p style="font-size: 16px; margin-bottom: 10px;">📭 No hay órdenes de trabajo registradas</p>
+                                <button onclick="navegarARegistrarOT()" class="boton-nuevo-pedido" style="margin-top: 10px;">
+                                    📋 Registrar primera OT
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Ordenar por fecha más reciente primero
+            const datosOrdenados = [datos[0], ...datos.slice(1).sort((a, b) => {
+                const fechaA = new Date(a[1] || 0);
+                const fechaB = new Date(b[1] || 0);
+                return fechaB - fechaA;
+            })];
+
+            datosOrdenados.slice(1).forEach((fila, index) => {
+                const numOT = fila[0];
+                const fecha = formatearFecha(fila[1]);
+                const cliente = fila[2];
+                const servicio = fila[3];
+                const pedido = fila[4];
+                const horasTrabajo = fila[5];
+
+                if (!numOT) return;
+
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td><strong>${escapeHTML(numOT)}</strong></td>
+                    <td>${escapeHTML(fecha)}</td>
+                    <td>${escapeHTML(cliente)}</td>
+                    <td>${escapeHTML(servicio)}</td>
+                    <td>${escapeHTML(pedido)}</td>
+                    <td class="monto-col">${parseFloat(horasTrabajo || 0).toFixed(2)}</td>
+                    <td>
+                        <button onclick="editarOT('${escapeHTML(numOT)}')" class="btn-editar" title="Editar OT">
+                            ✏️ Editar
+                        </button>
+                        <button onclick="verDetalleOT('${escapeHTML(numOT)}')" class="btn-ver-detalle" title="Ver detalles">
+                            👁️ Ver
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            console.log("✅ Tabla OT renderizada con " + (datos.length - 1) + " registros");
+        }
+
+        function formatearFecha(fechaStr) {
+            if (!fechaStr) return '-';
+            try {
+                const fecha = new Date(fechaStr);
+                if (isNaN(fecha.getTime())) return fechaStr;
+                
+                return fecha.toLocaleDateString('es-PE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+            } catch (e) {
+                return fechaStr;
+            }
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function editarOT(numOT) {
+            console.log("✏️ Editando OT: " + numOT);
+            
+            // Validar que el número OT no esté vacío
+            if (!numOT || numOT === 'null' || numOT === 'undefined') {
+                console.error("❌ Número OT inválido:", numOT);
+                mostrarError("Error: Número de OT inválido");
+                return;
+            }
+            
+            const urlBase = '<?!= getScriptUrl() ?>';
+            const urlEditarOT = urlBase + '?page=RegistrarOT&editar=' + encodeURIComponent(numOT);
+            
+            console.log("🔗 URL de edición:", urlEditarOT);
+            window.open(urlEditarOT, '_blank');
+        }
+
+        function verDetalleOT(numOT) {
+            console.log("👁️ Viendo detalle de OT: " + numOT);
+            
+            // Por ahora mostramos un alert, pero puedes implementar un modal de detalle
+            mostrarLoading(true, "Cargando detalles...");
+            
+            google.script.run
+                .withSuccessHandler(function(detalles) {
+                    mostrarLoading(false);
+                    if (detalles.success) {
+                        mostrarModalDetalle(detalles.data);
+                    } else {
+                        mostrarError("Error al cargar detalles: " + detalles.message);
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    // Fallback: mostrar información básica
+                    mostrarModalDetalleBasico(numOT);
+                })
+                .obtenerOTPorNumero(numOT);
+        }
+
+        function mostrarModalDetalle(datos) {
+            const horasTrabajo = parseFloat(datos.tiempoTotal || 0).toFixed(2);
+            const horometroTrabajado = parseFloat(datos.horometroTrabajado || 0).toFixed(2);
+            
+            const mensaje = `
+📋 ORDEN DE TRABAJO: ${datos.numeroOT}
+
+📅 Fecha: ${datos.fecha || 'No especificada'}
+👤 Cliente: ${datos.cliente || 'No especificado'}
+🔧 Servicio: ${datos.servicio || 'No especificado'}
+📦 Pedido: ${datos.pedido || 'No especificado'}
+
+⏰ Horario:
+   • Inicio: ${datos.horaInicio || 'No especificado'}
+   • Fin: ${datos.horaFin || 'No especificado'}
+   • Refrigerio: ${datos.tiempoRefrigerio || 0} minutos
+   • Total: ${horasTrabajo} horas
+
+📊 Horómetros:
+   • Trabajado: ${horometroTrabajado} horas
+   • ${datos.esCamionGrua === 'SI' ? 'Es Camión Grúa' : 'No es Camión Grúa'}
+
+👤 Registrado por: ${datos.usuario || 'No disponible'}
+🗓️ Fecha registro: ${datos.fechaRegistro || 'No disponible'}
+            `.trim();
+
+            alert(mensaje);
+        }
+
+        function mostrarModalDetalleBasico(numOT) {
+            // Buscar en los datos locales
+            const otEncontrada = datosOT.find(fila => fila[0] === numOT);
+            if (otEncontrada) {
+                const mensaje = `
+📋 ORDEN DE TRABAJO: ${otEncontrada[0]}
+
+📅 Fecha: ${otEncontrada[1] || 'No especificada'}
+👤 Cliente: ${otEncontrada[2] || 'No especificado'}
+🔧 Servicio: ${otEncontrada[3] || 'No especificado'}
+📦 Pedido: ${otEncontrada[4] || 'No especificado'}
+⏰ Horas trabajadas: ${parseFloat(otEncontrada[5] || 0).toFixed(2)}
+
+ℹ️ Información detallada disponible en modo edición.
+                `.trim();
+                alert(mensaje);
+            } else {
+                alert("OT no encontrada en los datos locales.");
+            }
+        }
+
+        function filtrarOT() {
+            const filtro = document.getElementById("filtroOT").value.toLowerCase().trim();
+            
+            if (!filtro) {
+                renderizarTablaOT(datosOT);
+                actualizarContador(datosOT.length - 1);
+                return;
+            }
+
+            const datosFiltrados = [datosOT[0]]; // Mantener encabezados
+            
+            datosOT.slice(1).forEach(fila => {
+                const numOT = String(fila[0] || '').toLowerCase();
+                const cliente = String(fila[2] || '').toLowerCase();
+                const servicio = String(fila[3] || '').toLowerCase();
+                const pedido = String(fila[4] || '').toLowerCase();
+                
+                if (numOT.includes(filtro) || cliente.includes(filtro) || 
+                    servicio.includes(filtro) || pedido.includes(filtro)) {
+                    datosFiltrados.push(fila);
+                }
+            });
+            
+            renderizarTablaOT(datosFiltrados);
+            actualizarContador(datosFiltrados.length - 1, true);
+        }
+
+        function actualizarContador(total = null, esFiltrado = false) {
+            const contador = document.getElementById("contadorOT");
+            const totalRegistros = total !== null ? total : (datosOT.length - 1);
+            
+            if (esFiltrado) {
+                contador.textContent = `${totalRegistros} de ${datosOT.length - 1} registros`;
+                contador.style.color = '#e67e22';
+            } else {
+                contador.textContent = `${totalRegistros} registros encontrados`;
+                contador.style.color = totalRegistros > 0 ? '#27ae60' : '#666';
+            }
+        }
+
+        function navegarARegistrarOT() {
+            const urlBase = '<?!= getScriptUrl() ?>';
+            const urlRegistrarOT = urlBase + '?page=RegistrarOT';
+            console.log("🔗 Navegando a Registrar OT");
+            window.open(urlRegistrarOT, '_blank');
+        }
+
+        function recargarDatos() {
+            console.log("🔄 Recargando datos...");
+            cargarDatosOT();
+        }
+
+        function mostrarLoading(mostrar, mensaje = "Cargando...") {
+            const overlay = document.getElementById("loadingOverlay");
+            const texto = document.getElementById("loadingText");
+            
+            if (overlay && texto) {
+                overlay.style.display = mostrar ? "flex" : "none";
+                texto.textContent = mensaje;
+            }
+        }
+
+        function mostrarError(mensaje) {
+            console.error("❌ Error:", mensaje);
+            alert("❌ " + mensaje);
+        }
+
+        // Función para exportar datos (opcional)
+        function exportarDatos() {
+            console.log("📤 Exportando datos...");
+            // Aquí puedes implementar exportación a Excel/PDF si es necesario
+            alert("Función de exportación en desarrollo...");
+        }
+    </script>
+</body>
+</html>

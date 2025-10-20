@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <title>Administrar Servicios</title>
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+</head>
+
+<body>
+
+    <div id="modalOverlay" class="modal-overlay" style="display: none;" onclick="ocultarModal('modalServicio')"></div>
+
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Modulos</a>
+            <h1>Administración de Servicios</h1>
+        </div>
+    </div>
+
+    <div class="contenido-servicios">
+
+        <div style="margin-bottom: 20px;">
+            <button onclick="mostrarFormularioServicio('nuevo')" class="btn-guardar-top">➕ Añadir Nuevo Servicio</button>
+            <button onclick="navegarAOT()" class="boton-nuevo-pedido">🔧 Órdenes de Trabajo</button>
+        </div>
+
+        <h2>Lista de Servicios Registrados</h2>
+        
+        <div style="overflow-x: auto;">
+            <table id="tablaServicios" class="tabla-listado servicios-tabla">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">ID</th>
+                        <th style="min-width: 250px;">DESCRIPCIÓN</th>
+                        <th style="width: 120px;">H. SEGÚN</th>
+                        <th style="width: 100px;">UND. MEDIDA</th>
+                        <th style="width: 100px;">ACCIÓN</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpoTablaServicios">
+                    <tr><td colspan="5" style="text-align: center;">Cargando datos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="modalServicio" class="card modal-flotante modal-pequeno" style="display:none;">
+            <button class="modal-close-btn" onclick="ocultarModal('modalServicio')">✖</button>
+            
+            <h3 id="tituloModalServicio">Añadir Nuevo Servicio</h3>
+            
+            <form id="formServicio" class="formulario-campos">
+                <input type="hidden" id="servicioRowIndex" name="rowIndex" value="0"> 
+                
+                <h2>ID SERVICIO (COD)</h2>
+                <input type="text" id="servicioID" name="ID Servicio" placeholder="S001" required>
+
+                <h2>DESCRIPCIÓN DEL SERVICIO</h2>
+                <textarea id="servicioDescripcion" name="Descripción del Servicio" placeholder="Instalación de tuberías de 4 pulgadas..." rows="3" required></textarea>
+
+                <h2>HORA SEGÚN</h2>
+                <select id="servicioHoraSegun" name="Hora según">
+                </select>
+
+                <h2>UND. MEDIDA</h2>
+                <select id="servicioUndMedida" name="Und. Medida">
+                </select>
+                
+                <div style="width: 100%; display: flex; justify-content: space-between; margin-top: 20px;">
+                    <button type="button" onclick="guardarServicio()" class="btn-guardar-top">Guardar Servicio</button>
+                    <button type="button" onclick="ocultarModal('modalServicio')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+    <script>
+        let dataServicios = [];
+        let listaHoraSegun = [];
+        let listaUndMedida = [];
+        let listaEstados = []; // Mantenemos la variable pero no se usa
+
+        // Ejecución al cargar la página
+        document.addEventListener("DOMContentLoaded", function() {
+            // Carga simultánea de datos y listas de selección
+            google.script.run
+                .withSuccessHandler(procesarDatosIniciales)
+                .withFailureHandler(mostrarError)
+                .getDatosInicialesServicios(); 
+        });
+        
+        function mostrarError(error) {
+            console.error("Error del servidor:", error);
+            alert("Error al cargar datos iniciales: " + error.message);
+        }
+
+        function procesarDatosIniciales(data) {
+            // data.estados ya no se usa ni se llena el select
+            dataServicios = data.servicios;
+            listaHoraSegun = data.horasSegun;
+            listaUndMedida = data.undMedida;
+            // listaEstados = data.estados; // Ya no se carga esta lista
+            
+            // Llenar las listas de selección (selects)
+            llenarSelect('servicioHoraSegun', listaHoraSegun);
+            llenarSelect('servicioUndMedida', listaUndMedida);
+            // Ya no se llama a llenarSelect('servicioEstado', listaEstados);
+            
+            // Renderizar la tabla
+            cargarTablaServicios(dataServicios);
+        }
+        
+        function llenarSelect(id, opciones) {
+            const select = document.getElementById(id);
+            select.innerHTML = '<option value="" disabled selected>-- Seleccione --</option>';
+            if (opciones) {
+                opciones.forEach(opcion => {
+                    const opt = document.createElement('option');
+                    opt.value = opcion;
+                    opt.textContent = opcion;
+                    select.appendChild(opt);
+                });
+            }
+        }
+        
+        function mostrarModal(id) {
+            document.getElementById('modalOverlay').style.display = 'block';
+            document.getElementById(id).style.display = 'block';
+        }
+        
+        function ocultarModal(id) {
+            document.getElementById(id).style.display = 'none';
+            if (document.getElementById(id) === document.getElementById('modalServicio')) {
+                 document.getElementById('modalOverlay').style.display = 'none';
+            }
+        }
+
+        function cargarTablaServicios(data) {
+            const tbody = document.getElementById("cuerpoTablaServicios");
+            tbody.innerHTML = '';
+            
+            if (!data || data.length <= 1) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No hay servicios registrados.</td></tr>';
+                return;
+            }
+
+            // data[0] son los encabezados, empezamos desde la fila 1 (datos)
+            data.slice(1).forEach((filaDatos, index) => {
+                const rowIndex = index + 2; 
+
+                // Índices de columna (0-based) de la hoja Servicios
+                const ID = filaDatos[0] || '';
+                const DESCRIPCION = filaDatos[1] || '';
+                const HORA_SEGUN = filaDatos[4] || ''; 
+                const UND_MEDIDA = filaDatos[5] || ''; 
+                // ❌ Ya no se usa filaDatos[6] (Estado)
+
+                const tr = document.createElement('tr');
+                // Se reducen las celdas de 6 a 5
+                tr.innerHTML = `
+                    <td>${ID}</td>
+                    <td>${DESCRIPCION}</td>
+                    <td>${HORA_SEGUN}</td>
+                    <td>${UND_MEDIDA}</td>
+                    <td>
+                        <button onclick="editarServicio(${rowIndex})">Editar</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function mostrarFormularioServicio(modo) {
+    document.getElementById('formServicio').reset();
+    document.getElementById('servicioRowIndex').value = 0; 
+    document.getElementById('tituloModalServicio').textContent = 'Añadir Nuevo Servicio';
+    
+    // ✅ HABILITAR el campo ID para nuevos servicios
+    document.getElementById('servicioID').readOnly = false;
+    document.getElementById('servicioID').style.backgroundColor = ''; // Quitar fondo gris
+    document.getElementById('servicioID').focus(); // Poner foco en el campo
+    
+    mostrarModal('modalServicio');
+}
+
+        function editarServicio(rowIndex) {
+    document.getElementById('tituloModalServicio').textContent = 'Cargando datos del Servicio...';
+    mostrarModal('modalServicio');
+    
+    // ❌ VIEJA LLAMADA (no funciona bien)
+    // google.script.run
+    //     .withSuccessHandler(cargarFormularioServicio)
+    //     .getFilaPorRowIndex('N/A', rowIndex, 'servicio'); 
+    
+    // ✅ NUEVA LLAMADA (usa la función específica)
+    google.script.run
+        .withSuccessHandler(cargarFormularioServicio)
+        .withFailureHandler(function(error) {
+            alert("Error al cargar servicio: " + error);
+            ocultarModal('modalServicio');
+        })
+        .obtenerServicioPorRowIndex(rowIndex);
+}
+
+function cargarFormularioServicio(data) {
+    if (!data || !data.row) {
+        alert("Error al cargar los datos del servicio.");
+        ocultarModal('modalServicio');
+        return;
+    }
+    
+    document.getElementById('tituloModalServicio').textContent = 'Editar Servicio';
+    document.getElementById('servicioRowIndex').value = data.rowIndex; 
+    
+    // Rellenar los campos
+    document.getElementById('servicioID').value = data.row[0] || '';
+    document.getElementById('servicioDescripcion').value = data.row[1] || '';
+    document.getElementById('servicioHoraSegun').value = data.row[4] || '';
+    document.getElementById('servicioUndMedida').value = data.row[5] || '';
+    
+    // ✅ SOLO LECTURA al editar (no se puede modificar el ID existente)
+    document.getElementById('servicioID').readOnly = true;
+    document.getElementById('servicioID').style.backgroundColor = '#f5f5f5'; // Visual feedback
+    
+    // Poner foco en el primer campo editable
+    document.getElementById('servicioDescripcion').focus();
+}
+
+function guardarServicio() {
+    const form = document.getElementById('formServicio');
+    const data = {};
+    const formData = new FormData(form);
+
+    for (let [key, value] of formData.entries()) {
+        data[key] = value;
+    }
+
+    data.rowIndex = document.getElementById('servicioRowIndex').value;
+    
+    // ✅ VALIDAR que el código no esté vacío para nuevos servicios
+    const codigoServicio = document.getElementById('servicioID').value.trim();
+    if (!codigoServicio) {
+        alert("❌ El código del servicio es obligatorio");
+        document.getElementById('servicioID').focus();
+        return;
+    }
+    
+    // ✅ VALIDAR que la descripción no esté vacía
+    const descripcion = document.getElementById('servicioDescripcion').value.trim();
+    if (!descripcion) {
+        alert("❌ La descripción del servicio es obligatoria");
+        document.getElementById('servicioDescripcion').focus();
+        return;
+    }
+    
+    console.log("📤 Enviando datos:", data);
+    
+    google.script.run
+        .withSuccessHandler(function(resultado) {
+            if (resultado.success) {
+                refrescarTablaServicios();
+            } else {
+                alert("Error al guardar: " + resultado.message);
+            }
+        })
+        .withFailureHandler(function(error) {
+            alert("Error al guardar: " + error);
+        })
+        .guardarOActualizarServicio(data);
+}
+        
+        function refrescarTablaServicios() {
+            ocultarModal('modalServicio');
+            // Recargamos los datos optimizados
+            google.script.run
+                .withSuccessHandler(procesarDatosIniciales)
+                .withFailureHandler(mostrarError)
+                .getDatosInicialesServicios(); 
+        }
+        function navegarAOT() {
+            const urlBase = '<?!= getScriptUrl() ?>';
+            const urlOT = urlBase + '?page=OT';
+            window.open(urlOT, '_blank');
+        }
+
+    </script>
+</body>
+
+</html>

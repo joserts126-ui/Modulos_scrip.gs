@@ -1,0 +1,1818 @@
+<style>
+  
+/* ------------------------------------------------------------------
+ * ESTILOS GENERALES (Módulos y Base)
+ * ------------------------------------------------------------------ */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+}
+h1, h2, h3 {
+    color: #333;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+h2 {
+    font-size: 1.5em;
+    border-bottom: 2px solid #5cb85c;
+    padding-bottom: 5px;
+}
+
+/* Barra Superior de Navegación */
+.barraTopComercial {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.barraTopComercial h1 {
+    color: white;
+    margin: 0;
+    font-size: 1.2em;
+}
+.topBarra-izquierda {
+    display: flex;
+    align-items: center;
+}
+.retornarModulos {
+    color: white;
+    text-decoration: none;
+    margin-right: 20px;
+    padding: 5px 10px;
+    border: 1px solid white;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+.retornarModulos:hover {
+    background-color: #5cb85c;
+}
+
+/* Botón Guardar */
+.btn-guardar-top {
+    background-color: #007bff;
+    color: white;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+}
+.btn-guardar-top:hover {
+    background-color: #0056b3;
+}
+
+/* ------------------------------------------------------------------
+ * ESTILOS DE FORMULARIO COMERCIAL (Diseño de 2 Columnas y Controles)
+ * ------------------------------------------------------------------ */
+.seccion-principal {
+    background-color: white;
+    padding: 20px;
+    margin: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Contenedor Flex para las dos columnas */
+.formulario-campos {
+    display: flex;
+    flex-wrap: wrap; /* Permite que los elementos se envuelvan si no caben */
+    gap: 20px; /* Espacio entre las columnas */
+}
+
+/* Cada columna ocupa aproximadamente la mitad */
+.formulario-campos > * {
+    flex: 1 1 calc(50% - 10px); /* Ocupa casi el 50% con 10px de gap */
+    box-sizing: border-box;
+    min-width: 250px; /* Asegura que no se achique demasiado en pantallas pequeñas */
+}
+
+/* Etiquetas y Títulos */
+.formulario-campos h2 {
+    color: black; /* Color de letra negro solicitado */
+    font-size: 1em; /* Reducimos el tamaño de la etiqueta */
+    margin-bottom: 5px;
+    width: 100%; /* El h2 toma todo el ancho del contenedor flex item */
+}
+
+/* Reducción de tamaño de inputs y selects */
+.formulario-campos input[type="text"],
+.formulario-campos select {
+    padding: 6px 10px; /* Un poco menos de padding que antes */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 100%; 
+    box-sizing: border-box;
+    font-size: 0.9em; /* Letra un poco más pequeña */
+    margin-bottom: 15px; /* Espacio después de cada campo */
+}
+
+/* ------------------------------------------------------------------
+ * ESTILOS DE LA TABLA Y AUTOCOMPLETADO
+ * ------------------------------------------------------------------ */
+.seccion-lineas-pedido {
+    margin: 20px;
+    overflow-x: auto; /* Permite el scroll horizontal para la tabla */
+}
+
+.tabla-cotizacion {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tabla-header-verde th {
+    background-color: #5cb85c;
+    color: white;
+    padding: 10px;
+    text-align: left;
+    font-weight: bold;
+    font-size: 0.85em;
+}
+
+.tabla-cotizacion td {
+    padding: 5px;
+    border: 1px solid #ddd;
+    vertical-align: middle;
+}
+
+/* Estilo para los inputs y selects dentro de la tabla */
+.tabla-cotizacion input[type="text"],
+.tabla-cotizacion input[type="number"],
+.tabla-cotizacion select {
+    padding: 4px 6px; /* Aún más pequeño para la tabla */
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.8em;
+}
+.tabla-cotizacion .btn-eliminar {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 5px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+}
+.tabla-cotizacion .btn-eliminar:hover {
+    background-color: #c82333;
+}
+
+/* Estilos de Autocompletado */
+.autocomplete-list {
+    position: absolute;
+    border: 1px solid #d4d4d4;
+    border-bottom: none;
+    border-top: none;
+    z-index: 99;
+}
+.autocomplete-list div {
+    padding: 10px;
+    cursor: pointer;
+    background-color: #fff;
+    border-bottom: 1px solid #d4d4d4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 350px; 
+    font-size: 0.9em;
+}
+.autocomplete-list div:hover {
+    background-color: #e9e9e9;
+}
+.autocomplete-active {
+    background-color: DodgerBlue !important;
+    color: #ffffff;
+}
+.btn-agregar-linea {
+    background-color: #28a745;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 15px;
+}
+.btn-agregar-linea:hover {
+    background-color: #1e7e34;
+}
+
+/* Sección de Totales */
+.seccion-totales {
+    text-align: right;
+    margin: 20px;
+    padding: 10px;
+    border-top: 2px solid #5cb85c;
+    font-weight: bold;
+}
+.seccion-totales label {
+    margin-right: 10px;
+    font-size: 1.1em;
+}
+.seccion-totales input {
+    width: 120px;
+    text-align: right;
+    font-size: 1.2em;
+    font-weight: bold;
+    border: none;
+    background-color: #f3f3f3;
+    padding: 5px;
+}
+
+/* ------------------------------------------------------------------
+ * ESTILOS ESPECÍFICOS DE LA PÁGINA MÓDULOS
+ * ------------------------------------------------------------------ */
+
+.contenedorModulos {
+    padding: 40px;
+    text-align: center;
+    background-color: #f4f4f4;
+}
+
+.gridModulos {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 30px;
+}
+
+.boxModulos {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: #333;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    padding: 30px 20px;
+    width: 200px; /* Ancho fijo para las tarjetas */
+    height: 180px; /* Altura fija */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.boxModulos:hover {
+    transform: translateY(-5px); /* Efecto 3D al pasar el ratón */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    border-color: #4CAF50;
+    color: #4CAF50;
+}
+
+.icono-modulo {
+    font-size: 4em; /* Tamaño del icono */
+    color: #4CAF50; /* Color del icono */
+    margin-bottom: 10px;
+    line-height: 1; /* Asegura que el icono no añada espacio extra */
+}
+
+.nombre-modulo {
+    font-size: 1.2em;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* ------------------------------------------------------------------
+ * ESTILOS ESPECÍFICOS DE LA PÁGINA SERVICIOS (Centrado y Tabla con Rayas/Líneas)
+ * ------------------------------------------------------------------ */
+
+/* 1. Contenedor principal para centrar el contenido */
+.contenido-servicios {
+    max-width: 1200px; /* Define un ancho máximo razonable */
+    margin: 20px auto; /* Centra el bloque horizontalmente */
+    padding: 20px;
+    background-color: white; 
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+}
+
+/* 2. ESTILOS DE LA TABLA DE SERVICIOS (Líneas de columna/fila y Rayas Zebra) */
+table.servicios-tabla {
+    width: 100%;
+    border-collapse: collapse; 
+    background-color: white;
+    margin-top: 15px; 
+    border: 1px solid #e0e0e0; /* Borde exterior sutil */
+    border-radius: 6px;
+    overflow: hidden; 
+}
+
+/* Bordes y padding de las celdas (filas y columnas) */
+table.servicios-tabla td,
+table.servicios-tabla th {
+    /* Aplica un borde sutil para TODAS las líneas (horizontales y verticales) */
+    border: 1px solid #f0f0f0; 
+    padding: 10px 15px; 
+    text-align: left; 
+}
+
+/* ⚠️ AJUSTE PARA LA COLUMNA COD (primera columna) */
+table.servicios-tabla td:first-child,
+table.servicios-tabla th:first-child {
+    width: 150px; /* Ancho fijo para el código */
+    min-width: 150px;
+    white-space: nowrap; /* Evita que el texto se envuelva */
+    overflow: hidden; 
+    text-overflow: ellipsis;
+}
+
+/* Efecto de Rayas (Zebra Stripes) en las filas para mejor distinción */
+table.servicios-tabla tbody tr:nth-child(odd) {
+    background-color: white; /* Filas impares blancas */
+}
+table.servicios-tabla tbody tr:nth-child(even) {
+    background-color: #f9f9f9; /* Filas pares con color muy sutil */
+}
+
+/* Encabezados de la tabla */
+table.servicios-tabla thead th {
+    text-align: left; 
+    background-color: #f0f0f0; /* Un gris muy claro para el encabezado */
+    color: #555;
+    font-weight: bold;
+    border-bottom: 2px solid #e0e0e0; /* Separador más marcado bajo el encabezado */
+}
+
+/* Estilo para los botones de acción dentro de la tabla */
+table.servicios-tabla td button {
+    padding: 5px 10px;
+    font-size: 0.9em;
+    cursor: pointer;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+table.servicios-tabla td button:hover {
+    background-color: #45a049;
+}
+
+/* ------------------------------------------------------------------
+ * ESTILOS MODALES (Para Contactos/Direcciones)
+ * ------------------------------------------------------------------ */
+.modal-flotante {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000; /* Asegura que esté por encima de todo */
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+}
+/* ------------------------------------------------------------------
+ * ESTILOS DE MODALES Y OVERLAY (Ventana Flotante)
+ * ------------------------------------------------------------------ */
+
+/* Fondo oscuro detrás del modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6); /* Color oscuro semi-transparente */
+    z-index: 999; /* Justo debajo de los modales */
+}
+
+/* Estilo Base para el Contenedor Modal */
+.modal-flotante {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000; 
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    /* Asegura que el contenido interno no se desborde */
+    overflow-y: auto; 
+    max-height: 90vh; /* Máximo 90% de la altura de la vista */
+}
+
+/* Tamaños específicos para los modales */
+.modal-pequeno {
+    max-width: 450px;
+    width: 90%;
+}
+.modal-largo {
+    max-width: 800px; /* Suficiente espacio para las sub-tablas */
+    width: 90%;
+}
+
+/* Botón de cierre (la X) */
+.modal-close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 1.5em;
+    font-weight: bold;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+}
+.modal-close-btn:hover {
+    color: #333;
+}
+/* ------------------------------------------------------------------
+ * ESTILOS DE MODALES Y OVERLAY (Ventana Flotante)
+ * ------------------------------------------------------------------ */
+
+/* Fondo oscuro detrás del modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6); 
+    z-index: 999; 
+}
+
+/* Estilo Base para el Contenedor Modal */
+.modal-flotante {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000; 
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    overflow-y: auto; 
+    max-height: 90vh; 
+}
+
+/* Tamaños específicos para los modales */
+.modal-pequeno {
+    max-width: 450px;
+    width: 90%;
+}
+.modal-largo {
+    max-width: 800px;
+    width: 90%;
+}
+
+/* Botón de cierre (la X) */
+.modal-close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 1.5em;
+    font-weight: bold;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+}
+.modal-close-btn:hover {
+    color: #333;
+}
+
+/* Estilos para el Modal (Pop-up) */
+.modal {
+    display: none; 
+    position: fixed; 
+    z-index: 1000; 
+    left: 0;
+    top: 0;
+    width: 100%; 
+    height: 100%; 
+    overflow: auto; 
+    background-color: rgba(0,0,0,0.4); /* Fondo semi-transparente */
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto; /* 15% del top y centrado */
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%; /* Podrías ajustarlo al 50% o menos para un formulario corto */
+    max-width: 500px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    position: relative;
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: #000;
+    text-decoration: none;
+    cursor: pointer;
+}
+    .boton-regresar {
+        background-color: #007bff; /* Azul para la acción de regreso */
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin-right: 10px; 
+        cursor: pointer;
+        border-radius: 5px;
+        transition: background-color 0.3s;
+    }
+    .boton-regresar:hover {
+        background-color: #0056b3;
+    }
+
+    /* Agrega un estilo básico al nuevo botón para destacarlo */
+    .boton-nuevo-pedido {
+        background-color: #4CAF50; /* Un color verde que denota "Nuevo" */
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin-right: 10px; /* Separación del botón Volver */
+        cursor: pointer;
+        border-radius: 5px;
+        transition: background-color 0.3s;
+    }
+
+    .boton-nuevo-pedido:hover {
+        background-color: #45a049;
+    }
+
+/* --- ESTILOS DE LA TABLA DE DETALLE DE SERVICIOS (Detalle y Compactación) --- */
+
+.detalle-servicios {
+    /* Ajusta el padding si es necesario, pero mantiene el ancho al 100% por defecto */
+    padding: 20px;
+    margin-top: 20px;
+    /* 🔑 AÑADIDO: Permite el scroll horizontal si la tabla es más ancha que el contenedor */
+    overflow-x: auto; 
+}
+
+.tabla-listado {
+    /* 🔑 AÑADIDO: Asegura un ancho mínimo para que todas las 13 columnas quepan */
+    min-width: 1150px; 
+    width: 100%;
+    border-collapse: collapse; /* Para que las celdas se junten */
+    margin-top: 10px;
+    /* 💡 table-layout: fixed; solo funciona bien si la suma de los anchos es exactamente 100% o el ancho total */
+    table-layout: fixed; 
+}
+
+.tabla-listado th, 
+.tabla-listado td {
+    border: 1px solid #ccc;
+    padding: 5px;
+    text-align: left;
+    vertical-align: middle;
+    /* Fuente más pequeña para que quepan más datos */
+    font-size: 13px; 
+}
+
+.tabla-listado th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* 🛑 DEFINICIÓN DE ANCHOS DE COLUMNA (CORREGIDO PARA 13 COLUMNAS) 🛑 */
+/* Las celdas deben coincidir con la cantidad de <th> en el <thead> */
+
+.col-num { width: 30px; } /* 1. # */
+.col-servicio-cod { width: 130px; } /* 2. Servicio/Código */
+/* La columna de Nombre del Servicio debe tener un ancho flexible, pero le damos un min-width con CSS */
+.col-nombre-servicio { width: 25%; min-width: 200px; } /* 3. Nombre del Servicio */
+.col-und-medida { width: 80px; } /* 4. UND. MEDIDA */
+.col-cant { width: 45px; } /* 5. Cant. */
+.col-und-h-min { width: 80px; } /* 6. UND. H. MIN. */
+.col-dias-cotizados { width: 70px; } /* 7. Días Cotizados */
+.col-h-minimas { width: 70px; } /* 8. H. Mínimas */
+.col-h-segun { width: 70px; } /* 9. H. SEGÚN */
+/* 🔑 NUEVA COLUMNA */
+.col-movilizacion { width: 80px; } /* 10. Movilización */ 
+/* Las siguientes clases fueron desplazadas una posición: */
+.col-precio-unit { width: 80px; } /* 11. Precio Unit. */
+.col-subtotal { width: 80px; } /* 12. Subtotal */
+.col-accion { width: 40px; } /* 13. Acción */
+
+
+/* COMPACTACIÓN DE INPUTS/SELECTS DENTRO DE LA TABLA */
+.tabla-listado td input.detalle-input,
+.tabla-listado td select.detalle-select {
+    width: 100%; /* Hace que ocupen todo el espacio de la celda */
+    padding: 3px 5px;
+    box-sizing: border-box; /* Incluye padding en el ancho total */
+    font-size: 12px;
+    height: 30px; /* Altura uniforme para todos los controles */
+}
+
+/* Estilo para los campos de solo lectura o display (para alineación) */
+.tabla-listado td .descripcion-servicio,
+.tabla-listado td .dias-cotizados-display,
+.tabla-listado td .subtotal-display {
+    display: block; /* Asegura que ocupe todo el ancho */
+    padding: 5px;
+    min-height: 30px;
+    line-height: 20px; /* Alineación vertical */
+}
+
+/* Alineación de números a la derecha */
+.text-right {
+    text-align: right !important;
+}
+
+/* Estilo para los botones de acción */
+.tabla-listado td button {
+    padding: 3px 5px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    border: 1px solid #dc3545;
+    background-color: #fff;
+    color: #dc3545;
+    border-radius: 3px;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* --- ESTILOS DE BOTONES Y TOTALES --- */
+
+/* Botón "Agregar Servicio" */
+.btn-agregar-servicio {
+    margin-top: 10px; 
+    width: auto; 
+    background-color: #28a745 !important; /* Verde */
+}
+
+/* Total: alineación a la derecha */
+.resumen-total h3.total-label {
+    text-align: right;
+    margin: 0;
+    padding: 10px 0;
+}
+
+/* Contenedor del botón Guardar */
+.contenedor-boton-guardar {
+    margin-top: 20px;
+}
+
+/* Botón Guardar Principal */
+.btn-guardar-principal {
+    width: 100%; 
+}
+
+
+/* --- ESTILOS GENERALES Y DATOS PRINCIPALES (Asumo que ya existen) --- */
+
+/* Si no tienes estilos base, incluye estos para mejor apariencia */
+/* Base: Contenedor y tipografía */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    padding: 0;
+    margin: 0;
+}
+.contenedor-principal {
+    max-width: 1400px;
+    margin: 20px auto;
+    padding: 0 20px;
+}
+h1, h3, h2 {
+    color: #333;
+    margin-top: 0;
+}
+
+/* Cards (Contenedores) */
+.card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+/* Formulario principal de campos */
+.formulario-campos {
+    display: grid;
+    gap: 15px;
+}
+.dos-columnas {
+    grid-template-columns: 1fr 1fr;
+}
+.formulario-campos h2 {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #555;
+}
+input[type="text"], 
+input[type="number"], 
+input[type="date"], 
+select, 
+.form-control {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 14px;
+}
+
+/* Botones */
+button {
+    cursor: pointer;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+.btn-guardar-top {
+    background-color: #007bff;
+    color: white;
+}
+.btn-guardar-top:hover {
+    background-color: #0056b3;
+}
+.boton-regresar {
+    background-color: #6c757d;
+    color: white;
+}
+.boton-regresar:hover {
+    background-color: #5a6268;
+}
+
+/* Barra Superior */
+.barraTopComercial {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: #3f51b5; /* Un color de cabecera distintivo */
+    color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.barraTopComercial h1 {
+    font-size: 1.5em;
+    margin: 0;
+    color: white;
+}
+.topBarra-derecha button {
+    margin-left: 10px;
+}
+
+/* Modal */
+.modal {
+    display: none; 
+    position: fixed;
+    z-index: 1; 
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto; 
+    background-color: rgba(0,0,0,0.4); 
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto; 
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%; 
+    max-width: 500px;
+    border-radius: 8px;
+    position: relative;
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* --- NUEVO ESTILO: Campos deshabilitados (inactivos) --- */
+
+/* Hace que los inputs/selects deshabilitados se vean grises y no editables */
+.tabla-listado td input.detalle-input:disabled,
+.tabla-listado td select.detalle-select:disabled {
+    background-color: #e9ecef; /* Fondo gris muy claro */
+    cursor: not-allowed;
+    border: 1px dashed #ccc; /* Borde más sutil */
+    color: #6c757d; /* Texto gris */
+}
+
+/* Ajuste para las celdas de display para que se vean como disabled si aplica */
+.tabla-listado td .display-only-cell {
+    background-color: #f8f9fa; /* Fondo casi blanco */
+    color: #6c757d;
+}
+/* ===== ESTILOS PARA RESUMEN COMERCIAL ===== */
+
+/* Estados de pedidos */
+.estado-Cotización { color: #ff9800; font-weight: bold; }
+.estado-Pedido { color: #2196f3; font-weight: bold; }
+.estado-Cancelado { color: #f44336; font-weight: bold; }
+.estado-Finalizado { color: #4caf50; font-weight: bold; }
+
+/* Loading */
+.loading { 
+    text-align: center; 
+    padding: 40px; 
+    font-size: 18px; 
+    color: #666;
+}
+
+/* Mensajes de estado */
+.error { 
+    background: #ffebee; 
+    color: #c62828; 
+    padding: 20px; 
+    margin: 10px 0; 
+    border-radius: 5px; 
+    border-left: 4px solid #c62828;
+}
+
+.success { 
+    background: #e8f5e8; 
+    color: #2e7d32; 
+    padding: 20px; 
+    margin: 10px 0; 
+    border-radius: 5px;
+    border-left: 4px solid #2e7d32;
+}
+
+/* Cards */
+.card { 
+    background: white; 
+    padding: 20px; 
+    margin: 15px 0; 
+    border-radius: 8px; 
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border: 1px solid #e0e0e0;
+}
+
+/* Header del detalle */
+.detalle-header { 
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+    color: white; 
+    padding: 25px; 
+    border-radius: 8px 8px 0 0;
+    text-align: center;
+}
+
+.detalle-header h1 {
+    margin: 10px 0;
+    font-size: 1.8em;
+}
+
+.detalle-header h2 {
+    margin: 0;
+    font-size: 1.3em;
+    opacity: 0.9;
+}
+
+.detalle-header p {
+    margin: 10px 0 0 0;
+    opacity: 0.8;
+}
+
+/* Grid de datos generales */
+.grid-datos-generales {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.grid-datos-generales div {
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+/* Total del pedido */
+.total-pedido {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.total-pedido h4 {
+    margin: 0;
+    color: #2e7d32;
+    font-size: 1.2em;
+}
+
+/* Tabla de servicios */
+.tabla-detalle-servicios {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.tabla-detalle-servicios th {
+    background: #f5f5f5;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.tabla-detalle-servicios td {
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.tabla-detalle-servicios tbody tr:hover {
+    background: #f8f9fa;
+}
+
+/* Fila total */
+.fila-total {
+    background: #e8f5e8 !important;
+    font-weight: bold;
+}
+
+.fila-total td {
+    padding: 15px;
+    font-size: 16px;
+}
+
+.monto-total {
+    color: #2e7d32;
+    font-size: 16px;
+}
+
+/* Botones */
+.btn-cerrar {
+    padding: 12px 30px;
+    background: #2196f3;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+}
+
+.btn-cerrar:hover {
+    background: #1976d2;
+}
+
+/* Utilidades de texto */
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+
+.monto { 
+    font-weight: bold; 
+    color: #2e7d32; 
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .grid-datos-generales {
+        grid-template-columns: 1fr;
+    }
+    
+    .tabla-detalle-servicios {
+        font-size: 14px;
+    }
+    
+    .tabla-detalle-servicios th,
+    .tabla-detalle-servicios td {
+        padding: 8px;
+    }
+}
+
+/* ===== CORRECCIONES ESPECÍFICAS PARA LAS TABLAS ===== */
+
+/* Corrección para la tabla de resumen */
+.seccion-resumen {
+    margin: 20px;
+    overflow-x: auto;
+}
+
+.tabla-resumen {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    table-layout: auto; /* Cambiado a auto para mejor adaptación */
+}
+
+.tabla-resumen th,
+.tabla-resumen td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+}
+
+.tabla-resumen th {
+    background-color: #5cb85c;
+    color: white;
+    font-weight: bold;
+}
+
+/* Corrección para la vista de detalle del pedido */
+.contenedor-detalle-pedido {
+    margin: 20px;
+    overflow-x: auto;
+}
+
+.tabla-detalle-pedido {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    table-layout: auto; /* Cambiado a auto para mejor adaptación */
+}
+
+.tabla-detalle-pedido th,
+.tabla-detalle-pedido td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+}
+
+.tabla-detalle-pedido th {
+    background-color: #5cb85c;
+    color: white;
+    font-weight: bold;
+}
+
+/* Asegurar que las tablas se adapten al contenedor */
+.tabla-adaptable {
+    width: 100%;
+    table-layout: auto;
+}
+
+/* Ajustes para pantallas pequeñas */
+@media (max-width: 768px) {
+    .tabla-resumen,
+    .tabla-detalle-pedido {
+        font-size: 14px;
+    }
+    
+    .tabla-resumen th,
+    .tabla-resumen td,
+    .tabla-detalle-pedido th,
+    .tabla-detalle-pedido td {
+        padding: 8px;
+    }
+}
+
+/* ===== CORRECCIONES ESPECÍFICAS PARA RESUMEN.HTML ===== */
+
+/* Contenedor principal para la tabla de resumen */
+.contenedorModulos {
+    padding: 20px;
+    background-color: #f4f4f4;
+    overflow-x: auto; /* Añadido para scroll horizontal si es necesario */
+    width: calc(100% - 40px); /* Ajusta el ancho para usar todo el espacio disponible */
+    box-sizing: border-box;
+}
+
+/* Tabla de resumen principal - adaptada al ancho completo */
+.tabla-resumen {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    table-layout: auto; /* Permite que las columnas se ajusten automáticamente */
+    min-width: 800px; /* Ancho mínimo para evitar que se comprima demasiado */
+}
+
+.tabla-resumen th,
+.tabla-resumen td {
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+    white-space: nowrap; /* Evita que el texto se divida en varias líneas */
+}
+
+.tabla-resumen th {
+    background-color: #5cb85c;
+    color: white;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.tabla-resumen tbody tr:hover {
+    background-color: #f5f5f5;
+    cursor: pointer;
+}
+
+/* Columna de monto con alineación a la derecha */
+.monto-col {
+    text-align: right;
+    font-weight: bold;
+}
+
+/* Modal grande para detalles del pedido */
+.modal-grande {
+    max-width: 95% !important;
+    width: 95% !important;
+    margin: 2% auto !important;
+    padding: 20px;
+    height: auto;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+/* Contenedor interno del modal */
+.detalle-pedido-container {
+    width: 100%;
+    max-width: none;
+}
+
+/* Tabla de servicios dentro del modal */
+.tabla-detalle-servicios {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    table-layout: auto; /* Ajusta automáticamente el ancho de las columnas */
+}
+
+.tabla-detalle-servicios th,
+.tabla-detalle-servicios td {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+}
+
+.tabla-detalle-servicios th {
+    background: #f5f5f5;
+    font-weight: 600;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.tabla-detalle-servicios tbody tr:hover {
+    background: #f8f9fa;
+}
+
+/* Ajustes responsivos para pantallas más pequeñas */
+@media (max-width: 1024px) {
+    .modal-grande {
+        max-width: 98% !important;
+        width: 98% !important;
+        margin: 1% auto !important;
+    }
+    
+    .tabla-resumen th,
+    .tabla-resumen td {
+        padding: 8px 10px;
+        font-size: 14px;
+    }
+    
+    .tabla-detalle-servicios th,
+    .tabla-detalle-servicios td {
+        padding: 8px 10px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 768px) {
+    .contenedorModulos {
+        padding: 10px;
+    }
+    
+    .tabla-resumen {
+        min-width: 600px; /* Reduce el ancho mínimo para móviles */
+    }
+    
+    .modal-grande {
+        padding: 15px;
+    }
+    
+    .grid-datos-generales {
+        grid-template-columns: 1fr;
+    }
+}
+/* ===== CORRECCIONES ESPECÍFICAS PARA RESUMEN.HTML ===== */
+
+/* Contenedor principal para la tabla de resumen */
+.contenedorModulos {
+    padding: 20px;
+    background-color: #f4f4f4;
+    overflow-x: auto;
+    width: calc(100% - 40px);
+    box-sizing: border-box;
+}
+
+/* Tabla de resumen principal - adaptada al ancho completo */
+.tabla-resumen {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    table-layout: auto;
+    min-width: 800px;
+}
+
+.tabla-resumen th,
+.tabla-resumen td {
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+    white-space: nowrap;
+}
+
+.tabla-resumen th {
+    background-color: #5cb85c;
+    color: white;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.tabla-resumen tbody tr:hover {
+    background-color: #f5f5f5;
+    cursor: pointer;
+}
+
+/* Columna de monto con alineación a la derecha */
+.monto-col {
+    text-align: right;
+    font-weight: bold;
+}
+
+/* ===== CORRECCIONES CRÍTICAS PARA EL MODAL ===== */
+
+/* Fondo del modal - debe tener alto z-index */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 10000; /* Aumentado significativamente */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+}
+
+/* Contenido del modal - también alto z-index */
+.modal-content {
+    background-color: #fefefe;
+    margin: 2% auto;
+    padding: 0;
+    border: 1px solid #888;
+    width: 95%;
+    max-width: 95%;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 10001; /* Mayor que el modal */
+}
+
+/* Modal grande específico para detalles */
+.modal-grande {
+    max-width: 95% !important;
+    width: 95% !important;
+    margin: 2% auto !important;
+    padding: 0;
+    height: auto;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+/* Botón de cierre del modal */
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    position: absolute;
+    right: 15px;
+    top: 10px;
+    z-index: 10002;
+    background: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+    background: #f0f0f0;
+}
+
+/* Contenedor interno del modal */
+.detalle-pedido-container {
+    width: 97%;
+    max-width: none;
+    padding: 20px;
+}
+
+/* Header del detalle dentro del modal */
+.detalle-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 8px 8px 0 0;
+    text-align: center;
+    margin: -20px -20px 20px -20px;
+}
+
+.detalle-header h1 {
+    margin: 10px 0;
+    font-size: 1.8em;
+}
+
+.detalle-header h2 {
+    margin: 0;
+    font-size: 1.3em;
+    opacity: 0.9;
+}
+
+.detalle-header p {
+    margin: 10px 0 0 0;
+    opacity: 0.8;
+}
+
+/* Tabla de servicios dentro del modal */
+.tabla-detalle-servicios {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    table-layout: auto;
+}
+
+.tabla-detalle-servicios th,
+.tabla-detalle-servicios td {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+}
+
+.tabla-detalle-servicios th {
+    background: #f5f5f5;
+    font-weight: 600;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.tabla-detalle-servicios tbody tr:hover {
+    background: #f8f9fa;
+}
+
+/* Grid de datos generales mejorado */
+.grid-datos-generales {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.grid-datos-generales div {
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+/* Total del pedido */
+.total-pedido {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.total-pedido h4 {
+    margin: 0;
+    color: #2e7d32;
+    font-size: 1.2em;
+}
+
+/* Botón cerrar */
+.btn-cerrar {
+    padding: 12px 30px;
+    background: #2196f3;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+    margin: 20px 0 10px 0;
+}
+
+.btn-cerrar:hover {
+    background: #1976d2;
+}
+
+/* Ajustes responsivos */
+@media (max-width: 1024px) {
+    .modal-grande {
+        max-width: 98% !important;
+        width: 98% !important;
+        margin: 1% auto !important;
+    }
+    
+    .tabla-resumen th,
+    .tabla-resumen td {
+        padding: 8px 10px;
+        font-size: 14px;
+    }
+    
+    .tabla-detalle-servicios th,
+    .tabla-detalle-servicios td {
+        padding: 8px 10px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 768px) {
+    .contenedorModulos {
+        padding: 10px;
+    }
+    
+    .tabla-resumen {
+        min-width: 600px;
+    }
+    
+    .modal-grande {
+        padding: 0;
+    }
+    
+    .detalle-pedido-container {
+        padding: 15px;
+    }
+    
+    .grid-datos-generales {
+        grid-template-columns: 1fr;
+    }
+    
+    .detalle-header {
+        padding: 20px 15px;
+        margin: -15px -15px 15px -15px;
+    }
+}
+/* ===== ESTILOS PARA BOTÓN PDF ===== */
+.btn-pdf {
+    background: linear-gradient(135deg, #e74c3c, #c0392b) !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 15px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    font-weight: bold !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+.btn-pdf:hover {
+    background: linear-gradient(135deg, #c0392b, #a93226) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+}
+
+.btn-pdf:active {
+    transform: translateY(0) !important;
+}
+
+.col-pdf {
+    width: 100px !important;
+    text-align: center !important;
+    font-weight: bold !important;
+    background-color: #34495e !important;
+    color: white !important;
+}
+/* ===== ESTILOS ESPECÍFICOS PARA RESUMEN COMERCIAL ===== */
+
+/* Botones de acción en tabla */
+.btn-ver-detalle, .btn-editar, .btn-pdf {
+    padding: 6px 12px;
+    margin: 2px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.btn-ver-detalle {
+    background-color: #3498db;
+    color: white;
+}
+
+.btn-ver-detalle:hover {
+    background-color: #2980b9;
+}
+
+.btn-editar {
+    background-color: #f39c12;
+    color: white;
+}
+
+.btn-editar:hover {
+    background-color: #e67e22;
+}
+
+/* Botón PDF */
+.btn-pdf {
+    background: linear-gradient(135deg, #e74c3c, #c0392b) !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 15px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    font-weight: bold !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    margin: 2px !important;
+}
+
+.btn-pdf:hover {
+    background: linear-gradient(135deg, #c0392b, #a93226) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+}
+
+.btn-pdf:active {
+    transform: translateY(0) !important;
+}
+
+/* Estados de pedidos */
+.estado-Cotización { 
+    color: #f39c12; 
+    font-weight: bold;
+    background-color: #fef5e7;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+.estado-Pedido { 
+    color: #3498db; 
+    font-weight: bold;
+    background-color: #ebf5fb;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+.estado-Cancelado { 
+    color: #e74c3c; 
+    font-weight: bold;
+    background-color: #fdedec;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+.estado-Finalizado { 
+    color: #27ae60; 
+    font-weight: bold;
+    background-color: #eafaf1;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+/* Columna de monto */
+.monto-col {
+    text-align: right;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+/* Loading overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.loading-spinner {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 2s linear infinite;
+    margin: 15px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Botón nuevo pedido */
+.boton-nuevo-pedido {
+    background: linear-gradient(135deg, #27ae60, #229954);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    margin-left: 10px;
+    transition: all 0.3s ease;
+}
+
+.boton-nuevo-pedido:hover {
+    background: linear-gradient(135deg, #229954, #1e8449);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Botón Debug */
+.boton-debug {
+    background: linear-gradient(135deg, #8e44aa, #732d91) !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 15px !important;
+    border-radius: 5px !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    font-weight: bold !important;
+    transition: all 0.3s ease !important;
+}
+
+.boton-debug:hover {
+    background: linear-gradient(135deg, #732d91, #5e257a) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+}
+
+/* ===== ESTILOS UNIFICADOS PARA BOTONES ===== */
+.btn-base {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.btn-primary { background: linear-gradient(135deg, #007bff, #0056b3); color: white; }
+.btn-success { background: linear-gradient(135deg, #28a745, #1e7e34); color: white; }
+.btn-warning { background: linear-gradient(135deg, #ffc107, #e0a800); color: white; }
+.btn-danger { background: linear-gradient(135deg, #dc3545, #c82333); color: white; }
+.btn-info { background: linear-gradient(135deg, #17a2b8, #138496); color: white; }
+.btn-pdf { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; }
+
+.btn-primary:hover, .btn-success:hover, .btn-warning:hover, 
+.btn-danger:hover, .btn-info:hover, .btn-pdf:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* ===== ESTILOS UNIFICADOS PARA TABLAS ===== */
+.table-base {
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    width: 100%;
+}
+
+.table-header-primary th {
+    background-color: #5cb85c;
+    color: white;
+    padding: 12px 15px;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+}
+
+.table-cell {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+    word-wrap: break-word;
+}
+
+/* ===== ESTILOS UNIFICADOS PARA MODALES ===== */
+.modal-base {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.modal-overlay-base {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+}
+
+/* ===== ESTILOS UNIFICADOS PARA FORMULARIOS ===== */
+.form-control-base {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.form-control-base:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+input[readonly] {
+    background-color: #f5f5f5;
+    color: #666;
+    border: 1px solid #ddd;
+    cursor: not-allowed;
+}
+
+input:not([readonly]) {
+    background-color: #fff;
+    color: #333;
+    border: 1px solid #ccc;
+}
+</style>

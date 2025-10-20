@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title id="tituloPagina">Registrar Orden de Trabajo</title>
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+</head>
+
+<body>
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=OT' class="retornarModulos iconoTopBarra">← Volver a OT</a>
+            <h1 id="tituloPrincipal">Registrar Orden de Trabajo</h1>
+        </div>
+        <div class="topBarra-derecha">
+            <button onclick="guardarOT()" class="btn-guardar-top" id="btnGuardar">
+                💾 Guardar OT
+            </button>
+            <button onclick="eliminarOT()" class="btn-danger" id="btnEliminar" style="display: none; background-color: #dc3545;">
+                🗑️ Eliminar OT
+            </button>
+        </div>
+    </div>
+
+    <div class="contenedorModulos">
+        <div class="card">
+            <h2 id="subtituloFormulario">Información de la Orden de Trabajo</h2>
+            
+            <!-- Agregar campo oculto para el modo -->
+            <input type="hidden" id="modoFormulario" value="crear">
+            <input type="hidden" id="otIDExistente" value="">
+            
+            <div class="formulario-campos dos-columnas">
+                <!-- Columna 1 -->
+                <div>
+                    <div class="form-group">
+                        <h2>NÚMERO DE OT *</h2>
+                        <input type="text" id="numeroOT" name="numeroOT" class="form-control-base" 
+                               placeholder="OT-001" required>
+                        <small id="ayudaNumeroOT" style="color: #666; font-size: 12px;">
+                            Los números OT pueden repetirse según el documento físico
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <h2>CLIENTE *</h2>
+                        <select id="clienteOT" name="cliente" class="form-control-base" required>
+                            <option value="">-- Seleccionar Cliente --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <h2>SERVICIO/MÁQUINA *</h2>
+                        <select id="servicioOT" name="servicio" class="form-control-base" required>
+                            <option value="">-- Seleccionar Servicio --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <h2>N° PEDIDO</h2>
+                        <select id="pedidoOT" name="pedido" class="form-control-base">
+                            <option value="">-- Seleccionar Pedido --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Columna 2 -->
+                <div>
+                    <div class="form-group">
+                        <h2>FECHA *</h2>
+                        <input type="date" id="fechaOT" name="fecha" class="form-control-base" required>
+                    </div>
+
+                    <div class="form-group">
+                        <h2>HORA INICIO *</h2>
+                        <input type="time" id="horaInicio" name="horaInicio" class="form-control-base" required>
+                    </div>
+
+                    <div class="form-group">
+                        <h2>HORA FIN *</h2>
+                        <input type="time" id="horaFin" name="horaFin" class="form-control-base" required>
+                    </div>
+
+                    <div class="form-group">
+                        <h2>TIEMPO REFRIGERIO (minutos)</h2>
+                        <input type="number" id="tiempoRefrigerio" name="tiempoRefrigerio" 
+                               class="form-control-base" value="0" min="0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección de Horómetros -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>Horómetros</h2>
+                
+                <div class="formulario-campos dos-columnas">
+                    <div>
+                        <div class="form-group">
+                            <h2>HORÓMETRO INICIO</h2>
+                            <input type="number" id="horometroInicio" name="horometroInicio" 
+                                   class="form-control-base" step="0.1" min="0">
+                        </div>
+
+                        <div class="form-group">
+                            <h2>HORÓMETRO FIN</h2>
+                            <input type="number" id="horometroFin" name="horometroFin" 
+                                   class="form-control-base" step="0.1" min="0">
+                        </div>
+                    </div>
+
+                    <div>
+                        <!-- Campos para Camión Grúa -->
+                        <div id="camionGruaSection" style="display: none;">
+                            <div class="form-group">
+                                <h2>HORÓMETRO INICIO CAMIÓN</h2>
+                                <input type="number" id="horometroInicioCamion" name="horometroInicioCamion" 
+                                       class="form-control-base" step="0.1" min="0">
+                            </div>
+
+                            <div class="form-group">
+                                <h2>HORÓMETRO FIN CAMIÓN</h2>
+                                <input type="number" id="horometroFinCamion" name="horometroFinCamion" 
+                                       class="form-control-base" step="0.1" min="0">
+                            </div>
+
+                            <div class="form-group">
+                                <h2>HORÓMETRO INICIO GRÚA</h2>
+                                <input type="number" id="horometroInicioGrua" name="horometroInicioGrua" 
+                                       class="form-control-base" step="0.1" min="0">
+                            </div>
+
+                            <div class="form-group">
+                                <h2>HORÓMETRO FIN GRÚA</h2>
+                                <input type="number" id="horometroFinGrua" name="horometroFinGrua" 
+                                       class="form-control-base" step="0.1" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="esCamionGrua" onchange="toggleCamionGrua()">
+                        ¿Es Camión Grúa?
+                    </label>
+                </div>
+            </div>
+
+            <!-- Resumen -->
+            <div class="card" style="margin-top: 20px; background-color: #f8f9fa;">
+                <h2>Resumen</h2>
+                <div id="resumenOT">
+                    <p><strong>Tiempo total de trabajo:</strong> <span id="tiempoTotal">0</span> horas</p>
+                    <p><strong>Horómetro trabajado:</strong> <span id="horometroTrabajado">0</span> horas</p>
+                    <p><strong>Estado:</strong> <span id="estadoOT">Nueva</span></p>
+                    <p id="infoRegistro" style="font-size: 12px; color: #666; display: none;">
+                        <strong>Registrado por:</strong> <span id="usuarioRegistro"></span> | 
+                        <strong>Fecha registro:</strong> <span id="fechaRegistro"></span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <p id="loadingText">Cargando...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <script>
+        let clientes = [];
+        let servicios = [];
+        let pedidos = [];
+        let modoEdicion = false;
+        let otExistente = null;
+
+        document.addEventListener("DOMContentLoaded", function() {
+            console.log("🔄 RegistrarOT.html CARGADO");
+            
+            // SOLUCIÓN ROBUSTA PARA DETECTAR PARÁMETROS
+            function getUrlParameter(name) {
+                const url = window.location.href;
+                console.log("🔍 URL completa:", url);
+                
+                // Método 1: URLSearchParams
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const paramValue = urlParams.get(name);
+                    if (paramValue !== null && paramValue !== undefined) {
+                        console.log(`✅ Parámetro ${name} encontrado:`, paramValue);
+                        return paramValue;
+                    }
+                } catch (e) {
+                    console.log("❌ Error con URLSearchParams:", e);
+                }
+                
+                // Método 2: Expresión regular (fallback)
+                const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
+                const results = regex.exec(url);
+                
+                if (!results || !results[2]) return null;
+                return decodeURIComponent(results[2].replace(/\+/g, ' '));
+            }
+            
+            const otAEditar = getUrlParameter('editar');
+            console.log("🎯 Resultado final - OT a editar:", otAEditar);
+            
+            if (otAEditar && otAEditar !== 'null' && otAEditar !== 'undefined' && otAEditar !== '') {
+                modoEdicion = true;
+                configurarModoEdicion(otAEditar);
+            } else {
+                configurarModoCreacion();
+            }
+            
+            cargarDatosIniciales();
+            configurarEventos();
+        });
+
+        function configurarModoEdicion(numeroOT) {
+            console.log("✏️ MODO EDICIÓN para OT: " + numeroOT);
+            
+            // Validar que el número OT no esté vacío
+            if (!numeroOT || numeroOT === 'null' || numeroOT === 'undefined') {
+                console.error("❌ Número OT inválido para edición:", numeroOT);
+                configurarModoCreacion();
+                return;
+            }
+            
+            document.getElementById('modoFormulario').value = 'editar';
+            document.getElementById('otIDExistente').value = numeroOT;
+            document.getElementById('tituloPagina').textContent = 'Editar Orden de Trabajo';
+            document.getElementById('tituloPrincipal').textContent = 'Editar Orden de Trabajo - ' + numeroOT;
+            document.getElementById('subtituloFormulario').textContent = 'Editar Información de la Orden de Trabajo';
+            document.getElementById('btnGuardar').textContent = '💾 Actualizar OT';
+            document.getElementById('btnEliminar').style.display = 'inline-block';
+            
+            // Deshabilitar número OT en edición
+            document.getElementById('numeroOT').disabled = true;
+            
+            console.log("✅ Modo edición configurado correctamente");
+        }
+
+        function configurarModoCreacion() {
+            console.log("🆕 MODO CREACIÓN");
+            document.getElementById('modoFormulario').value = 'crear';
+            document.getElementById('tituloPagina').textContent = 'Registrar Orden de Trabajo';
+            document.getElementById('tituloPrincipal').textContent = 'Registrar Orden de Trabajo';
+            document.getElementById('subtituloFormulario').textContent = 'Información de la Orden de Trabajo';
+            document.getElementById('btnGuardar').textContent = '💾 Guardar OT';
+            document.getElementById('btnEliminar').style.display = 'none';
+            
+            // Establecer fecha actual por defecto
+            const today = new Date();
+            const formattedDate = today.toISOString().split('T')[0];
+            document.getElementById('fechaOT').value = formattedDate;
+        }
+
+        function cargarDatosIniciales() {
+            mostrarLoading(true, "Cargando datos...");
+            
+            google.script.run
+                .withSuccessHandler(function(datos) {
+                    mostrarLoading(false);
+                    clientes = datos.clientes || [];
+                    servicios = datos.servicios || [];
+                    pedidos = datos.pedidos || [];
+                    
+                    llenarSelects();
+                    
+                    // Si estamos en modo edición, cargar los datos existentes
+                    if (modoEdicion) {
+                        cargarDatosOTExistente();
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    console.error("Error cargando datos:", error);
+                    alert("Error al cargar datos iniciales: " + error.message);
+                })
+                .getDatosInicialesOT();
+        }
+
+        function cargarDatosOTExistente() {
+            const numeroOT = document.getElementById('otIDExistente').value;
+            console.log("📥 Cargando datos existentes para OT:", numeroOT);
+            mostrarLoading(true, "Cargando datos de la OT...");
+            
+            google.script.run
+                .withSuccessHandler(function(datosOT) {
+                    mostrarLoading(false);
+                    console.log("📋 Datos OT recibidos:", datosOT);
+                    if (datosOT.success) {
+                        otExistente = datosOT.data;
+                        llenarFormularioConDatos(otExistente);
+                    } else {
+                        alert("Error al cargar la OT: " + datosOT.message);
+                        // Redirigir a OT en lugar de recargar
+                        const urlBase = '<?!= getScriptUrl() ?>';
+                        window.open(urlBase + '?page=OT', '_self');
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    console.error("Error cargando OT:", error);
+                    alert("Error al cargar la OT: " + error.message);
+                    const urlBase = '<?!= getScriptUrl() ?>';
+                    window.open(urlBase + '?page=OT', '_self');
+                })
+                .obtenerOTPorNumero(numeroOT);
+        }
+
+        function llenarFormularioConDatos(datos) {
+            console.log("🔄 Llenando formulario con datos:", datos);
+            
+            // Llenar campos básicos
+            document.getElementById('numeroOT').value = datos.numeroOT || '';
+            document.getElementById('fechaOT').value = datos.fecha || '';
+            
+            // Configurar selects (necesitan tiempo para cargar)
+            setTimeout(() => {
+                document.getElementById('clienteOT').value = datos.cliente || '';
+                document.getElementById('servicioOT').value = datos.servicio || '';
+                document.getElementById('pedidoOT').value = datos.pedido || '';
+            }, 100);
+            
+            document.getElementById('horaInicio').value = datos.horaInicio || '';
+            document.getElementById('horaFin').value = datos.horaFin || '';
+            document.getElementById('tiempoRefrigerio').value = datos.tiempoRefrigerio || 0;
+            
+            // Llenar horómetros
+            document.getElementById('horometroInicio').value = datos.horometroInicio || '';
+            document.getElementById('horometroFin').value = datos.horometroFin || '';
+            
+            // Configurar camión grúa
+            if (datos.esCamionGrua === 'SI') {
+                document.getElementById('esCamionGrua').checked = true;
+                toggleCamionGrua();
+                document.getElementById('horometroInicioCamion').value = datos.horometroInicioCamion || '';
+                document.getElementById('horometroFinCamion').value = datos.horometroFinCamion || '';
+                document.getElementById('horometroInicioGrua').value = datos.horometroInicioGrua || '';
+                document.getElementById('horometroFinGrua').value = datos.horometroFinGrua || '';
+            }
+            
+            // Actualizar resumen
+            setTimeout(() => {
+                calcularTiempos();
+                calcularHorometro();
+            }, 200);
+            
+            // Mostrar información de registro
+            document.getElementById('estadoOT').textContent = 'Editando';
+            if (datos.usuario && datos.fechaRegistro) {
+                document.getElementById('usuarioRegistro').textContent = datos.usuario;
+                document.getElementById('fechaRegistro').textContent = datos.fechaRegistro;
+                document.getElementById('infoRegistro').style.display = 'block';
+            }
+            
+            console.log("✅ Formulario cargado con datos existentes");
+        }
+
+        function llenarSelects() {
+            // Llenar clientes - MOSTRAR NOMBRE PERO GUARDAR RUC
+            const selectCliente = document.getElementById('clienteOT');
+            selectCliente.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+            if (clientes && clientes.length > 1) {
+                clientes.slice(1).forEach(cliente => {
+                    if (cliente[0] && cliente[1]) { // [0] = RUC, [1] = Nombre
+                        const option = document.createElement('option');
+                        option.value = cliente[0]; // Guardar RUC
+                        option.textContent = `${cliente[1]} (${cliente[0]})`; // Mostrar Nombre + RUC
+                        selectCliente.appendChild(option);
+                    }
+                });
+            }
+
+            // Llenar servicios - MOSTRAR DESCRIPCIÓN PERO GUARDAR ID
+            const selectServicio = document.getElementById('servicioOT');
+            selectServicio.innerHTML = '<option value="">-- Seleccionar Servicio --</option>';
+            if (servicios && servicios.length > 1) {
+                servicios.slice(1).forEach(servicio => {
+                    if (servicio[0] && servicio[1]) { // [0] = ID, [1] = Descripción
+                        const option = document.createElement('option');
+                        option.value = servicio[0]; // Guardar ID
+                        option.textContent = `${servicio[0]} - ${servicio[1]}`; // Mostrar ID + Descripción
+                        selectServicio.appendChild(option);
+                    }
+                });
+            }
+
+            // Llenar pedidos
+            const selectPedido = document.getElementById('pedidoOT');
+            selectPedido.innerHTML = '<option value="">-- Seleccionar Pedido --</option>';
+            if (pedidos && pedidos.length > 0) {
+                pedidos.forEach(pedido => {
+                    if (pedido[0] && pedido[0] !== 'Error') {
+                        const option = document.createElement('option');
+                        option.value = pedido[0]; // N° Pedido
+                        option.textContent = pedido[0]; // N° Pedido
+                        selectPedido.appendChild(option);
+                    }
+                });
+            }
+            
+            console.log("✅ Selects llenados - Clientes: " + (clientes.length-1) + 
+                        ", Servicios: " + (servicios.length-1) + 
+                        ", Pedidos: " + pedidos.length);
+        }
+
+        function configurarEventos() {
+            // Calcular tiempos automáticamente
+            document.getElementById('horaInicio').addEventListener('change', calcularTiempos);
+            document.getElementById('horaFin').addEventListener('change', calcularTiempos);
+            document.getElementById('tiempoRefrigerio').addEventListener('input', calcularTiempos);
+            
+            document.getElementById('horometroInicio').addEventListener('input', calcularHorometro);
+            document.getElementById('horometroFin').addEventListener('input', calcularHorometro);
+            
+            // Filtrar pedidos cuando cambie cliente o servicio
+            document.getElementById('clienteOT').addEventListener('change', filtrarPedidos);
+            document.getElementById('servicioOT').addEventListener('change', filtrarPedidos);
+        }
+
+        function toggleCamionGrua() {
+            const esCamionGrua = document.getElementById('esCamionGrua').checked;
+            document.getElementById('camionGruaSection').style.display = esCamionGrua ? 'block' : 'none';
+        }
+
+        function calcularTiempos() {
+            const horaInicio = document.getElementById('horaInicio').value;
+            const horaFin = document.getElementById('horaFin').value;
+            const tiempoRefrigerio = parseInt(document.getElementById('tiempoRefrigerio').value) || 0;
+
+            if (horaInicio && horaFin) {
+                const inicio = new Date(`2000-01-01T${horaInicio}`);
+                const fin = new Date(`2000-01-01T${horaFin}`);
+                
+                let diffMs = fin - inicio;
+                if (diffMs < 0) {
+                    // Si la hora fin es menor que la inicio, asumimos que es del día siguiente
+                    fin.setDate(fin.getDate() + 1);
+                    diffMs = fin - inicio;
+                }
+                
+                // Restar tiempo de refrigerio (en minutos)
+                const diffMinutos = (diffMs / (1000 * 60)) - tiempoRefrigerio;
+                const horasTrabajo = (diffMinutos / 60).toFixed(2);
+                
+                document.getElementById('tiempoTotal').textContent = horasTrabajo;
+            }
+        }
+
+        function calcularHorometro() {
+            const horometroInicio = parseFloat(document.getElementById('horometroInicio').value) || 0;
+            const horometroFin = parseFloat(document.getElementById('horometroFin').value) || 0;
+            
+            if (horometroFin > horometroInicio) {
+                const horometroTrabajado = (horometroFin - horometroInicio).toFixed(2);
+                document.getElementById('horometroTrabajado').textContent = horometroTrabajado;
+            } else {
+                document.getElementById('horometroTrabajado').textContent = '0';
+            }
+        }
+
+        function filtrarPedidos() {
+            const clienteSeleccionado = document.getElementById('clienteOT').value;
+            const servicioSeleccionado = document.getElementById('servicioOT').value;
+            
+            if (!clienteSeleccionado || !servicioSeleccionado) {
+                // Limpiar pedidos si no hay cliente o servicio seleccionado
+                const selectPedido = document.getElementById('pedidoOT');
+                selectPedido.innerHTML = '<option value="">-- Seleccionar Pedido --</option>';
+                return;
+            }
+
+            console.log("🔍 Filtrando pedidos para Cliente: " + clienteSeleccionado + ", Servicio: " + servicioSeleccionado);
+            mostrarLoading(true, "Buscando pedidos...");
+            
+            google.script.run
+                .withSuccessHandler(function(pedidosFiltrados) {
+                    mostrarLoading(false);
+                    const selectPedido = document.getElementById('pedidoOT');
+                    selectPedido.innerHTML = '<option value="">-- Seleccionar Pedido --</option>';
+                    
+                    if (pedidosFiltrados && pedidosFiltrados.length > 0) {
+                        pedidosFiltrados.forEach(pedido => {
+                            if (pedido[0]) {
+                                const option = document.createElement('option');
+                                option.value = pedido[0]; // N° Pedido
+                                option.textContent = pedido[0]; // N° Pedido
+                                selectPedido.appendChild(option);
+                            }
+                        });
+                        console.log("✅ " + pedidosFiltrados.length + " pedidos encontrados");
+                    } else {
+                        console.log("ℹ️ No se encontraron pedidos para esta combinación");
+                        const option = document.createElement('option');
+                        option.value = "";
+                        option.textContent = "-- No se encontraron pedidos --";
+                        option.disabled = true;
+                        selectPedido.appendChild(option);
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    console.error("Error filtrando pedidos:", error);
+                    const selectPedido = document.getElementById('pedidoOT');
+                    selectPedido.innerHTML = '<option value="">-- Error al cargar --</option>';
+                })
+                .filtrarPedidosPorClienteYServicio(clienteSeleccionado, servicioSeleccionado);
+        }
+
+        function guardarOT() {
+            const formData = {
+                numeroOT: document.getElementById('numeroOT').value,
+                fecha: document.getElementById('fechaOT').value,
+                cliente: document.getElementById('clienteOT').value,
+                servicio: document.getElementById('servicioOT').value,
+                pedido: document.getElementById('pedidoOT').value,
+                horaInicio: document.getElementById('horaInicio').value,
+                horaFin: document.getElementById('horaFin').value,
+                tiempoRefrigerio: document.getElementById('tiempoRefrigerio').value,
+                horometroInicio: document.getElementById('horometroInicio').value,
+                horometroFin: document.getElementById('horometroFin').value,
+                esCamionGrua: document.getElementById('esCamionGrua').checked,
+                horometroInicioCamion: document.getElementById('horometroInicioCamion').value,
+                horometroFinCamion: document.getElementById('horometroFinCamion').value,
+                horometroInicioGrua: document.getElementById('horometroInicioGrua').value,
+                horometroFinGrua: document.getElementById('horometroFinGrua').value,
+                tiempoTotal: document.getElementById('tiempoTotal').textContent,
+                horometroTrabajado: document.getElementById('horometroTrabajado').textContent,
+                modo: document.getElementById('modoFormulario').value,
+                otIDExistente: document.getElementById('otIDExistente').value
+            };
+
+            console.log("💾 Datos a guardar:", formData);
+
+            // Validaciones básicas
+            if (!formData.numeroOT || !formData.fecha || !formData.cliente || !formData.servicio || 
+                !formData.horaInicio || !formData.horaFin) {
+                alert("Por favor complete todos los campos obligatorios (*)");
+                return;
+            }
+
+            const textoConfirmacion = modoEdicion ? "Actualizar" : "Guardar";
+            if (!confirm(`¿Está seguro que desea ${textoConfirmacion.toLowerCase()} esta orden de trabajo?`)) {
+                return;
+            }
+
+            mostrarLoading(true, modoEdicion ? "Actualizando orden de trabajo..." : "Guardando orden de trabajo...");
+
+            google.script.run
+                .withSuccessHandler(function(resultado) {
+                    mostrarLoading(false);
+                    if (resultado.success) {
+                        alert(`✅ Orden de trabajo ${modoEdicion ? 'actualizada' : 'guardada'} exitosamente`);
+                        // Redirigir a la vista de OT
+                        const urlBase = '<?!= getScriptUrl() ?>';
+                        window.open(urlBase + '?page=OT', '_self');
+                    } else {
+                        alert("❌ Error al guardar: " + resultado.message);
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    console.error("Error guardando OT:", error);
+                    alert("❌ Error al guardar: " + error.message);
+                })
+                .guardarOT(formData);
+        }
+
+        function eliminarOT() {
+            const numeroOT = document.getElementById('otIDExistente').value;
+            
+            if (!confirm(`¿Está seguro que desea ELIMINAR la orden de trabajo ${numeroOT}? Esta acción no se puede deshacer.`)) {
+                return;
+            }
+
+            mostrarLoading(true, "Eliminando orden de trabajo...");
+
+            google.script.run
+                .withSuccessHandler(function(resultado) {
+                    mostrarLoading(false);
+                    if (resultado.success) {
+                        alert("✅ Orden de trabajo eliminada exitosamente");
+                        const urlBase = '<?!= getScriptUrl() ?>';
+                        window.open(urlBase + '?page=OT', '_self');
+                    } else {
+                        alert("❌ Error al eliminar: " + resultado.message);
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    alert("❌ Error al eliminar: " + error.message);
+                })
+                .eliminarOT(numeroOT);
+        }
+
+        function mostrarLoading(mostrar, mensaje = "Cargando...") {
+            const overlay = document.getElementById("loadingOverlay");
+            const texto = document.getElementById("loadingText");
+            
+            if (overlay && texto) {
+                overlay.style.display = mostrar ? "flex" : "none";
+                texto.textContent = mensaje;
+            }
+        }
+    </script>
+</body>
+</html>

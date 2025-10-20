@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Registro de Cotización</title>
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+</head>
+
+<body>
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <h1>REGISTRO: NUEVA COTIZACIÓN</h1>
+            <h1 id="tituloFormulario">Registro de Nueva Cotización</h1>
+        </div>
+        <div class="topBarra-derecha">
+            <button onclick="window.top.location.href = '<?!= getScriptUrl() ?>?page=ResumenComercial'" class="boton-regresar">
+                ← Regresar al Resumen
+            </button>
+            <button onclick="window.top.location.href = '<?!= getScriptUrl() ?>?page=Modulos'" class="boton-regresar">
+                Volver a Módulos
+            </button>
+            <!-- Agrega este botón en la sección de botones de tu Comercial.html -->
+<button type="button" onclick="generarPDF()" class="btn-guardar-top" id="btnGenerarPDF" style="background-color: #dc3545;">
+    📄 Generar PDF
+</button>
+        </div>
+    </div>
+
+    <div class="contenedor-principal">
+        <form id="formCotizacion" class="formulario-cotizacion">
+            <div class="card datos-generales">
+                <h3>Datos de la Cotización</h3>
+                <div class="formulario-campos dos-columnas">
+                    <div>
+                        <h2>MONEDA</h2>
+                        <select id="moneda" name="Moneda" required>
+                            <option value="Soles">Soles (S/.)</option>
+                            <option value="Dolares">Dólares ($)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <h2>FORMA DE PAGO</h2>
+                        <select id="formaPago" name="Forma_Pago" required></select>
+                    </div>
+                    <div>
+                        <h2>RUC / DNI</h2>
+                        <input type="text" id="rucCliente" name="RUC" placeholder="Escriba RUC o DNI" required
+                            list="datalist-rucs-clientes"
+                            onchange="manejarSeleccionCliente(this, 'clienteNombre')">
+                    </div>
+                    <div>
+                        <h2>CLIENTE / RAZÓN SOCIAL</h2>
+                        <input type="text" id="clienteNombre" name="Cliente" placeholder="Escriba el nombre o Razón Social" required
+                            list="datalist-nombres-clientes"
+                            onchange="manejarSeleccionCliente(this, 'rucCliente')">
+                    </div>
+                    <div>
+                        <h2>DIRECCIÓN</h2>
+                        <input type="text" id="direccion" name="Direccion" placeholder="Dirección de la obra" required>
+                    </div>
+                    <div>
+                        <h2>EMPRESA (Operadora)</h2>
+                        <select id="empresa" name="Empresa" required></select>
+                    </div>
+                    <div>
+                        <h2>TURNO</h2>
+                        <select id="turno" name="Turno" required></select>
+                    </div>
+                    <div>
+                        <h2>FECHA DE REGISTRO</h2>
+                        <input type="date" id="fechaRegistro" name="fechaRegistro" value="" required>
+                    </div>
+                    <div>
+                        <h2>EJECUTIVO/ASESOR</h2>
+                        <select id="ejecutivo" name="Ejecutivo" required>
+                        <option value="" disabled selected>-- Seleccione --</option>
+                        <option value="ANTHONY">ANTHONY</option>
+                        <option value="CARMEN">CARMEN</option>
+                        </select>
+                    </div>
+        
+                    <!-- ✅ CAMPO: CONTACTO -->
+                    <div>
+                       <h2>CONTACTO</h2>
+                       <select id="contacto" name="Contacto" required>
+                       <option value="" disabled selected>-- Seleccione Contacto --</option>
+                       </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card detalle-servicios">
+                <h3>Detalle de Servicios</h3>
+                <table id="tablaDetalle" class="tabla-listado">
+                    <thead>
+                        <tr>
+                            <th class="col-num">#</th>
+                            <th class="col-servicio-cod">Servicio/Código</th>
+                            <th class="col-nombre-servicio">Nombre del Servicio</th>
+                            <th class="col-und-medida">UND. MEDIDA</th>
+                            <th class="col-cant">Cant.</th>
+                            <th class="col-und-h-min">UND. H. MIN.</th>
+                            <th class="col-dias-cotizados">Días Cotizados</th>
+                            <th class="col-h-minimas">H. Mínimas</th>
+                            <th class="col-h-segun">H. SEGÚN</th>
+                            <th class="col-movilizacion">Movilización</th>
+                            <th class="col-precio-unit">Precio Unit.</th>
+                            <th class="col-subtotal">Subtotal</th>
+                            <th class="col-accion">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoDetalle"></tbody>
+                </table>
+                <button type="button" onclick="agregarLineaDetalle()" class="btn-guardar-top btn-agregar-servicio">➕ Agregar Servicio</button>
+            </div>
+
+            <div class="card resumen-total">
+                <h3 class="total-label">TOTAL: <span id="totalCotizacion">0.00</span></h3>
+                <input type="hidden" id="total" name="Total" value="0.00">
+            </div>
+
+            <div class="contenedor-boton-guardar">
+                <button type="button" onclick="guardarRegistroCotizacion()" class="btn-guardar-top btn-guardar-principal">GUARDAR COTIZACIÓN</button>
+            </div>
+        </form>
+    </div>
+
+    <datalist id="datalist-codigos-servicio"></datalist>
+    <datalist id="datalist-descripciones-servicio"></datalist>
+    <datalist id="datalist-rucs-clientes"></datalist>
+    <datalist id="datalist-nombres-clientes"></datalist>
+
+    <div id="modalNuevoCliente" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="cerrarModalNuevoCliente()">&times;</span>
+            <h3>Registrar Nuevo Cliente</h3>
+            <form id="formNuevoCliente">
+                <div class="formulario-campos">
+                    <div>
+                        <label for="newRUC">RUC / DNI *</label>
+                        <input type="text" id="newRUC" name="RUC" required>
+                    </div>
+                    <div>
+                        <label for="newNombre">Razón Social / Nombre *</label>
+                        <input type="text" id="newNombre" name="NOMBRE" required>
+                    </div>
+                </div>
+                <button type="button" onclick="registrarNuevoCliente()">Guardar y Seleccionar Cliente</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal de Loading -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <p>Guardando cotización...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Errores -->
+    <div id="errorModal" class="error-modal">
+        <div class="error-content">
+            <span class="close-button" onclick="cerrarErrorModal()">&times;</span>
+            <h3>Errores de Validación</h3>
+            <div id="listaErrores"></div>
+            <button type="button" onclick="cerrarErrorModal()">Cerrar</button>
+        </div>
+    </div>
+
+    <script>
+
+      // Función para generar PDF
+function generarPDF() {
+    const numPedido = estadoApp.esEdicion ? estadoApp.numPedidoEdicion : 
+                     document.querySelector('input[name="numPedido"]')?.value;
+    
+    if (!numPedido) {
+        alert('No se puede generar PDF: número de pedido no disponible');
+        return;
+    }
+    
+    mostrarLoading(true, 'Generando PDF...');
+    
+    google.script.run
+        .withSuccessHandler(function(resultado) {
+            mostrarLoading(false);
+            if (resultado.success) {
+                // Abrir el PDF en una nueva pestaña
+                window.open(resultado.pdfUrl, '_blank');
+                alert('PDF generado exitosamente');
+            } else {
+                alert('Error al generar PDF: ' + resultado.message);
+            }
+        })
+        .withFailureHandler(function(error) {
+            mostrarLoading(false);
+            alert('Error al generar PDF: ' + error.message);
+        })
+        .generarCotizacionPDF(numPedido);
+}
+
+
+        // =============================================================================
+        // VARIABLES GLOBALES Y CONFIGURACIÓN
+        // =============================================================================
+        const estadoApp = {
+            lineaCounter: 0,
+            datosCargados: false,
+            guardando: false,
+            esEdicion: false,
+            numPedidoEdicion: null,
+            configuracion: {
+                VALOR_DIAS_MES: 30,
+                VALOR_HORAS_DIA: 24,
+                decimales: 2
+            }
+        };
+
+        let listaClientes = [];
+        let listaServicios = [];
+        let listaFormasPago = [];
+        let listaEmpresas = [];
+        let listaTurnos = [];
+        let listaUndMedida = [];
+        let listaHorasMinimas = [];
+        let listaHorasSegun = [];
+        let listaContactos = [];
+        let listaEjecutivos = ['ANTHONY', 'CARMEN'];
+
+        // =============================================================================
+        // FUNCIONES DE UTILIDAD Y MANEJO DE ERRORES
+        // =============================================================================
+        function mostrarLoading(mostrar, mensaje = 'Cargando...') {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                overlay.style.display = mostrar ? 'flex' : 'none';
+                const mensajeElement = overlay.querySelector('p');
+                if (mensajeElement && mensaje) {
+                    mensajeElement.textContent = mensaje;
+                }
+            }
+            estadoApp.guardando = mostrar;
+        }
+
+        function mostrarError(error, contexto = '') {
+            console.error(`Error en ${contexto}:`, error);
+            const mensaje = error.message || error;
+            const mensajeAmigable = traducirError(mensaje);
+            alert(`Error en ${contexto}: ${mensajeAmigable}`);
+        }
+
+        function traducirError(mensaje) {
+            const erroresComunes = {
+                'Exception:': 'Error del sistema:',
+                'Timed out': 'La operación tardó demasiado tiempo',
+                'Access denied': 'Acceso denegado',
+                'Service invoked too many times': 'Límite de servicio excedido'
+            };
+            for (const [key, value] of Object.entries(erroresComunes)) {
+                if (mensaje.includes(key)) return value;
+            }
+            return mensaje;
+        }
+
+        function mostrarErroresValidacion(errores) {
+            const modal = document.getElementById('errorModal');
+            const lista = document.getElementById('listaErrores');
+            if (modal && lista) {
+                lista.innerHTML = errores.map(error => `<p class="error-item">• ${error}</p>`).join('');
+                modal.style.display = 'flex';
+            } else {
+                alert('Errores de validación:\n' + errores.join('\n• '));
+            }
+        }
+
+        function cerrarErrorModal() {
+            const modal = document.getElementById('errorModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function mostrarExito(respuesta) {
+            alert(respuesta.message || "Cotización guardada exitosamente");
+            window.top.location.href = '<?!= getScriptUrl() ?>?page=ResumenComercial'; 
+        }
+
+        function puedeRealizarAccion(accion) {
+            if (estadoApp.guardando) {
+                mostrarError('El sistema está guardando datos. Espere por favor.', accion);
+                return false;
+            }
+            if (!estadoApp.datosCargados && accion !== 'cargarDatos') {
+                mostrarError('Los datos iniciales no se han cargado completamente', accion);
+                return false;
+            }
+            return true;
+        }
+
+        function inicializarFecha() {
+            const fechaInput = document.getElementById('fechaRegistro');
+            if (fechaInput) {
+                const ahora = new Date();
+                const offset = ahora.getTimezoneOffset();
+                const fechaLocal = new Date(ahora.getTime() - (offset * 60 * 1000));
+                fechaInput.value = fechaLocal.toISOString().split('T')[0];
+            }
+        }
+
+        // =============================================================================
+        // FUNCIÓN DE DEBUG MEJORADA
+        // =============================================================================
+        function verificarDatosCargados() {
+            console.log("🔍 VERIFICACIÓN DE DATOS CARGADOS:");
+    
+            const direccionElem = document.getElementById('direccion');
+            const turnoElem = document.getElementById('turno');
+            const empresaElem = document.getElementById('empresa');
+            const clienteElem = document.getElementById('clienteNombre');
+            const fechaElem = document.getElementById('fechaRegistro');
+            const monedaElem = document.getElementById('moneda');
+            const formaPagoElem = document.getElementById('formaPago');
+            const ejecutivoElem = document.getElementById('ejecutivo');
+            const contactoElem = document.getElementById('contacto');
+    
+            console.log("📍 Dirección:", direccionElem ? direccionElem.value : "Elemento no encontrado");
+            console.log("🕐 Turno:", turnoElem ? turnoElem.value : "Elemento no encontrado");
+            console.log("🏢 Empresa:", empresaElem ? empresaElem.value : "Elemento no encontrado");
+            console.log("👤 Cliente:", clienteElem ? clienteElem.value : "Elemento no encontrado");
+            console.log("📅 Fecha:", fechaElem ? fechaElem.value : "Elemento no encontrado");
+            console.log("💰 Moneda:", monedaElem ? monedaElem.value : "Elemento no encontrado");
+            console.log("💳 Forma Pago:", formaPagoElem ? formaPagoElem.value : "Elemento no encontrado");
+            console.log("👨‍💼 Ejecutivo:", ejecutivoElem ? ejecutivoElem.value : "Elemento no encontrado");
+            console.log("📞 Contacto:", contactoElem ? contactoElem.value : "Elemento no encontrado");
+    
+            console.log("📊 Estado App:", estadoApp);
+    
+            const lineas = document.querySelectorAll('#cuerpoDetalle tr');
+            console.log("📋 Líneas en tabla:", lineas.length);
+        }
+
+        // =============================================================================
+        // FUNCIONES DE VALIDACIÓN
+        // =============================================================================
+        function validarFormulario() {
+            const errores = [];
+            
+            // ✅ Validar campos generales
+            const empresa = document.getElementById('empresa').value;
+            const ruc = document.getElementById('rucCliente').value.trim();
+            const cliente = document.getElementById('clienteNombre').value.trim();
+            const moneda = document.getElementById('moneda').value;
+            const formaPago = document.getElementById('formaPago').value;
+            const direccion = document.getElementById('direccion').value.trim();
+            const ejecutivo = document.getElementById('ejecutivo').value;
+            const contacto = document.getElementById('contacto').value;
+            
+            if (!empresa) errores.push('La empresa es obligatoria');
+            if (!ruc) errores.push('El RUC/DNI es obligatorio');
+            if (!cliente) errores.push('El cliente es obligatorio');
+            if (!moneda) errores.push('La moneda es obligatoria');
+            if (!formaPago) errores.push('La forma de pago es obligatoria');
+            if (!direccion) errores.push('La dirección es obligatoria');
+            if (!ejecutivo) errores.push('El ejecutivo es obligatorio');
+            if (!contacto) errores.push('El contacto es obligatorio');
+            
+            // ✅ Validar líneas de detalle
+            const lineas = obtenerLineasDetalleCorregidas();
+            if (lineas.length === 0) {
+                errores.push('Debe agregar al menos un servicio válido');
+            } else {
+                lineas.forEach((linea, index) => {
+                    if (!linea.cod) errores.push(`Línea ${index + 1}: El código de servicio es obligatorio`);
+                    if (linea.cantidad <= 0) errores.push(`Línea ${index + 1}: La cantidad debe ser mayor a 0`);
+                    if (linea.precio < 0) errores.push(`Línea ${index + 1}: El precio no puede ser negativo`);
+                });
+            }
+            
+            console.log("✅ VALIDACIÓN COMPLETADA - Errores:", errores.length);
+            return errores;
+        }
+
+        function validarRUC(ruc) {
+            const cleanRuc = ruc.trim();
+            if (!cleanRuc) return false;
+            if (cleanRuc.length === 8) return /^\d+$/.test(cleanRuc); // DNI
+            if (cleanRuc.length === 11) return /^\d+$/.test(cleanRuc); // RUC
+            return true;
+        }
+
+// =============================================================================
+// FUNCIONES DE INICIALIZACIÓN Y CARGA DE DATOS - CORREGIDAS
+// =============================================================================
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("🔄 Comercial.html CARGADO - Iniciando proceso...");
+    inicializarFecha();
+    
+    // ✅ DETECCIÓN MEJORADA del pedido a editar
+    let editId = null;
+    
+    // 1. Buscar en URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    editId = urlParams.get('editId');
+    console.log("🔍 EditId desde URL:", editId);
+    
+    // 2. Buscar en sessionStorage
+    if (!editId) {
+        editId = sessionStorage.getItem('pedidoAEditar');
+        console.log("🔍 EditId desde sessionStorage:", editId);
+    }
+    
+    // 3. Limpiar sessionStorage después de leer
+    if (editId) {
+        sessionStorage.removeItem('pedidoAEditar');
+        console.log("🧹 SessionStorage limpiado");
+    }
+
+    console.log("🎯 ID final para edición:", editId);
+
+    // Cargar datos iniciales PRIMERO
+    mostrarLoading(true, "Cargando datos iniciales...");
+    
+    google.script.run
+        .withSuccessHandler(function(dataInicial) {
+            mostrarLoading(false);
+            console.log("✅ Datos iniciales cargados correctamente");
+            
+            if (dataInicial && dataInicial.success) {
+                procesarDatosInicialesComercial(dataInicial, editId);
+            } else {
+                mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización');
+            }
+        })
+        .withFailureHandler(function(error) {
+            mostrarLoading(false);
+            console.error("❌ Error cargando datos iniciales:", error);
+            mostrarError(error, 'cargar datos iniciales');
+        })
+        .getDatosInicialesComercial();
+});
+
+        function procesarDatosInicialesComercial(data, editId = null) {
+            console.log("🔄 Procesando datos iniciales con editId:", editId);
+            
+            if (!data || !data.success) {
+                mostrarError(data?.error || 'Datos inválidos recibidos', 'procesar datos iniciales');
+                return;
+            }
+            
+            // Cargar todas las listas necesarias
+            listaClientes = data.clientes || [];
+            listaServicios = data.servicios || [];
+            listaFormasPago = data.formasPago || [];
+            listaEmpresas = data.listaEmpresas || [];
+            listaTurnos = data.listaTurnos || [];
+            listaUndMedida = data.listaUndMedida || [];
+            listaHorasMinimas = data.listaHorasMinimas || [];
+            listaHorasSegun = data.listaHorasSegun || [];
+            listaEjecutivos = data.listaEjecutivos || ['ANTHONY', 'CARMEN'];
+
+            // Llenar selects
+            llenarSelect('formaPago', listaFormasPago);
+            llenarSelect('empresa', listaEmpresas);
+            llenarSelect('turno', listaTurnos);
+            llenarSelect('ejecutivo', listaEjecutivos);
+
+            // Llenar datalists
+            llenarDatalistsClientes();
+            llenarDatalistsServicios();
+
+            estadoApp.datosCargados = true;
+            console.log("✅ Datos iniciales procesados correctamente");
+            
+            // Manejar modo edición DESPUÉS de cargar datos
+            if (editId) {
+                console.log("🚀 ACTIVANDO MODO EDICIÓN para:", editId);
+                estadoApp.esEdicion = true;
+                estadoApp.numPedidoEdicion = editId;
+                
+                // Actualizar título inmediatamente
+                const titulo = document.getElementById('tituloFormulario');
+                if (titulo) {
+                    titulo.textContent = `EDITANDO PEDIDO: ${editId}`;
+                    titulo.style.color = '#e74c3c';
+                }
+                
+                // Cargar datos del pedido
+                cargarPedidoParaEdicion(editId);
+            } else {
+                console.log("📝 MODO NUEVA COTIZACIÓN");
+                agregarLineaDetalle();
+            }
+        }
+
+        // =============================================================================
+        // FUNCIONES DE GESTIÓN DE CONTACTOS
+        // =============================================================================
+
+        function llenarDatalistContactos() {
+            const contactoSelect = document.getElementById('contacto');
+            
+            if (!contactoSelect) {
+                console.warn("❌ Select de contacto no encontrado en el DOM");
+                return;
+            }
+
+            // Limpiar opciones existentes
+            contactoSelect.innerHTML = '<option value="" disabled selected>-- Seleccione Contacto --</option>';
+
+            console.log("👥 Contactos disponibles para llenar:", listaContactos);
+
+            if (listaContactos.length === 0) {
+                const optEmpty = document.createElement('option');
+                optEmpty.value = "";
+                optEmpty.textContent = "No hay contactos registrados";
+                optEmpty.disabled = true;
+                contactoSelect.appendChild(optEmpty);
+                console.log("ℹ️ No hay contactos para mostrar");
+                return;
+            }
+
+            // Llenar con contactos disponibles
+            listaContactos.forEach(contacto => {
+                const displayText = contacto.display || `${contacto.nombre}${contacto.cargo ? ' - ' + contacto.cargo : ''}`;
+                
+                // Para select
+                const optSelect = document.createElement('option');
+                optSelect.value = displayText;
+                optSelect.textContent = displayText;
+                optSelect.setAttribute('data-email', contacto.email || '');
+                optSelect.setAttribute('data-telefono', contacto.telefono || '');
+                contactoSelect.appendChild(optSelect);
+            });
+            
+            console.log("✅ Datalist de contactos actualizado con " + listaContactos.length + " contactos");
+        }
+
+        function cargarContactosPorRUC(ruc) {
+            if (!ruc) return;
+            
+            console.log("📞 Cargando contactos para RUC:", ruc);
+            
+            google.script.run
+                .withSuccessHandler(function(contactosData) {
+                    console.log("✅ Contactos recibidos:", contactosData);
+                    
+                    if (contactosData && contactosData.length > 0) {
+                        listaContactos = contactosData;
+                        llenarDatalistContactos();
+                    } else {
+                        console.log("ℹ️ No se encontraron contactos para este RUC");
+                        listaContactos = [];
+                        llenarDatalistContactos();
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    console.error("❌ Error cargando contactos:", error);
+                    listaContactos = [];
+                    llenarDatalistContactos();
+                })
+                .getContactosParaComercial(ruc);
+        }
+
+        function seleccionarContactoEspecifico(contactoBuscado) {
+            const contactoSelect = document.getElementById('contacto');
+            if (!contactoSelect) {
+                console.warn("❌ Select de contacto no encontrado");
+                return;
+            }
+            
+            console.log(`🔍 Buscando contacto específico: "${contactoBuscado}"`);
+            
+            // Buscar coincidencia exacta
+            let opcionContacto = Array.from(contactoSelect.options).find(opt => 
+                opt.value === contactoBuscado || opt.text === contactoBuscado
+            );
+            
+            // Si no encuentra exacto, buscar coincidencia parcial
+            if (!opcionContacto) {
+                opcionContacto = Array.from(contactoSelect.options).find(opt => 
+                    opt.value.includes(contactoBuscado) || 
+                    opt.text.includes(contactoBuscado) ||
+                    contactoBuscado.includes(opt.value) ||
+                    contactoBuscado.includes(opt.text)
+                );
+            }
+            
+            if (opcionContacto) {
+                contactoSelect.value = opcionContacto.value;
+                console.log(`✅ Contacto seleccionado: "${opcionContacto.value}"`);
+            } else {
+                console.warn(`⚠️ No se pudo encontrar contacto: "${contactoBuscado}"`);
+            }
+        }
+
+        function llenarSelect(id, opciones) {
+            const select = document.getElementById(id);
+            if (!select) {
+                console.warn(`⚠️ Select con id '${id}' no encontrado`);
+                return;
+            }
+            
+            select.innerHTML = '<option value="" disabled selected>-- Seleccione --</option>';
+            if (opciones && opciones.length > 0) {
+                opciones.forEach(opcion => {
+                    const opt = document.createElement('option');
+                    opt.value = opcion;
+                    opt.textContent = opcion;
+                    select.appendChild(opt);
+                });
+            } else {
+                console.warn(`⚠️ No hay opciones para llenar el select '${id}'`);
+            }
+        }
+
+        // =============================================================================
+        // FUNCIONES DE GESTIÓN DE CLIENTES
+        // =============================================================================
+        function llenarDatalistsClientes() {
+            const rucsDatalist = document.getElementById('datalist-rucs-clientes');
+            const nombresDatalist = document.getElementById('datalist-nombres-clientes');
+            if (!rucsDatalist || !nombresDatalist) return;
+
+            rucsDatalist.innerHTML = '';
+            nombresDatalist.innerHTML = '';
+
+            listaClientes.slice(1).forEach(cliente => {
+                const ruc = cliente[0];
+                const nombre = cliente[1];
+                if (ruc && nombre) {
+                    const optRuc = document.createElement('option');
+                    optRuc.value = ruc;
+                    optRuc.label = nombre;
+                    rucsDatalist.appendChild(optRuc);
+
+                    const optNom = document.createElement('option');
+                    optNom.value = nombre;
+                    optNom.label = ruc;
+                    nombresDatalist.appendChild(optNom);
+                }
+            });
+
+            const optNuevoRuc = document.createElement('option');
+            optNuevoRuc.value = "-- CLIENTE NUEVO --";
+            optNuevoRuc.label = "Registrar nuevo RUC/DNI";
+            rucsDatalist.appendChild(optNuevoRuc);
+
+            const optNuevoNom = document.createElement('option');
+            optNuevoNom.value = "-- CLIENTE NUEVO --";
+            optNuevoNom.label = "Registrar nuevo Nombre/Razón Social";
+            nombresDatalist.appendChild(optNuevoNom);
+        }
+
+        function manejarSeleccionCliente(inputElement, targetId) {
+            if (!puedeRealizarAccion('seleccionar cliente')) return;
+            
+            const selectedValue = inputElement.value.trim();
+            const targetInput = document.getElementById(targetId);
+
+            if (selectedValue === "-- CLIENTE NUEVO --") {
+                abrirModalNuevoCliente();
+                inputElement.value = '';
+                return;
+            }
+
+            if (!selectedValue) {
+                targetInput.value = "";
+                return;
+            }
+
+            const esRucInput = (inputElement.id === 'rucCliente');
+            const columnIndexToMatch = esRucInput ? 0 : 1;
+            const columnIndexToSet = esRucInput ? 1 : 0;
+
+            const clienteEncontrado = listaClientes.slice(1).find(fila =>
+                String(fila[columnIndexToMatch]).trim().toUpperCase() === selectedValue.toUpperCase()
+            );
+
+            if (clienteEncontrado) {
+                targetInput.value = clienteEncontrado[columnIndexToSet];
+                
+                // ✅ CARGAR CONTACTOS cuando se selecciona un cliente
+                if (esRucInput) {
+                    const ruc = selectedValue;
+                    cargarContactosPorRUC(ruc);
+                }
+                
+            } else {
+                const rucActual = document.getElementById('rucCliente').value.trim();
+                const nombreActual = document.getElementById('clienteNombre').value.trim();
+                if (rucActual && nombreActual && rucActual !== "-- CLIENTE NUEVO --" && nombreActual !== "-- CLIENTE NUEVO --") {
+                    const confirmar = confirm(`El dato '${selectedValue}' no está registrado. ¿Desea registrar al nuevo cliente con RUC: ${rucActual} y Nombre: ${nombreActual}?`);
+                    if (confirmar) abrirModalNuevoCliente(rucActual, nombreActual);
+                    else inputElement.value = targetInput.value = '';
+                }
+            }
+        }
+
+        function abrirModalNuevoCliente(ruc = '', nombre = '') {
+            const modal = document.getElementById('modalNuevoCliente');
+            if (modal) {
+                modal.style.display = 'block';
+                document.getElementById('newRUC').value = ruc;
+                document.getElementById('newNombre').value = nombre;
+            }
+        }
+
+        function cerrarModalNuevoCliente() {
+            const modal = document.getElementById('modalNuevoCliente');
+            if (modal) {
+                modal.style.display = 'none';
+                document.getElementById('formNuevoCliente').reset();
+            }
+        }
+
+        function registrarNuevoCliente() {
+            const ruc = document.getElementById('newRUC').value.trim();
+            const nombre = document.getElementById('newNombre').value.trim();
+
+            if (!ruc || !nombre) {
+                alert("RUC y Nombre son obligatorios para registrar un nuevo cliente.");
+                return;
+            }
+
+            if (!validarRUC(ruc)) {
+                alert("El RUC/DNI no tiene un formato válido.");
+                return;
+            }
+
+            mostrarLoading(true, "Registrando nuevo cliente...");
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    mostrarLoading(false);
+                    if (response.success) {
+                        listaClientes.push(response.nuevoCliente); 
+                        llenarDatalistsClientes();
+                        document.getElementById('rucCliente').value = ruc;
+                        document.getElementById('clienteNombre').value = nombre;
+                        cerrarModalNuevoCliente();
+                        alert("Cliente registrado exitosamente");
+                    } else {
+                        mostrarError(response.message, 'registrar cliente');
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    mostrarError(error, 'registrar cliente');
+                })
+                .guardarNuevoCliente({ RUC: ruc, NOMBRE: nombre });
+        }
+
+        // =============================================================================
+        // FUNCIONES DE GESTIÓN DE DETALLES Y SERVICIOS
+        // =============================================================================
+        function llenarDatalistsServicios() {
+            const codigosDatalist = document.getElementById('datalist-codigos-servicio');
+            if (!codigosDatalist) return;
+            codigosDatalist.innerHTML = '';
+
+            listaServicios.slice(1).forEach(servicio => {
+                const codigo = servicio[0];
+                const descripcion = servicio[1];
+                if (codigo && descripcion) {
+                    const optCod = document.createElement('option');
+                    optCod.value = `${codigo} - ${descripcion}`;
+                    codigosDatalist.appendChild(optCod);
+                }
+            });
+        }
+
+        function generarOpcionesSelect(opciones, valorSeleccionado = '') {
+            let html = '<option value="" disabled>Seleccione</option>';
+            if (opciones && opciones.length > 0) {
+                opciones.forEach(opcion => {
+                    const selected = opcion === valorSeleccionado ? 'selected' : '';
+                    html += `<option value="${opcion}" ${selected}>${opcion}</option>`;
+                });
+            }
+            return html;
+        }
+
+        function optimizarSelectoresFila(row, rowId) {
+            return {
+                cantidad: row.querySelector(`input[name="cantidad_${rowId}"]`),
+                undMedida: row.querySelector(`select[name="und_medida_${rowId}"]`),
+                hMinNum: row.querySelector(`input[name="horas_minimas_num_${rowId}"]`),
+                precio: row.querySelector(`input[name="precio_unitario_${rowId}"]`),
+                movilizacion: row.querySelector(`input[name="movilizacion_${rowId}"]`),
+                undHMinSelect: row.querySelector(`select[name="und_horas_minimas_${rowId}"]`),
+                diasDisplay: row.querySelector('.dias-cotizados-display'),
+                diasHidden: row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`),
+                subtotalDisplay: row.querySelector('.subtotal-display'),
+                subtotalHidden: row.querySelector(`input[name="subtotal_linea_${rowId}"]`)
+            };
+        }
+
+        function agregarLineaDetalle(lineaData = null) {
+            if (!puedeRealizarAccion('agregar línea') && !lineaData) return;
+            
+            estadoApp.lineaCounter++;
+            const rowId = estadoApp.lineaCounter;
+            const tbody = document.getElementById('cuerpoDetalle');
+            const tr = document.createElement('tr');
+            tr.id = `linea-${rowId}`;
+
+            const def = {
+                COD: '', DESC: '', UND: 'HORAS', CANTIDAD: 1, 
+                UND_H_MIN: '', DIAS_COT: 0, H_MIN_NUM: 0, H_SEGUN: '', MOV: 0.00, PRECIO: 0.00, SUB: 0.00
+            };
+            const data = lineaData || def;
+            
+            const codigoMostrar = data.COD && data.DESC ? `${data.COD} - ${data.DESC}` : '';
+            const undMedidaOptions = generarOpcionesSelect(listaUndMedida, data.UND);
+            const horasMinOptions = generarOpcionesSelect(listaHorasMinimas, data.UND_H_MIN);
+            const horasSegunOptions = generarOpcionesSelect(listaHorasSegun, data.H_SEGUN);
+            const necesitaTiempo = data.UND === 'HORAS' || data.UND === 'DÍAS';
+            const disabledAttr = !necesitaTiempo ? 'disabled' : '';
+
+            tr.innerHTML = `
+                <td>${rowId}</td>
+                <td> 
+                    <input type="text" class="form-control detalle-input"
+                        placeholder="Código - Nombre"
+                        list="datalist-codigos-servicio"
+                        value="${codigoMostrar}"
+                        name="Servicio_Busqueda_${rowId}"
+                        onchange="cargarDatosServicio(this)"
+                        onblur="this.value = this.value.toUpperCase().trim()"
+                        required>
+                    <input type="hidden" name="Servicio_cod_${rowId}" value="${data.COD}">
+                </td>
+                <td><input type="text" name="descripcion_${rowId}" value="${data.DESC}" class="descripcion-servicio detalle-input" readonly></td>
+                <td> 
+                    <select name="und_medida_${rowId}" onchange="manejarUnidadMedida(this); calcularTodo(this);" class="detalle-select" required>
+                        ${undMedidaOptions}
+                    </select>
+                </td>
+                <td><input type="number" name="cantidad_${rowId}" value="${data.CANTIDAD}" min="0" oninput="calcularTodo(this)" class="detalle-input text-right" required></td>
+                <td> 
+                    <select name="und_horas_minimas_${rowId}" onchange="calcularTodo(this)" class="detalle-select" ${disabledAttr} required>
+                        ${horasMinOptions}
+                    </select>
+                </td>
+                <td><span class="dias-cotizados-display display-only-cell text-right">${Math.ceil(data.DIAS_COT).toFixed(0)}</span></td>
+                <td><input type="number" name="horas_minimas_num_${rowId}" value="${data.H_MIN_NUM}" min="0" oninput="calcularTodo(this)" class="detalle-input text-right" ${disabledAttr}></td>
+                <td> 
+                    <select name="hora_segun_${rowId}" required onchange="calcularTodo(this)" class="detalle-select">
+                        ${horasSegunOptions}
+                    </select>
+                </td>
+                <td><input type="number" name="movilizacion_${rowId}" value="${parseFloat(data.MOV).toFixed(2)}" min="0" oninput="calcularTodo(this)" step="0.01" class="detalle-input text-right"></td> 
+                <td><input type="number" name="precio_unitario_${rowId}" value="${parseFloat(data.PRECIO).toFixed(2)}" min="0" oninput="calcularTodo(this)" step="0.01" class="detalle-input text-right" required></td>
+                <td><span class="subtotal-display display-only-cell text-right">${parseFloat(data.SUB).toFixed(2)}</span></td>
+                <td><button type="button" onclick="eliminarLineaDetalle('linea-${rowId}')">🗑️</button></td>
+                <input type="hidden" name="subtotal_linea_${rowId}" value="${parseFloat(data.SUB).toFixed(2)}">
+                <input type="hidden" name="dias_cotizados_val_${rowId}" value="${Math.ceil(data.DIAS_COT).toFixed(0)}">
+            `;
+
+            tbody.appendChild(tr);
+            const undSelect = tr.querySelector(`select[name="und_medida_${rowId}"]`);
+            manejarUnidadMedida(undSelect);
+        }
+
+        function cargarDatosServicio(inputElement) {
+            if (!puedeRealizarAccion('cargar servicio')) return;
+            
+            const row = inputElement.closest('tr');
+            const valorBusqueda = inputElement.value.trim();
+            const servicioCod = valorBusqueda.split(' - ')[0].trim();
+            const rowId = row.id.split('-')[1];
+
+            const servicio = listaServicios.slice(1).find(s => 
+                String(s[0]).trim().toUpperCase() === servicioCod.toUpperCase()
+            );
+
+            const selectores = optimizarSelectoresFila(row, rowId);
+            const descInput = row.querySelector(`input[name="descripcion_${rowId}"]`);
+            const codHidden = row.querySelector(`input[name="Servicio_cod_${rowId}"]`);
+            const undSelect = row.querySelector(`select[name="und_medida_${rowId}"]`);
+            const hMinSelect = row.querySelector(`select[name="und_horas_minimas_${rowId}"]`);
+            const hSegunSelect = row.querySelector(`select[name="hora_segun_${rowId}"]`);
+
+            if (servicio) {
+                codHidden.value = servicio[0];
+                descInput.value = servicio[1];
+                selectores.precio.value = parseFloat(servicio[2] || 0).toFixed(2);
+                selectores.hMinNum.value = servicio[6] || 0;
+                selectores.movilizacion.value = parseFloat(servicio[7] || 0).toFixed(2);
+
+                undSelect.innerHTML = generarOpcionesSelect(listaUndMedida, servicio[5] || '');
+                hMinSelect.innerHTML = generarOpcionesSelect(listaHorasMinimas, servicio[3] || '');
+                hSegunSelect.innerHTML = generarOpcionesSelect(listaHorasSegun, servicio[4] || '');
+
+                manejarUnidadMedida(undSelect);
+                calcularTodo(selectores.cantidad);
+            } else {
+                alert("Servicio no encontrado. Por favor, ingrese un código válido de la lista.");
+                codHidden.value = '';
+                descInput.value = '';
+                selectores.precio.value = '0.00';
+                selectores.hMinNum.value = '0';
+                selectores.movilizacion.value = '0.00';
+                
+                undSelect.innerHTML = generarOpcionesSelect(listaUndMedida, 'HORAS');
+                hMinSelect.innerHTML = generarOpcionesSelect(listaHorasMinimas);
+                hSegunSelect.innerHTML = generarOpcionesSelect(listaHorasSegun);
+                
+                manejarUnidadMedida(undSelect);
+                calcularTodo(selectores.cantidad);
+            }
+        }
+
+        function manejarUnidadMedida(selectElement) {
+            const row = selectElement.closest('tr');
+            const rowId = row.id.split('-')[1];
+            const undMedida = selectElement.value.toUpperCase().trim();
+            const selectores = optimizarSelectoresFila(row, rowId);
+            const necesitaTiempo = undMedida === 'HORAS' || undMedida === 'DÍAS';
+
+            if (undMedida === 'SERVICIO') {
+                selectores.cantidad.value = 1;
+                selectores.cantidad.setAttribute('readonly', true);
+            } else {
+                selectores.cantidad.removeAttribute('readonly');
+            }
+
+            if (necesitaTiempo) {
+                selectores.undHMinSelect.removeAttribute('disabled');
+                selectores.hMinNum.removeAttribute('disabled');
+            } else {
+                selectores.undHMinSelect.setAttribute('disabled', true);
+                selectores.hMinNum.setAttribute('disabled', true);
+                selectores.diasDisplay.textContent = '0';
+                selectores.diasHidden.value = '0';
+                selectores.hMinNum.value = '0';
+                if(selectores.undHMinSelect.options.length > 0) {
+                    selectores.undHMinSelect.value = selectores.undHMinSelect.options[0].value;
+                } 
+            }
+            calcularTodo(selectElement); 
+        }
+
+        function calcularTodo(inputOrSelectElement) {
+            const row = inputOrSelectElement.closest('tr');
+            const rowId = row.id.split('-')[1];
+            const selectores = optimizarSelectoresFila(row, rowId);
+            
+            const cantidad = parseFloat(selectores.cantidad.value) || 0;
+            const undMedida = selectores.undMedida.value.toUpperCase().trim();
+            const hMinNum = parseFloat(selectores.hMinNum.value) || 0;
+            const precio = parseFloat(selectores.precio.value) || 0;
+            const movilizacion = parseFloat(selectores.movilizacion.value) || 0;
+
+            let diasCotizados = 0;
+            const necesitaTiempo = undMedida === 'HORAS' || undMedida === 'DÍAS';
+            const hMinUnd = (necesitaTiempo && selectores.undHMinSelect && !selectores.undHMinSelect.disabled) ? 
+                selectores.undHMinSelect.value.toUpperCase().trim() : ""; 
+
+            if (necesitaTiempo) {
+                if (undMedida === 'DÍAS') {
+                    diasCotizados = cantidad;
+                } else if (undMedida === 'HORAS') {
+                    let factorDias = 0;
+                    switch (hMinUnd) {
+                        case 'MENSUAL': factorDias = estadoApp.configuracion.VALOR_DIAS_MES; break;
+                        case 'SEMANAL': factorDias = 7; break;
+                        case 'DIARIAS': factorDias = 1; break;
+                    }
+                    if (hMinNum > 0 && factorDias > 0) {
+                        diasCotizados = (cantidad / hMinNum) * factorDias;
+                    } else {
+                        diasCotizados = cantidad / estadoApp.configuracion.VALOR_HORAS_DIA; 
+                    }
+                }
+            } 
+
+            const subtotal = (cantidad * precio) + movilizacion;
+            selectores.diasDisplay.textContent = Math.ceil(diasCotizados).toFixed(0);
+            selectores.diasHidden.value = Math.ceil(diasCotizados).toFixed(0);
+            selectores.subtotalDisplay.textContent = subtotal.toFixed(2);
+            selectores.subtotalHidden.value = subtotal.toFixed(2);
+            calcularTotalGeneral();
+        }
+
+        function calcularTotalGeneral() {
+            let total = 0;
+            document.querySelectorAll('input[name^="subtotal_linea_"]').forEach(input => {
+                total += parseFloat(input.value) || 0;
+            });
+            document.getElementById('totalCotizacion').textContent = total.toFixed(2);
+            document.getElementById('total').value = total.toFixed(2);
+        }
+
+        function eliminarLineaDetalle(id) {
+            if (!puedeRealizarAccion('eliminar línea')) return;
+            const row = document.getElementById(id);
+            if (row) {
+                row.remove();
+                calcularTotalGeneral();
+            }
+        }
+
+        // =============================================================================
+        // FUNCIÓN PRINCIPAL DE GUARDADO
+        // =============================================================================
+        function guardarRegistroCotizacion() {
+            if (!puedeRealizarAccion('guardar cotización')) return;
+            
+            console.log("💾 INICIANDO GUARDADO...");
+            
+            // Validar formulario
+            const errores = validarFormulario();
+            if (errores.length > 0) {
+                console.error("❌ ERRORES DE VALIDACIÓN:", errores);
+                mostrarErroresValidacion(errores);
+                return;
+            }
+            
+            // Verificar que hay líneas válidas
+            const lineas = obtenerLineasDetalleCorregidas();
+            if (lineas.length === 0) {
+                mostrarError("Debe agregar al menos un servicio válido", 'guardar');
+                return;
+            }
+            
+            mostrarLoading(true, "Guardando cotización...");
+            
+            try {
+                const datos = prepararDatosEnvio();
+                
+                console.log("🚀 ENVIANDO DATOS AL SERVIDOR...");
+                console.log("📊 Resumen datos:", {
+                    empresa: datos.Empresa,
+                    cliente: datos.Cliente,
+                    moneda: datos.Moneda,
+                    direccion: datos.Direccion,
+                    contacto: datos.Contacto,
+                    ejecutivo: datos.Ejecutivo,
+                    totalLineas: datos.Lineas.length,
+                    total: datos.Total
+                });
+                
+                google.script.run
+                    .withSuccessHandler(handleExitoGuardado)
+                    .withFailureHandler(handleErrorGuardado)
+                    .guardarCotizacion(datos);
+                    
+            } catch (error) {
+                console.error("💥 ERROR AL PREPARAR DATOS:", error);
+                handleErrorGuardado(error);
+            }
+        }
+
+        function prepararDatosEnvio() {
+            console.log("📦 PREPARANDO DATOS PARA ENVÍO...");
+            
+            // Obtener datos del formulario principal
+            const datos = {
+                fechaRegistro: document.getElementById('fechaRegistro').value,
+                Empresa: document.getElementById('empresa').value,
+                RUC: document.getElementById('rucCliente').value,
+                Cliente: document.getElementById('clienteNombre').value,
+                Moneda: document.getElementById('moneda').value,
+                Forma_Pago: document.getElementById('formaPago').value,
+                Direccion: document.getElementById('direccion').value,
+                Turno: document.getElementById('turno').value,
+                Ejecutivo: document.getElementById('ejecutivo').value,
+                Contacto: document.getElementById('contacto').value,
+                Estado: estadoApp.esEdicion ? 'EDITADO' : 'COTIZACION'
+            };
+
+            if (estadoApp.esEdicion) {
+                datos.numPedido = estadoApp.numPedidoEdicion;
+            }
+
+            datos.Lineas = obtenerLineasDetalleCorregidas();
+            datos.Total = document.getElementById('total').value || '0.00';
+            
+            console.log("📤 DATOS A ENVIAR:", datos);
+            return datos;
+        }
+
+        function obtenerLineasDetalleCorregidas() {
+            const lineas = [];
+            const filasDetalle = document.querySelectorAll('#cuerpoDetalle tr');
+            
+            console.log("🔍 PROCESANDO " + filasDetalle.length + " LÍNEAS...");
+            
+            filasDetalle.forEach((row, index) => {
+                const rowId = row.id.split('-')[1];
+                
+                // Obtener elementos
+                const codHidden = row.querySelector(`input[name="Servicio_cod_${rowId}"]`);
+                const descInput = row.querySelector(`input[name="descripcion_${rowId}"]`);
+                const cantidadInput = row.querySelector(`input[name="cantidad_${rowId}"]`);
+                const undMedidaSelect = row.querySelector(`select[name="und_medida_${rowId}"]`);
+                const precioInput = row.querySelector(`input[name="precio_unitario_${rowId}"]`);
+                const movilizacionInput = row.querySelector(`input[name="movilizacion_${rowId}"]`);
+                
+                // Validar elementos existentes
+                if (!codHidden || !cantidadInput || !precioInput) {
+                    console.warn(`⚠️ Línea ${index + 1} - Elementos no encontrados`);
+                    return;
+                }
+                
+                const cod = codHidden.value.trim();
+                const cantidad = parseFloat(cantidadInput.value);
+                const precio = parseFloat(precioInput.value);
+                
+                if (!cod || isNaN(cantidad) || cantidad <= 0) {
+                    console.warn(`⚠️ Línea ${index + 1} omitida - Datos inválidos`);
+                    return;
+                }
+                
+                const linea = {
+                    cod: cod,
+                    descripcion: descInput ? descInput.value.trim() : '',
+                    cantidad: cantidad,
+                    und_medida: undMedidaSelect ? undMedidaSelect.value : 'HORAS',
+                    precio: isNaN(precio) ? 0 : precio,
+                    movilizacion: movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0,
+                    und_horas_minimas: row.querySelector(`select[name="und_horas_minimas_${rowId}"]`)?.value || '',
+                    horas_minimas_num: row.querySelector(`input[name="horas_minimas_num_${rowId}"]`) ? parseFloat(row.querySelector(`input[name="horas_minimas_num_${rowId}"]`).value) || 0 : 0,
+                    hora_segun: row.querySelector(`select[name="hora_segun_${rowId}"]`)?.value || '',
+                    dias_cotizados: row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`) ? parseFloat(row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`).value) || 0 : 0,
+                    subtotal: (cantidad * (isNaN(precio) ? 0 : precio)) + (movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0)
+                };
+                
+                console.log(`✅ Línea ${index + 1} procesada:`, linea);
+                lineas.push(linea);
+            });
+            
+            console.log("📋 TOTAL LÍNEAS VÁLIDAS: " + lineas.length);
+            return lineas;
+        }
+
+        function handleExitoGuardado(respuesta) {
+            mostrarLoading(false);
+            mostrarExito(respuesta);
+        }
+
+        function handleErrorGuardado(error) {
+            mostrarLoading(false);
+            mostrarError(error, 'guardar cotización');
+        }
+
+        // =============================================================================
+        // FUNCIONES DE EDICIÓN - CORREGIDAS
+        // =============================================================================
+        function cargarPedidoParaEdicion(numPedido) {
+            console.log("🔄 INICIANDO CARGA DE EDICIÓN para:", numPedido);
+            
+            mostrarLoading(true, `Cargando pedido ${numPedido}...`);
+            
+            google.script.run
+                .withSuccessHandler(function(datosJSON) {
+                    console.log("✅ RESPUESTA DEL SERVIDOR RECIBIDA");
+                    
+                    try {
+                        // Parsear la respuesta
+                        const datos = typeof datosJSON === 'string' ? JSON.parse(datosJSON) : datosJSON;
+                        console.log("📦 Datos parseados:", datos);
+                        
+                        mostrarLoading(false);
+                        
+                        if (datos && datos.success !== false) {
+                            console.log("🚀 Datos VÁLIDOS - Procediendo a precargar formulario");
+                            precargarFormulario(datos);
+                        } else {
+                            const mensajeError = datos?.message || "No se pudieron cargar los datos del pedido";
+                            console.error("❌ ERROR EN DATOS:", mensajeError);
+                            mostrarError(mensajeError, 'cargar pedido');
+                        }
+                    } catch (parseError) {
+                        console.error("❌ ERROR PARSEANDO JSON:", parseError);
+                        mostrarError("Error procesando los datos del servidor", 'parsear datos');
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    console.error("❌ ERROR DE CONEXIÓN:", error);
+                    mostrarLoading(false);
+                    mostrarError(error, 'conexión al cargar pedido');
+                })
+                .obtenerPedidoParaEdicion(numPedido);
+        }
+
+        function precargarFormulario(datos) {
+            console.log("🎨 INICIANDO PRECARGA DE FORMULARIO");
+            console.log("📍 Datos recibidos - Dirección:", datos.Direccion);
+            console.log("📞 Datos recibidos - Contacto:", datos.Contacto);
+            console.log("👨‍💼 Datos recibidos - Ejecutivo:", datos.Ejecutivo);
+            console.log("🏢 Datos recibidos - Empresa:", datos.Empresa);
+            console.log("👤 Datos recibidos - Cliente:", datos.Cliente);
+            console.log("💰 Datos recibidos - Moneda:", datos.Moneda);
+            
+            // Pequeño delay para asegurar que el DOM esté listo
+            setTimeout(() => {
+                try {
+                    // 1. Rellenar campos generales
+                    console.log("📝 Llenando campos generales...");
+                    
+                    // Campos obligatorios con validación extra
+                    const campos = {
+                        'fechaRegistro': formatDateForInput(datos.fechaRegistro) || '',
+                        'empresa': datos.Empresa || '',
+                        'rucCliente': datos.RUC || '',
+                        'clienteNombre': datos.Cliente || '',
+                        'formaPago': datos.Forma_Pago || '',
+                        'direccion': datos.Direccion || '', // ✅ CORREGIDO: Dirección
+                        'ejecutivo': datos.Ejecutivo || '',
+                        'contacto': datos.Contacto || '',   // ✅ CORREGIDO: Contacto
+                        'moneda': datos.Moneda || 'Soles'
+                    };
+                    
+                    // Aplicar valores a los campos
+                    Object.keys(campos).forEach(campoId => {
+                        const elemento = document.getElementById(campoId);
+                        if (elemento) {
+                            elemento.value = campos[campoId];
+                            console.log(`✅ Campo ${campoId}: "${campos[campoId]}"`);
+                        } else {
+                            console.warn(`⚠️ Campo no encontrado: ${campoId}`);
+                        }
+                    });
+                    
+                    // ✅ Cargar contactos si hay RUC
+                    if (datos.RUC) {
+                        console.log("📞 Cargando contactos para RUC:", datos.RUC);
+                        // Pequeño delay para asegurar que el campo RUC esté lleno
+                        setTimeout(() => {
+                            cargarContactosPorRUC(datos.RUC);
+                            // Seleccionar contacto específico después de cargar
+                            setTimeout(() => {
+                                if (datos.Contacto) {
+                                    seleccionarContactoEspecifico(datos.Contacto);
+                                }
+                            }, 1000);
+                        }, 500);
+                    }
+                    
+                    // ✅ CORRECCIÓN CRÍTICA: Manejar el SELECT de TURNO especial
+                    const turnoSelect = document.getElementById('turno');
+                    if (turnoSelect && datos.Turno) {
+                        // Mapeo de conversiones de mayúsculas a formato oración
+                        const mapeoTurnos = {
+                            'DIURNO': 'Diurno',
+                            'NOCTURNO': 'Nocturno', 
+                            'DOBLE TURNO': 'Doble Turno',
+                            'DOBLETURNO': 'Doble Turno',
+                            'DOBLE': 'Doble Turno',
+                            'DIURNA': 'Diurno',
+                            'NOCTURNA': 'Nocturno'
+                        };
+                        
+                        const turnoRecibido = String(datos.Turno).toUpperCase().trim();
+                        const turnoNormalizado = mapeoTurnos[turnoRecibido] || 
+                            (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
+                        
+                        console.log(`🔄 Normalizando turno: "${datos.Turno}" -> "${turnoNormalizado}"`);
+                        
+                        // Buscar coincidencia exacta primero
+                        let opcionEncontrada = Array.from(turnoSelect.options).find(opt => 
+                            opt.value.toLowerCase() === turnoNormalizado.toLowerCase()
+                        );
+                        
+                        // Si no encuentra, buscar coincidencia parcial
+                        if (!opcionEncontrada) {
+                            opcionEncontrada = Array.from(turnoSelect.options).find(opt => 
+                                opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) ||
+                                turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase())
+                            );
+                        }
+                        
+                        if (opcionEncontrada) {
+                            turnoSelect.value = opcionEncontrada.value;
+                            console.log(`✅ Turno seleccionado: "${opcionEncontrada.value}"`);
+                        } else {
+                            console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`);
+                            
+                            // Seleccionar el primero por defecto
+                            if (turnoSelect.options.length > 0) {
+                                turnoSelect.selectedIndex = 0;
+                                console.log(`🔄 Turno por defecto seleccionado: "${turnoSelect.value}"`);
+                            }
+                        }
+                    }
+                    
+                    // Moneda - manejar conversión especial
+                    let monedaValue = datos.Moneda || 'Soles';
+                    if (monedaValue === 'SOL') monedaValue = 'Soles';
+                    if (monedaValue === 'USD') monedaValue = 'Dolares';
+                    const monedaSelect = document.getElementById('moneda');
+                    if (monedaSelect) {
+                        monedaSelect.value = monedaValue;
+                        console.log(`✅ Moneda: "${monedaValue}"`);
+                    }
+                    
+                    // ✅ Manejar el SELECT de EJECUTIVO
+                    const ejecutivoSelect = document.getElementById('ejecutivo');
+                    if (ejecutivoSelect && datos.Ejecutivo) {
+                        const ejecutivoNormalizado = String(datos.Ejecutivo).toUpperCase().trim();
+                        console.log(`🔄 Buscando ejecutivo: "${ejecutivoNormalizado}"`);
+                        
+                        // Buscar coincidencia exacta
+                        const opcionEjecutivo = Array.from(ejecutivoSelect.options).find(opt => 
+                            opt.value.toUpperCase() === ejecutivoNormalizado
+                        );
+                        
+                        if (opcionEjecutivo) {
+                            ejecutivoSelect.value = opcionEjecutivo.value;
+                            console.log(`✅ Ejecutivo seleccionado: "${opcionEjecutivo.value}"`);
+                        } else {
+                            console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`);
+                            
+                            // Seleccionar el primero por defecto
+                            if (ejecutivoSelect.options.length > 0) {
+                                ejecutivoSelect.selectedIndex = 0;
+                                console.log(`🔄 Ejecutivo por defecto seleccionado: "${ejecutivoSelect.value}"`);
+                            }
+                        }
+                    }
+                    
+                    console.log("✅✅✅ TODOS los campos generales llenados");
+
+                    // 2. Limpiar tabla y resetear contador
+                    const tbody = document.getElementById('cuerpoDetalle');
+                    if (tbody) {
+                        tbody.innerHTML = '';
+                        estadoApp.lineaCounter = 0;
+                        console.log("✅ Tabla limpiada");
+                    }
+
+                    // 3. Cargar líneas de servicios
+                    const servicios = datos.Lineas || [];
+                    console.log("📦 Cargando", servicios.length, "líneas de servicios");
+                    
+                    if (servicios.length > 0) {
+                        servicios.forEach((servicio, index) => {
+                            const lineaData = {
+                                COD: servicio.cod || '',
+                                DESC: servicio.descripcion || '',
+                                UND: servicio.und_medida || 'HORAS',
+                                CANTIDAD: servicio.cantidad || 1,
+                                UND_H_MIN: servicio.und_horas_minimas || '',
+                                DIAS_COT: servicio.dias_cotizados || 0,
+                                H_MIN_NUM: servicio.horas_minimas_num || 0,
+                                H_SEGUN: servicio.hora_segun || '',
+                                MOV: servicio.movilizacion || 0,
+                                PRECIO: servicio.precio || 0,
+                                SUB: servicio.subtotal || 0
+                            };
+                            agregarLineaDetalle(lineaData);
+                            console.log(`✅ Línea ${index + 1} agregada - ${lineaData.COD}: ${lineaData.DESC}`);
+                        });
+                    } else {
+                        console.warn("⚠️ No hay líneas de servicio para cargar");
+                        agregarLineaDetalle();
+                    }
+                    
+                    // 4. Calcular total y finalizar
+                    setTimeout(() => {
+                        calcularTotalGeneral();
+                        console.log("🎉🎉🎉 PRECARGA COMPLETADA EXITOSAMENTE 🎉🎉🎉");
+                        
+                        // Verificación final ESPECÍFICA
+                        console.log("🔍 VERIFICACIÓN FINAL ESPECÍFICA:");
+                        console.log("📍 Dirección:", document.getElementById('direccion')?.value);
+                        console.log("📞 Contacto:", document.getElementById('contacto')?.value);
+                        console.log("👨‍💼 Ejecutivo:", document.getElementById('ejecutivo')?.value);
+                        console.log("🕐 Turno ACTUAL:", document.getElementById('turno')?.value);
+                        console.log("🏢 Empresa ACTUAL:", document.getElementById('empresa')?.value);
+                        console.log("👤 Cliente ACTUAL:", document.getElementById('clienteNombre')?.value);
+                        console.log("💰 Moneda ACTUAL:", document.getElementById('moneda')?.value);
+                        console.log("💳 Forma Pago ACTUAL:", document.getElementById('formaPago')?.value);
+                        
+                        // Verificar líneas cargadas
+                        const lineasCargadas = document.querySelectorAll('#cuerpoDetalle tr');
+                        console.log("📋 Líneas en tabla:", lineasCargadas.length);
+                        
+                    }, 1000);
+                    
+                } catch (error) {
+                    console.error("💥 ERROR en precargarFormulario:", error);
+                    console.error("Stack trace:", error.stack);
+                    mostrarError(error, 'precargar formulario');
+                }
+            }, 200);
+        }
+
+        function formatDateForInput(dateString) {
+            if (!dateString) return '';
+            try {
+                const date = new Date(dateString);
+                return date.toISOString().split('T')[0];
+            } catch (e) {
+                console.error("Error formateando fecha:", e);
+                return '';
+            }
+        }
+
+        // =============================================================================
+        // FUNCIONES DE DIAGNÓSTICO
+        // =============================================================================
+        function debugCompleto() {
+            console.log("=== 🐛 DEBUG COMPLETO ===");
+            console.log("📊 Estado App:", estadoApp);
+            console.log("👥 Clientes cargados:", listaClientes.length);
+            console.log("🛠️ Servicios cargados:", listaServicios.length);
+            console.log("✏️ Modo edición:", estadoApp.esEdicion);
+            console.log("🔢 Pedido edición:", estadoApp.numPedidoEdicion);
+            console.log("=== 🐛 FIN DEBUG ===");
+        }
+
+        // Ejecutar debug después de la carga
+        setTimeout(debugCompleto, 2000);
+        
+        // Ejecutar verificación después de la carga completa
+        setTimeout(verificarDatosCargados, 3000);
+        
+        /**
+ * Función para abrir modal de cotización
+ */
+function abrirModalCotizacion(ruc, nombreCliente) {
+  // Aquí puedes obtener los contactos y direcciones para seleccionar
+  const contacto = prompt("Ingrese el nombre del contacto:", "");
+  const contactoInfo = prompt("Ingrese email o teléfono del contacto:", "");
+  const lugar = prompt("Lugar (ALPAMAYO/GYM/SAN JOSE):", "ALPAMAYO");
+  const turno = prompt("Turno:", "MAÑANA");
+  const duracion = prompt("Duración:", "1 MES");
+  
+  if (contacto && contactoInfo && lugar) {
+    const datosBase = {
+      ruc: ruc,
+      nombreCliente: nombreCliente,
+      contacto: contacto,
+      contactoInfo: contactoInfo,
+      lugar: lugar.toUpperCase(),
+      turno: turno,
+      duracion: duracion,
+      items: [] // Aquí podrías agregar un formulario para los items
+    };
+    
+    // Guardar datos temporalmente y abrir editor de items
+    sessionStorage.setItem('datosCotizacionTemp', JSON.stringify(datosBase));
+    abrirEditorItems();
+  }
+}
+
+/**
+ * Función para generar PDF final
+ */
+function generarPDFFinal(items) {
+  const datosTemp = sessionStorage.getItem('datosCotizacionTemp');
+  if (!datosTemp) {
+    alert('No hay datos de cotización guardados');
+    return;
+  }
+  
+  const datosCotizacion = JSON.parse(datosTemp);
+  datosCotizacion.items = items;
+  
+  // Mostrar loading
+  alert('Generando PDF...');
+  
+  google.script.run
+    .withSuccessHandler(function(resultado) {
+      if (resultado.success) {
+        // Abrir el PDF en nueva pestaña
+        window.open(resultado.pdfUrl, '_blank');
+        alert('PDF generado exitosamente!');
+      } else {
+        alert('Error al generar PDF: ' + resultado.error);
+      }
+    })
+    .withFailureHandler(function(error) {
+      alert('Error: ' + error.message);
+    })
+    .generarPDFCotizacion(datosCotizacion);
+}
+
+/**
+ * Ejemplo de cómo agregar desde tu tabla de clientes
+ */
+// Modifica el botón en tu tabla para incluir la opción de cotización:
+function seleccionarCliente(ruc, nombre) {
+  RUC_ACTUAL = ruc;
+  NOMBRE_ACTUAL = nombre;
+  
+  // Podrías agregar un botón adicional o modificar el existente
+  const accion = confirm(`Cliente: ${nombre}\nRUC: ${ruc}\n\n¿Qué deseas hacer?\nOK - Ver Detalles\nCancelar - Generar Cotización`);
+  
+  if (accion) {
+    // Código existente para ver detalles
+    document.getElementById("tituloDetalleCliente").textContent = `Gestión de Cliente: ${nombre} (RUC: ${ruc})`;
+    document.getElementById("clienteRUCDisplay").textContent = ruc;
+    document.getElementById("clienteNombreInput").value = nombre;
+    
+    mostrarModal('modalCliente');
+    cargarDetallesCliente();
+  } else {
+    // Nueva funcionalidad: generar cotización
+    abrirModalCotizacion(ruc, nombre);
+  }
+}
+    </script>
+</body>
+</html>
