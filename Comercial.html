@@ -19,8 +19,7 @@
             <button onclick="window.top.location.href = '<?!= getScriptUrl() ?>?page=Modulos'" class="boton-regresar">
                 Volver a Módulos
             </button>
-            <!-- Agrega este botón en la sección de botones de tu Comercial.html -->
-<button type="button" onclick="generarPDF()" class="btn-guardar-top" id="btnGenerarPDF" style="background-color: #dc3545;">
+            <button type="button" onclick="generarPDF()" class="btn-guardar-top" id="btnGenerarPDF" style="background-color: #dc3545;">
     📄 Generar PDF
 </button>
         </div>
@@ -79,7 +78,6 @@
                         </select>
                     </div>
         
-                    <!-- ✅ CAMPO: CONTACTO -->
                     <div>
                        <h2>CONTACTO</h2>
                        <select id="contacto" name="Contacto" required>
@@ -150,7 +148,6 @@
         </div>
     </div>
 
-    <!-- Modal de Loading -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loading-spinner">
             <p>Guardando cotización...</p>
@@ -158,7 +155,6 @@
         </div>
     </div>
 
-    <!-- Modal de Errores -->
     <div id="errorModal" class="error-modal">
         <div class="error-content">
             <span class="close-button" onclick="cerrarErrorModal()">&times;</span>
@@ -168,9 +164,8 @@
         </div>
     </div>
 
-    <script>
-
-      // Función para generar PDF
+<script>
+// Función para generar PDF
 function generarPDF() {
     const numPedido = estadoApp.esEdicion ? estadoApp.numPedidoEdicion : 
                      document.querySelector('input[name="numPedido"]')?.value;
@@ -397,12 +392,12 @@ document.addEventListener("DOMContentLoaded", function() {
     // ✅ DETECCIÓN MEJORADA del pedido a editar
     let editId = null;
     
-    // 1. Buscar en URL parameters
+    // 1. Buscar en URL parameters (CORRECCIÓN: Buscar 'editar')
     const urlParams = new URLSearchParams(window.location.search);
-    editId = urlParams.get('editId');
-    console.log("🔍 EditId desde URL:", editId);
+    editId = urlParams.get('editar'); 
+    console.log("🔍 EditId desde URL (editar):", editId);
     
-    // 2. Buscar en sessionStorage
+    // 2. Buscar en sessionStorage (Fallback, aunque la navegación debería usar la URL)
     if (!editId) {
         editId = sessionStorage.getItem('pedidoAEditar');
         console.log("🔍 EditId desde sessionStorage:", editId);
@@ -411,7 +406,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // 3. Limpiar sessionStorage después de leer
     if (editId) {
         sessionStorage.removeItem('pedidoAEditar');
-        console.log("🧹 SessionStorage limpiado");
+        console.log("🧹 SessionStorage limpiado (si se usó)");
     }
 
     console.log("🎯 ID final para edición:", editId);
@@ -1152,16 +1147,11 @@ document.addEventListener("DOMContentLoaded", function() {
             mostrarLoading(true, `Cargando pedido ${numPedido}...`);
             
             google.script.run
-                .withSuccessHandler(function(datosJSON) {
+                .withSuccessHandler(function(datos) {
                     console.log("✅ RESPUESTA DEL SERVIDOR RECIBIDA");
                     
                     try {
-                        // Parsear la respuesta
-                        const datos = typeof datosJSON === 'string' ? JSON.parse(datosJSON) : datosJSON;
-                        console.log("📦 Datos parseados:", datos);
-                        
-                        mostrarLoading(false);
-                        
+                        // El backend ya debería devolver un objeto JS si es exitoso.
                         if (datos && datos.success !== false) {
                             console.log("🚀 Datos VÁLIDOS - Procediendo a precargar formulario");
                             precargarFormulario(datos);
@@ -1171,9 +1161,10 @@ document.addEventListener("DOMContentLoaded", function() {
                             mostrarError(mensajeError, 'cargar pedido');
                         }
                     } catch (parseError) {
-                        console.error("❌ ERROR PARSEANDO JSON:", parseError);
-                        mostrarError("Error procesando los datos del servidor", 'parsear datos');
+                        console.error("❌ ERROR PROCESANDO RESPUESTA:", parseError);
+                        mostrarError("Error procesando los datos del servidor", 'procesar datos');
                     }
+                    mostrarLoading(false);
                 })
                 .withFailureHandler(function(error) {
                     console.error("❌ ERROR DE CONEXIÓN:", error);
@@ -1205,9 +1196,9 @@ document.addEventListener("DOMContentLoaded", function() {
                         'rucCliente': datos.RUC || '',
                         'clienteNombre': datos.Cliente || '',
                         'formaPago': datos.Forma_Pago || '',
-                        'direccion': datos.Direccion || '', // ✅ CORREGIDO: Dirección
+                        'direccion': datos.Direccion || '', 
                         'ejecutivo': datos.Ejecutivo || '',
-                        'contacto': datos.Contacto || '',   // ✅ CORREGIDO: Contacto
+                        'contacto': datos.Contacto || '',   
                         'moneda': datos.Moneda || 'Soles'
                     };
                     
@@ -1242,32 +1233,20 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (turnoSelect && datos.Turno) {
                         // Mapeo de conversiones de mayúsculas a formato oración
                         const mapeoTurnos = {
-                            'DIURNO': 'Diurno',
-                            'NOCTURNO': 'Nocturno', 
-                            'DOBLE TURNO': 'Doble Turno',
-                            'DOBLETURNO': 'Doble Turno',
-                            'DOBLE': 'Doble Turno',
-                            'DIURNA': 'Diurno',
-                            'NOCTURNA': 'Nocturno'
+                            'DIURNO': 'Diurno', 'NOCTURNO': 'Nocturno', 'DOBLE TURNO': 'Doble Turno', 'DOBLETURNO': 'Doble Turno', 'DOBLE': 'Doble Turno', 'DIURNA': 'Diurno', 'NOCTURNA': 'Nocturno'
                         };
                         
                         const turnoRecibido = String(datos.Turno).toUpperCase().trim();
-                        const turnoNormalizado = mapeoTurnos[turnoRecibido] || 
-                            (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
+                        const turnoNormalizado = mapeoTurnos[turnoRecibido] || (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
                         
                         console.log(`🔄 Normalizando turno: "${datos.Turno}" -> "${turnoNormalizado}"`);
                         
-                        // Buscar coincidencia exacta primero
-                        let opcionEncontrada = Array.from(turnoSelect.options).find(opt => 
-                            opt.value.toLowerCase() === turnoNormalizado.toLowerCase()
-                        );
+                        // Buscar coincidencia exacta
+                        let opcionEncontrada = Array.from(turnoSelect.options).find(opt => opt.value.toLowerCase() === turnoNormalizado.toLowerCase());
                         
                         // Si no encuentra, buscar coincidencia parcial
                         if (!opcionEncontrada) {
-                            opcionEncontrada = Array.from(turnoSelect.options).find(opt => 
-                                opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) ||
-                                turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase())
-                            );
+                            opcionEncontrada = Array.from(turnoSelect.options).find(opt => opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) || turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase()));
                         }
                         
                         if (opcionEncontrada) {
@@ -1275,12 +1254,6 @@ document.addEventListener("DOMContentLoaded", function() {
                             console.log(`✅ Turno seleccionado: "${opcionEncontrada.value}"`);
                         } else {
                             console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`);
-                            
-                            // Seleccionar el primero por defecto
-                            if (turnoSelect.options.length > 0) {
-                                turnoSelect.selectedIndex = 0;
-                                console.log(`🔄 Turno por defecto seleccionado: "${turnoSelect.value}"`);
-                            }
                         }
                     }
                     
@@ -1300,25 +1273,20 @@ document.addEventListener("DOMContentLoaded", function() {
                         const ejecutivoNormalizado = String(datos.Ejecutivo).toUpperCase().trim();
                         console.log(`🔄 Buscando ejecutivo: "${ejecutivoNormalizado}"`);
                         
-                        // Buscar coincidencia exacta
-                        const opcionEjecutivo = Array.from(ejecutivoSelect.options).find(opt => 
-                            opt.value.toUpperCase() === ejecutivoNormalizado
-                        );
+                        const opcionEjecutivo = Array.from(ejecutivoSelect.options).find(opt => opt.value.toUpperCase() === ejecutivoNormalizado);
                         
                         if (opcionEjecutivo) {
                             ejecutivoSelect.value = opcionEjecutivo.value;
                             console.log(`✅ Ejecutivo seleccionado: "${opcionEjecutivo.value}"`);
                         } else {
                             console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`);
-                            
-                            // Seleccionar el primero por defecto
-                            if (ejecutivoSelect.options.length > 0) {
-                                ejecutivoSelect.selectedIndex = 0;
-                                console.log(`🔄 Ejecutivo por defecto seleccionado: "${ejecutivoSelect.value}"`);
-                            }
                         }
                     }
                     
+                    // Deshabilitar RUC en edición
+                    document.getElementById('rucCliente').readOnly = true;
+                    document.getElementById('rucCliente').style.backgroundColor = '#f5f5f5';
+
                     console.log("✅✅✅ TODOS los campos generales llenados");
 
                     // 2. Limpiar tabla y resetear contador
@@ -1336,17 +1304,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (servicios.length > 0) {
                         servicios.forEach((servicio, index) => {
                             const lineaData = {
-                                COD: servicio.cod || '',
-                                DESC: servicio.descripcion || '',
-                                UND: servicio.und_medida || 'HORAS',
-                                CANTIDAD: servicio.cantidad || 1,
-                                UND_H_MIN: servicio.und_horas_minimas || '',
-                                DIAS_COT: servicio.dias_cotizados || 0,
-                                H_MIN_NUM: servicio.horas_minimas_num || 0,
-                                H_SEGUN: servicio.hora_segun || '',
-                                MOV: servicio.movilizacion || 0,
-                                PRECIO: servicio.precio || 0,
-                                SUB: servicio.subtotal || 0
+                                COD: servicio.cod || '', DESC: servicio.descripcion || '', UND: servicio.und_medida || 'HORAS', CANTIDAD: servicio.cantidad || 1, UND_H_MIN: servicio.und_horas_minimas || '', DIAS_COT: servicio.dias_cotizados || 0, H_MIN_NUM: servicio.horas_minimas_num || 0, H_SEGUN: servicio.hora_segun || '', MOV: servicio.movilizacion || 0, PRECIO: servicio.precio || 0, SUB: servicio.subtotal || 0
                             };
                             agregarLineaDetalle(lineaData);
                             console.log(`✅ Línea ${index + 1} agregada - ${lineaData.COD}: ${lineaData.DESC}`);
@@ -1360,22 +1318,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     setTimeout(() => {
                         calcularTotalGeneral();
                         console.log("🎉🎉🎉 PRECARGA COMPLETADA EXITOSAMENTE 🎉🎉🎉");
-                        
-                        // Verificación final ESPECÍFICA
-                        console.log("🔍 VERIFICACIÓN FINAL ESPECÍFICA:");
-                        console.log("📍 Dirección:", document.getElementById('direccion')?.value);
-                        console.log("📞 Contacto:", document.getElementById('contacto')?.value);
-                        console.log("👨‍💼 Ejecutivo:", document.getElementById('ejecutivo')?.value);
-                        console.log("🕐 Turno ACTUAL:", document.getElementById('turno')?.value);
-                        console.log("🏢 Empresa ACTUAL:", document.getElementById('empresa')?.value);
-                        console.log("👤 Cliente ACTUAL:", document.getElementById('clienteNombre')?.value);
-                        console.log("💰 Moneda ACTUAL:", document.getElementById('moneda')?.value);
-                        console.log("💳 Forma Pago ACTUAL:", document.getElementById('formaPago')?.value);
-                        
-                        // Verificar líneas cargadas
-                        const lineasCargadas = document.querySelectorAll('#cuerpoDetalle tr');
-                        console.log("📋 Líneas en tabla:", lineasCargadas.length);
-                        
+                        // ... (Verificación final) ...
                     }, 1000);
                     
                 } catch (error) {
