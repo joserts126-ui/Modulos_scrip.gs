@@ -89,23 +89,28 @@
             });
         });
 
-        function cargarDatosOT() {
-            mostrarLoading(true, "Cargando órdenes de trabajo...");
-            
-            google.script.run
-                .withSuccessHandler(function(datos) {
-                    mostrarLoading(false);
-                    datosOT = datos;
-                    renderizarTablaOT(datos);
-                    actualizarContador();
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    console.error("Error cargando OT:", error);
-                    mostrarError("Error al cargar las órdenes de trabajo: " + error.message);
-                })
-                .getListaOT();
-        }
+function cargarDatosOT() {
+    mostrarLoading(true, "Cargando órdenes de trabajo...");
+    
+    google.script.run
+        .withSuccessHandler(function(datos) {
+            mostrarLoading(false);
+            // ⚠️ La función getListaOT devuelve todos los datos (incluyendo encabezados)
+            if (datos && datos.success === false) {
+                 mostrarError("Error al cargar OT: " + datos.message);
+                 return;
+            }
+            datosOT = datos; // Asume que datos es el array 2D de la hoja OT
+            renderizarTablaOT(datos);
+            actualizarContador();
+        })
+        .withFailureHandler(function(error) {
+            mostrarLoading(false);
+            console.error("Error cargando OT:", error);
+            mostrarError("Error al cargar las órdenes de trabajo: " + error.message);
+        })
+        .getListaOT(); // <--- Usa la función robusta
+}
 
         function renderizarTablaOT(datos) {
             const tbody = document.getElementById("cuerpoTablaOT");
