@@ -4,6 +4,173 @@
 // ==================================================================================================
 
 // ====================================================
+// === FUNCIONES DE PROCESAMIENTO AUXILIAR CRÍTICO ===
+// ====================================================
+
+/**
+ * Normaliza el nombre del turno. Necesario para obtenerPedidoParaEdicion.
+ */
+function normalizarTurno(turno) {
+    if (!turno || typeof turno !== 'string') return 'Diurno';
+    const turnoUpper = turno.toUpperCase().trim();
+    if (turnoUpper.includes('DIURNO')) return 'Diurno';
+    if (turnoUpper.includes('NOCTURNO')) return 'Nocturno';
+    if (turnoUpper.includes('DOBLE')) return 'Doble Turno';
+    return 'Diurno';
+}
+
+/**
+ * Procesa el monto rápidamente (necesario para Resumen).
+ */
+function procesarMontoRapido(rawMonto) {
+    if (typeof rawMonto === 'number') return rawMonto;
+    if (!rawMonto) return 0;
+    const strMonto = String(rawMonto);
+    let numero = '';
+    for (let i = 0; i < strMonto.length; i++) {
+        const char = strMonto[i];
+        if ((char >= '0' && char <= '9') || char === '.' || char === '-') {
+            numero += char;
+        }
+    }
+    return parseFloat(numero) || 0;
+}
+
+/**
+ * Formatea la fecha rápidamente (necesario para Resumen).
+ */
+function formatearFechaRapido(rawFecha, timeZone) {
+    if (!rawFecha) return '';
+    if (rawFecha instanceof Date) {
+        return Utilities.formatDate(rawFecha, timeZone, 'dd/MM/yyyy');
+    }
+    try {
+        const dateObj = new Date(rawFecha);
+        if (!isNaN(dateObj)) {
+             return Utilities.formatDate(dateObj, timeZone, 'dd/MM/yyyy');
+        }
+    } catch(e) {
+        return String(rawFecha).substring(0, 10);
+    }
+    return String(rawFecha).substring(0, 10);
+}
+
+/**
+ * Función unificada para obtener datos filtrados (usa crudHoja en _Core.gs)
+ */
+function obtenerDatosFiltrados(sheetName, filtro = {}) {
+    return crudHoja('FILTER', sheetName, null, filtro);
+}
+
+/**
+ * Función optimizada para búsqueda (usa obtenerDatosHoja en _Core.gs)
+ */
+function buscarRegistro(sheetName, criterio, columnaBusqueda = 0) {
+    const allData = obtenerDatosHoja(sheetName);
+    if (allData.length <= 1) return null;
+    
+    const criterioStr = String(criterio).trim();
+    for (let i = 1; i < allData.length; i++) {
+        const valor = String(allData[i][columnaBusqueda] || '').trim();
+        if (valor === criterioStr) {
+            return {
+                datos: allData[i],
+                indiceFila: i + 1,
+                encabezados: allData[0]
+            };
+        }
+    }
+    return null;
+}
+
+// ====================================================
+// === FUNCIONES DE PROCESAMIENTO AUXILIAR CRÍTICO ===
+// === (Aseguran que la edición no se caiga) ===
+// ====================================================
+
+/**
+ * Normaliza el nombre del turno. Necesario para obtenerPedidoParaEdicion.
+ */
+function normalizarTurno(turno) {
+    if (!turno || typeof turno !== 'string') return 'Diurno';
+    const turnoUpper = turno.toUpperCase().trim();
+    if (turnoUpper.includes('DIURNO')) return 'Diurno';
+    if (turnoUpper.includes('NOCTURNO')) return 'Nocturno';
+    if (turnoUpper.includes('DOBLE')) return 'Doble Turno';
+    return 'Diurno';
+}
+
+/**
+ * Procesa el monto rápidamente (necesario para Resumen).
+ */
+function procesarMontoRapido(rawMonto) {
+    if (typeof rawMonto === 'number') return rawMonto;
+    if (!rawMonto) return 0;
+    const strMonto = String(rawMonto);
+    let numero = '';
+    for (let i = 0; i < strMonto.length; i++) {
+        const char = strMonto[i];
+        if ((char >= '0' && char <= '9') || char === '.' || char === '-') {
+            numero += char;
+        }
+    }
+    return parseFloat(numero) || 0;
+}
+
+/**
+ * Formatea la fecha rápidamente (necesario para Resumen).
+ */
+function formatearFechaRapido(rawFecha, timeZone) {
+    if (!rawFecha) return '';
+    if (rawFecha instanceof Date) {
+        return Utilities.formatDate(rawFecha, timeZone, 'dd/MM/yyyy');
+    }
+    try {
+        const dateObj = new Date(rawFecha);
+        if (!isNaN(dateObj)) {
+             return Utilities.formatDate(dateObj, timeZone, 'dd/MM/yyyy');
+        }
+    } catch(e) {
+        return String(rawFecha).substring(0, 10);
+    }
+    return String(rawFecha).substring(0, 10);
+}
+
+// ====================================================
+// === FUNCIONES DE BÚSQUEDA Y FILTRO DE DATOS ===
+// ====================================================
+
+/**
+ * Función unificada para obtener datos filtrados (usa crudHoja en _Core.gs)
+ */
+function obtenerDatosFiltrados(sheetName, filtro = {}) {
+    // Esta función llama a crudHoja('FILTER') definido en _Core.gs
+    return crudHoja('FILTER', sheetName, null, filtro);
+}
+
+/**
+ * Función optimizada para búsqueda (usa obtenerDatosHoja en _Core.gs)
+ */
+function buscarRegistro(sheetName, criterio, columnaBusqueda = 0) {
+    // obtenerDatosHoja se asume definido en _Core.gs
+    const allData = obtenerDatosHoja(sheetName);
+    if (allData.length <= 1) return null;
+    
+    const criterioStr = String(criterio).trim();
+    for (let i = 1; i < allData.length; i++) {
+        const valor = String(allData[i][columnaBusqueda] || '').trim();
+        if (valor === criterioStr) {
+            return {
+                datos: allData[i],
+                indiceFila: i + 1,
+                encabezados: allData[0]
+            };
+        }
+    }
+    return null;
+}
+
+// ====================================================
 // === CÁLCULO DE NEGOCIO (MOVIDO DE FRONTEND) ===
 // ====================================================
 
@@ -278,7 +445,6 @@ function getSafeDateString(value, defaultValue) {
     if (value) {
         try {
             const date = new Date(value);
-            // Verifica que la fecha sea válida (no NaN)
             if (!isNaN(date)) {
                 return date.toISOString();
             }
@@ -286,14 +452,12 @@ function getSafeDateString(value, defaultValue) {
             // Ignorar error de parseo
         }
     }
-    // Devuelve la fecha actual por defecto
     return new Date(defaultValue || new Date()).toISOString();
 }
 
 function obtenerPedidoParaEdicion(numPedido) {
     try {
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES); 
-        // Usamos cache de 15 minutos para la data principal
         const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 15); 
         const pedidoBuscado = String(numPedido).trim().toUpperCase();
         const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0; 
@@ -306,12 +470,11 @@ function obtenerPedidoParaEdicion(numPedido) {
         
         const primeraFila = filasCoincidentes[0];
         
-        // Función auxiliar para obtener valores de la primera fila
+        // Función auxiliar para obtener valores de la primera fila de forma segura
         const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP, colName);
 
         // 2. EXTRACCIÓN DE DATOS GENERALES RESILIENTE
         const datosGenerales = {
-            // FIX: Uso de getSafeDateString para evitar crashes por fechas nulas
             fechaRegistro: getSafeDateString(getGenValue('FECHA COT')),
             
             Empresa: String(getGenValue('EMPRESA') || ''), 
@@ -333,7 +496,6 @@ function obtenerPedidoParaEdicion(numPedido) {
             return {
                 cod: String(getValue('COD') || ''), 
                 descripcion: String(getValue('DESCRIPCION') || ''),
-                // Doble || 0 para garantizar que sea un número, incluso si es null o ""
                 cantidad: parseFloat(getValue('UND. PEDIDO') || 0) || 0, 
                 und_medida: String(getValue('UND') || 'HORAS'),
                 und_horas_minimas: String(getValue('UND. HORAS. MINIMAS') || ''), 
@@ -362,8 +524,7 @@ function obtenerPedidoParaEdicion(numPedido) {
         
     } catch (error) {
         // Registrar el error específico en los logs del servidor
-        Logger.log(`❌ ERROR FATAL al extraer pedido ${numPedido}: ${error.message}`);
-        Logger.log(error.stack);
+        Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}`);
         
         // Devolver un mensaje de error manejado por el frontend
         return manejarError('obtenerPedidoParaEdicion', error);
@@ -930,10 +1091,8 @@ function obtenerOTPorNumero(numeroOT) {
         
         if (!filaOT) throw new Error(`OT ${numeroOT} no encontrada.`);
         
-        // Función auxiliar para obtener valores de forma segura.
         const getValue = (colName) => getFilaValue(filaOT, COL_MAP, colName);
 
-        // Mapeo seguro de datos (Ajusta los nombres de las columnas a tu hoja 'OT')
         const datos = {
             numeroOT: String(getValue('N° OT') || ''),
             fecha: getSafeDateString(getValue('Fecha')),
@@ -950,7 +1109,6 @@ function obtenerOTPorNumero(numeroOT) {
             horometroFinCamion: parseFloat(getValue('Horómetro Fin Camión') || 0) || 0,
             horometroInicioGrua: parseFloat(getValue('Horómetro Inicio Grúa') || 0) || 0,
             horometroFinGrua: parseFloat(getValue('Horómetro Fin Grúa') || 0) || 0,
-            
             tiempoTotal: parseFloat(getValue('Horas Trab.') || 0) || 0,
             horometroTrabajado: parseFloat(getValue('Horómetro Trab.') || 0) || 0,
             usuario: String(getValue('Usuario Registro') || ''),
@@ -960,6 +1118,20 @@ function obtenerOTPorNumero(numeroOT) {
         return { success: true, data: datos }; 
     } catch (e) {
         return manejarError('obtenerOTPorNumero', e);
+    }
+}
+
+/**
+ * Filtra pedidos por cliente y servicio (Lógica de OT para selects)
+ */
+function filtrarPedidosPorClienteYServicio(rucCliente, idServicio) {
+    try {
+        const PEDIDOS_SHEET = HOJA_PEDIDOS_OT; 
+        const filtro = { 'RUC': rucCliente, 'ID Servicio': idServicio };
+        const pedidos = obtenerDatosFiltrados(PEDIDOS_SHEET, filtro);
+        return pedidos.slice(1);
+    } catch (e) {
+        return manejarError('filtrarPedidosPorClienteYServicio', e);
     }
 }
 
@@ -1045,7 +1217,7 @@ function generarPDFCotizacion(cotizacionData) {
     } else if (lugar.includes('SAN JOSE') || lugar.includes('GSJ')) {
         nombrePlantilla = HOJA_PLANTILLA_SANJOSE;
     } else {
-        // ✅ FIX: Usar ALPAMAYO como plantilla GENÉRICA si la ubicación no se reconoce.
+        // ✅ FIX CRÍTICO: Usar ALPAMAYO como plantilla GENÉRICA si la ubicación no se reconoce.
         Logger.log(`⚠️ Ubicación '${cotizacionData.lugar}' no reconocida. Usando plantilla GENÉRICA.`);
         nombrePlantilla = HOJA_PLANTILLA_ALPAMAYO; 
     }
@@ -1264,7 +1436,7 @@ function formatearFechaRapido(rawFecha, timeZone) {
  */
 function getFilaValue(fila, COL_MAP, colName) {
     const index = COL_MAP[colName];
-    // Retorna el valor si el índice existe y está dentro de los límites de la fila
+    // Retorna el valor si el índice existe y no está fuera de los límites de la fila
     return (index !== undefined && index < fila.length) ? fila[index] : null;
 }
 
