@@ -74,10 +74,10 @@
     // FUNCIONES UNIFICADAS Y OPTIMIZADAS
     // =============================================================================
 
-    // Configuración global
+    // Configuración global (El índice ROW_INDEX es la última columna del array de 8 columnas)
     const CONFIG = {
         columnas: {
-            NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, MONTO: 3, MONEDA: 4, ESTADO: 5
+            NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, MONTO: 3, MONEDA: 4, ESTADO: 5, ROW_INDEX: 7 // 8va columna (índice 7)
         }
     };
 
@@ -94,6 +94,7 @@
                 .withFailureHandler(error => {
                     mostrarLoading(false);
                     console.error(`Error en ${funcion}:`, error);
+                    alert(`❌ Error al ejecutar ${funcion}: ${error.message || error}`);
                     reject(error);
                 });
                 
@@ -110,35 +111,6 @@
         window.open(urlCompleta, '_blank');
     }
 
-    // Función unificada para manejo de pedidos
-    function manejarPedido(accion, numPedido = null) {
-        const acciones = {
-            'nuevo': () => navegarA('Comercial'),
-            'editar': () => {
-                if (!numPedido) return alert('No se ha seleccionado ningún pedido');
-                sessionStorage.setItem('pedidoAEditar', numPedido);
-                navegarA('Comercial', { editar: numPedido });
-            },
-            'pdf': async () => {
-                if (!numPedido) return alert('No se ha seleccionado ningún pedido');
-                
-                try {
-                    const resultado = await ejecutarGAS('generarPDFCotizacion', numPedido);
-                    if (resultado.success) {
-                        window.open(resultado.pdfUrl, '_blank');
-                        alert('✅ PDF generado exitosamente');
-                    } else {
-                        alert('❌ Error al generar PDF: ' + resultado.message);
-                    }
-                } catch (error) {
-                    alert('❌ Error al generar PDF: ' + error.message);
-                }
-            }
-        };
-        
-        return acciones[accion] ? acciones[accion]() : console.error('Acción no válida:', accion);
-    }
-
     // =============================================================================
     // FUNCIONES DE INICIALIZACIÓN Y RENDERIZADO
     // =============================================================================
@@ -153,6 +125,7 @@
 
     async function cargarDatosResumen() {
         try {
+            // Esta llamada activa la función getListaCotizacionesResumen en el backend
             const datos = await ejecutarGAS('getListaCotizacionesResumen');
             datosCotizaciones = datos;
             renderizarTablaResumen(datos);
@@ -161,67 +134,67 @@
         }
     }
 
-function renderizarTablaResumen(datos) {
-    const tbody = document.getElementById("cuerpoTablaResumen");
-    tbody.innerHTML = "";
+    function renderizarTablaResumen(datos) {
+        const tbody = document.getElementById("cuerpoTablaResumen");
+        tbody.innerHTML = "";
 
-    if (!datos || datos.length <= 1) {
-        tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
-        return;
+        if (!datos || datos.length <= 1) {
+            tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
+            return;
+        }
+
+        // El índice ROW_INDEX se calcula como la última columna del encabezado
+        const ROW_INDEX_COL = datos[0].length - 1; 
+
+        // Empezar desde la fila 1 (fila 0 son los encabezados)
+        datos.slice(1).forEach((fila) => {
+            const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
+            const fecha = fila[CONFIG.columnas.FECHA];
+            const cliente = fila[CONFIG.columnas.CLIENTE];
+            const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
+            const moneda = fila[CONFIG.columnas.MONEDA];
+            const estado = fila[CONFIG.columnas.ESTADO];
+            
+            // 🔑 Obtener el valor del Row Index desde la última columna
+            const rowIndex = fila[ROW_INDEX_COL]; 
+
+            // Validar si es una fila de datos válida
+            if (!numPedido || typeof rowIndex !== 'number' || rowIndex < 2) return; 
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${numPedido}</td>
+                <td>${fecha}</td>
+                <td>${cliente}</td>
+                <td class="monto-col">${monto.toFixed(2)}</td>
+                <td>${moneda}</td>
+                <td>
+                    <span class="estado-${estado ? estado.replace(/\s+/g, '-') : 'Desconocido'}">
+                        ${estado || 'Desconocido'}
+                    </span>
+                </td>
+                <td>
+                    <button onclick="navegarA('Comercial', { editar: '${numPedido}' })" class="btn-editar">
+                        ✏️ Editar
+                    </button>
+                </td>
+                <td style="text-align: center;">
+                    <button 
+                        onclick="generarPDF(${rowIndex})" 
+                        class="btn-pdf"
+                        data-row="${rowIndex}"
+                    >
+                        📄 PDF
+                    </button>
+                </td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
+
+        console.log("✅ Tabla renderizada con " + (datos.length - 1) + " cotizaciones");
     }
-
-    // 🔑 Paso 1: Determinar el índice de la columna del Row Index.
-    // Es la última columna del array (la que acabamos de agregar)
-    const ROW_INDEX_COL = datos[0].length - 1; 
-
-    // Empezar desde la fila 1 (fila 0 son los encabezados)
-    datos.slice(1).forEach((fila, index) => {
-        const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
-        const fecha = fila[CONFIG.columnas.FECHA];
-        const cliente = fila[CONFIG.columnas.CLIENTE];
-        const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
-        const moneda = fila[CONFIG.columnas.MONEDA];
-        const estado = fila[CONFIG.columnas.ESTADO];
-        
-        // 🔑 Paso 2: Obtener el valor del Row Index
-        const rowIndex = fila[ROW_INDEX_COL]; 
-
-        // Validamos que el índice sea un número válido y mayor a 1 (para evitar el encabezado)
-        if (!numPedido || typeof rowIndex !== 'number' || rowIndex < 2) return; 
-
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${numPedido}</td>
-            <td>${fecha}</td>
-            <td>${cliente}</td>
-            <td class="monto-col">${monto.toFixed(2)}</td>
-            <td>${moneda}</td>
-            <td>
-                <span class="estado-${estado ? estado.replace(/\s+/g, '-') : 'Desconocido'}">
-                    ${estado || 'Desconocido'}
-                </span>
-            </td>
-            <td>
-                <button onclick="manejarPedido('editar', '${numPedido}')" class="btn-editar">
-                    ✏️ Editar
-                </button>
-            </td>
-            <td style="text-align: center;">
-                <button 
-                    onclick="generarPDF(${rowIndex})" 
-                    class="btn-pdf"
-                    data-row="${rowIndex}"
-                >
-                    📄 PDF
-                </button>
-            </td>
-        `;
-        
-        tbody.appendChild(tr);
-    });
-
-    console.log("✅ Tabla renderizada con " + (datos.length - 1) + " cotizaciones");
-}
+    
     function crearFilaVacia(mensaje) {
         return `
             <tr>
@@ -260,23 +233,63 @@ function renderizarTablaResumen(datos) {
     }
 
     // =============================================================================
-    // FUNCIONES DE INTERFAZ
+    // FUNCIONES DE ACCIÓN
     // =============================================================================
-
+    
     function abrirNuevoPedido() {
-        manejarPedido('nuevo');
+        navegarA('Comercial');
     }
 
-    function editarPedidoCorregido(numPedido) {
-        manejarPedido('editar', numPedido);
+    /**
+     * Llama al servidor para generar el PDF del pedido y lo abre.
+     * @param {number} rowIndex El índice de la fila del pedido a procesar (para el detalle completo).
+     */
+    function generarPDF(rowIndex) {
+        if (!confirm(`¿Estás seguro de que deseas generar el PDF para el pedido en la fila ${rowIndex}?`)) {
+            return;
+        }
+        
+        // 1. Mostrar mensaje de carga
+        const btn = document.querySelector(`.btn-pdf[data-row='${rowIndex}']`);
+        if(btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Generando...';
+        } else {
+            alert('Generando PDF...');
+        }
+
+        google.script.run
+            .withSuccessHandler(function(resultado) {
+                if (resultado.success) {
+                    // 2. Abrir el PDF en nueva pestaña
+                    window.open(resultado.pdfUrl, '_blank');
+                    alert('✅ PDF generado exitosamente!');
+                } else {
+                    alert('❌ Error al generar PDF: ' + (resultado.error || resultado.message || 'Error desconocido'));
+                }
+                
+                // 3. Restaurar botón
+                if(btn) {
+                    btn.disabled = false;
+                    btn.textContent = '📄 PDF';
+                }
+            })
+            .withFailureHandler(function(error) {
+                alert('❌ Error al conectar con el servidor: ' + error.message);
+                // 3. Restaurar botón
+                if(btn) {
+                    btn.disabled = false;
+                    btn.textContent = '📄 PDF';
+                }
+            })
+            .generarYDevolverPDF(rowIndex); // Llama a la función de GS
     }
 
     function debugFrontend() {
         console.log("=== 🐛 DEBUG FRONTEND ===");
-        console.log("SessionStorage pedidoAEditar:", sessionStorage.getItem('pedidoAEditar'));
         console.log("URL actual:", window.location.href);
         console.log("Script URL:", '<?!= getScriptUrl() ?>');
-        console.log("Total cotizaciones:", datosCotizaciones.length - 1);
+        console.log("Total cotizaciones cargadas (incl. encabezado):", datosCotizaciones.length);
         console.log("=== FIN DEBUG ===");
         
         alert("Debug ejecutado - Revisa la consola del navegador (F12)");
@@ -291,139 +304,6 @@ function renderizarTablaResumen(datos) {
             texto.textContent = mensaje;
         }
     }
-
-    // En tu archivo HTML (ResumenComercial.html)
-function cargarResumenConLoading() {
-    // Mostrar loading
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('tablaResumen').style.display = 'none';
-    
-    // Timeout de seguridad
-    const timeoutId = setTimeout(() => {
-        document.getElementById('loading').style.display = 'none';
-        mostrarError('La carga está tardando más de lo esperado. Intenta nuevamente.');
-    }, 15000); // 15 segundos timeout
-    
-    google.script.run
-        .withSuccessHandler((resultado) => {
-            clearTimeout(timeoutId);
-            document.getElementById('loading').style.display = 'none';
-            
-            if (resultado.datos) {
-                // Si es paginado
-                construirTablaResumen(resultado.datos);
-                actualizarPaginacion(resultado);
-            } else {
-                // Si es normal
-                construirTablaResumen(resultado);
-            }
-        })
-        .withFailureHandler((error) => {
-            clearTimeout(timeoutId);
-            document.getElementById('loading').style.display = 'none';
-            mostrarError('Error al cargar el resumen: ' + error);
-        })
-        .getListaCotizacionesResumen(); // o getResumenPaginado(1, 50)
-}
-/**
- * Función para abrir modal de cotización
- */
-function abrirModalCotizacion(ruc, nombreCliente) {
-  // Aquí puedes obtener los contactos y direcciones para seleccionar
-  const contacto = prompt("Ingrese el nombre del contacto:", "");
-  const contactoInfo = prompt("Ingrese email o teléfono del contacto:", "");
-  const lugar = prompt("Lugar (ALPAMAYO/GYM/SAN JOSE):", "ALPAMAYO");
-  const turno = prompt("Turno:", "MAÑANA");
-  const duracion = prompt("Duración:", "1 MES");
-  
-  if (contacto && contactoInfo && lugar) {
-    const datosBase = {
-      ruc: ruc,
-      nombreCliente: nombreCliente,
-      contacto: contacto,
-      contactoInfo: contactoInfo,
-      lugar: lugar.toUpperCase(),
-      turno: turno,
-      duracion: duracion,
-      items: [] // Aquí podrías agregar un formulario para los items
-    };
-    
-    // Guardar datos temporalmente y abrir editor de items
-    sessionStorage.setItem('datosCotizacionTemp', JSON.stringify(datosBase));
-    abrirEditorItems();
-  }
-}
-
-/**
- * Ejemplo de cómo agregar desde tu tabla de clientes
- */
-// Modifica el botón en tu tabla para incluir la opción de cotización:
-function seleccionarCliente(ruc, nombre) {
-  RUC_ACTUAL = ruc;
-  NOMBRE_ACTUAL = nombre;
-  
-  // Podrías agregar un botón adicional o modificar el existente
-  const accion = confirm(`Cliente: ${nombre}\nRUC: ${ruc}\n\n¿Qué deseas hacer?\nOK - Ver Detalles\nCancelar - Generar Cotización`);
-  
-  if (accion) {
-    // Código existente para ver detalles
-    document.getElementById("tituloDetalleCliente").textContent = `Gestión de Cliente: ${nombre} (RUC: ${ruc})`;
-    document.getElementById("clienteRUCDisplay").textContent = ruc;
-    document.getElementById("clienteNombreInput").value = nombre;
-    
-    mostrarModal('modalCliente');
-    cargarDetallesCliente();
-  } else {
-    // Nueva funcionalidad: generar cotización
-    abrirModalCotizacion(ruc, nombre);
-  }
-}
-
-/**
- * Llama al servidor para generar el PDF del pedido y lo abre.
- * @param {number} rowIndex El índice de la fila del pedido a procesar.
- */
-function generarPDF(rowIndex) {
-    if (!confirm(`¿Estás seguro de que deseas generar el PDF para el pedido en la fila ${rowIndex}?`)) {
-        return;
-    }
-    
-    // 1. Mostrar mensaje de carga
-    const btn = document.querySelector(`.btn-pdf[data-row='${rowIndex}']`);
-    if(btn) {
-        btn.disabled = true;
-        btn.textContent = '⏳ Generando...';
-    } else {
-        alert('Generando PDF...');
-    }
-
-    google.script.run
-        .withSuccessHandler(function(resultado) {
-            if (resultado.success) {
-                // 2. Abrir el PDF en nueva pestaña
-                window.open(resultado.pdfUrl, '_blank');
-                alert('✅ PDF generado exitosamente!');
-            } else {
-                alert('❌ Error al generar PDF: ' + resultado.error);
-            }
-            
-            // 3. Restaurar botón
-            if(btn) {
-                btn.disabled = false;
-                btn.textContent = '📄 PDF';
-            }
-        })
-        .withFailureHandler(function(error) {
-            alert('❌ Error al conectar con el servidor: ' + error.message);
-            // 3. Restaurar botón
-            if(btn) {
-                btn.disabled = false;
-                btn.textContent = '📄 PDF';
-            }
-        })
-        .generarYDevolverPDF(rowIndex); // Llama a la nueva función de GS
-}
-
 </script>
 </body>
 </html>
