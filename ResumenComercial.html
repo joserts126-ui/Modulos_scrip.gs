@@ -67,6 +67,7 @@
     </div>
 
 <script>
+    console.log("🔗 Script URL obtenida:", '<?!= getScriptUrl() ?>');
     // Variables globales
     let datosCotizaciones = [];
 
@@ -134,66 +135,106 @@
         }
     }
 
-    function renderizarTablaResumen(datos) {
-        const tbody = document.getElementById("cuerpoTablaResumen");
-        tbody.innerHTML = "";
+function renderizarTablaResumen(datos) {
+    const tbody = document.getElementById("cuerpoTablaResumen");
+    tbody.innerHTML = "";
 
-        if (!datos || datos.length <= 1) {
-            tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
-            return;
-        }
-
-        // El índice ROW_INDEX se calcula como la última columna del encabezado
-        const ROW_INDEX_COL = datos[0].length - 1; 
-
-        // Empezar desde la fila 1 (fila 0 son los encabezados)
-        datos.slice(1).forEach((fila) => {
-            const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
-            const fecha = fila[CONFIG.columnas.FECHA];
-            const cliente = fila[CONFIG.columnas.CLIENTE];
-            const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
-            const moneda = fila[CONFIG.columnas.MONEDA];
-            const estado = fila[CONFIG.columnas.ESTADO];
-            
-            // 🔑 Obtener el valor del Row Index desde la última columna
-            const rowIndex = fila[ROW_INDEX_COL]; 
-
-            // Validar si es una fila de datos válida
-            if (!numPedido || typeof rowIndex !== 'number' || rowIndex < 2) return; 
-
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${numPedido}</td>
-                <td>${fecha}</td>
-                <td>${cliente}</td>
-                <td class="monto-col">${monto.toFixed(2)}</td>
-                <td>${moneda}</td>
-                <td>
-                    <span class="estado-${estado ? estado.replace(/\s+/g, '-') : 'Desconocido'}">
-                        ${estado || 'Desconocido'}
-                    </span>
-                </td>
-                <td>
-                    <button onclick="navegarA('Comercial', { editar: '${numPedido}' })" class="btn-editar">
-                        ✏️ Editar
-                    </button>
-                </td>
-                <td style="text-align: center;">
-                    <button 
-                        onclick="generarPDF(${rowIndex})" 
-                        class="btn-pdf"
-                        data-row="${rowIndex}"
-                    >
-                        📄 PDF
-                    </button>
-                </td>
-            `;
-            
-            tbody.appendChild(tr);
-        });
-
-        console.log("✅ Tabla renderizada con " + (datos.length - 1) + " cotizaciones");
+    if (!datos || datos.length <= 1) {
+        tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
+        return;
     }
+
+    const ROW_INDEX_COL = datos[0].length - 1; 
+    const scriptUrl = '<?!= getScriptUrl() ?>';
+
+    datos.slice(1).forEach((fila) => {
+        const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
+        const fecha = fila[CONFIG.columnas.FECHA];
+        const cliente = fila[CONFIG.columnas.CLIENTE];
+        const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
+        const moneda = fila[CONFIG.columnas.MONEDA];
+        const estado = fila[CONFIG.columnas.ESTADO];
+        const rowIndex = fila[ROW_INDEX_COL]; 
+
+        if (!numPedido || typeof rowIndex !== 'number' || rowIndex < 2) return; 
+
+        const tr = document.createElement("tr");
+        
+        // ✅ VERSIÓN SEGURA - Sin template strings complejos
+        tr.innerHTML = `
+            <td>${escapeHtml(numPedido)}</td>
+            <td>${escapeHtml(fecha)}</td>
+            <td>${escapeHtml(cliente)}</td>
+            <td class="monto-col">${monto.toFixed(2)}</td>
+            <td>${escapeHtml(moneda)}</td>
+            <td>
+                <span class="estado-${estado ? estado.replace(/\s+/g, '-') : 'Desconocido'}">
+                    ${escapeHtml(estado || 'Desconocido')}
+                </span>
+            </td>
+            <td>
+                <button onclick="editarCotizacionSegura('${numPedido}')" class="btn-editar">
+                    ✏️ Editar
+                </button>
+            </td>
+            <td style="text-align: center;">
+                <button 
+                    onclick="generarPDF(${rowIndex})" 
+                    class="btn-pdf"
+                    data-row="${rowIndex}"
+                >
+                    📄 PDF
+                </button>
+            </td>
+        `;
+        
+        tbody.appendChild(tr);
+    });
+
+    console.log("✅ Tabla renderizada con " + (datos.length - 1) + " cotizaciones");
+}
+
+// ✅ FUNCIÓN AUXILIAR PARA ESCAPAR HTML
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// =============================================================================
+// FUNCIÓN CORREGIDA PARA EDITAR COTIZACIÓN
+// =============================================================================
+function editarCotizacion(scriptUrl, numPedido) {
+    if (!numPedido) {
+        console.error("❌ Error: numPedido no definido");
+        alert("Error: No se puede editar, número de pedido no disponible");
+        return;
+    }
+    
+    console.log("📝 Editando cotización:", numPedido);
+    console.log("🔗 Script URL:", scriptUrl);
+    
+    // ✅ CONSTRUIR URL CORRECTAMENTE
+    const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+    
+    console.log("🎯 URL final:", url);
+    
+    // ✅ ABRIR EN LA MISMA VENTANA (no en nueva pestaña)
+    window.top.location.href = url;
+}
+
+// ✅ FUNCIÓN AUXILIAR PARA DEBUG
+function debugURL(scriptUrl, numPedido) {
+    console.log("=== 🔗 DEBUG URL ===");
+    console.log("Script URL:", scriptUrl);
+    console.log("Número Pedido:", numPedido);
+    console.log("URL construida:", `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`);
+    console.log("=== FIN DEBUG ===");
+}
     
     function crearFilaVacia(mensaje) {
         return `
@@ -203,6 +244,27 @@
                 </td>
             </tr>
         `;
+    }
+
+    function editarCotizacion(scriptUrl, numPedido) {
+        const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+        window.open(url, '_blank');
+    }
+
+    // =============================================================================
+    // FUNCIÓN PARA EDITAR COTIZACIÓN - CORREGIDA
+    // =============================================================================
+    function editarCotizacion(scriptUrl, numPedido) {
+        if (!numPedido) {
+            console.error("❌ Error: numPedido no definido");
+            alert("Error: No se puede editar, número de pedido no disponible");
+            return;
+        }
+    
+        console.log("📝 Editando cotización:", numPedido);
+        const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+        console.log("🔗 URL de edición:", url);
+        window.open(url, '_blank');
     }
 
     // =============================================================================
@@ -304,6 +366,23 @@
             texto.textContent = mensaje;
         }
     }
+
+    function editarCotizacionSegura(numPedido) {
+    if (!numPedido) {
+        alert("Error: No se puede editar, número de pedido no disponible");
+        return;
+    }
+    
+    console.log("📝 Guardando pedido para edición:", numPedido);
+    
+    // Guardar en sessionStorage
+    sessionStorage.setItem('pedidoAEditar', numPedido);
+    
+    // Navegar a Comercial
+    const url = '<?!= getScriptUrl() ?>?page=Comercial';
+    console.log("🔗 Navegando a:", url);
+    window.top.location.href = url;
+}
 </script>
 </body>
 </html>
