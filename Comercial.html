@@ -389,29 +389,40 @@ document.addEventListener("DOMContentLoaded", function() {
     console.log("🔄 Comercial.html CARGADO - Iniciando proceso...");
     inicializarFecha();
     
-    // ✅ DETECCIÓN MEJORADA del pedido a editar
+    // ✅ DETECCIÓN MEJORADA - Probar ambos métodos
     let editId = null;
     
-    // 1. Buscar en URL parameters (CORRECCIÓN: Buscar 'editar')
+    // 1. Intentar desde URL
     const urlParams = new URLSearchParams(window.location.search);
-    editId = urlParams.get('editar'); 
-    console.log("🔍 EditId desde URL (editar):", editId);
+    editId = urlParams.get('editar');
     
-    // 2. Buscar en sessionStorage (Fallback, aunque la navegación debería usar la URL)
+    // 2. Si no hay en URL, intentar desde sessionStorage
     if (!editId) {
         editId = sessionStorage.getItem('pedidoAEditar');
-        console.log("🔍 EditId desde sessionStorage:", editId);
+        if (editId) {
+            console.log("📦 EditId obtenido de sessionStorage:", editId);
+            // Limpiar después de usar
+            sessionStorage.removeItem('pedidoAEditar');
+        }
     }
     
-    // 3. Limpiar sessionStorage después de leer
+    console.log("🎯 ID final para edición:", editId);
+    
+    console.log("🎯 ID para edición desde URL:", editId);
+    
     if (editId) {
-        sessionStorage.removeItem('pedidoAEditar');
-        console.log("🧹 SessionStorage limpiado (si se usó)");
+        estadoApp.esEdicion = true;
+        estadoApp.numPedidoEdicion = editId;
+        
+        // Actualizar título inmediatamente
+        const titulo = document.getElementById('tituloFormulario');
+        if (titulo) {
+            titulo.textContent = `EDITANDO PEDIDO: ${editId}`;
+            titulo.style.color = '#e74c3c';
+        }
     }
 
-    console.log("🎯 ID final para edición:", editId);
-
-    // Cargar datos iniciales PRIMERO
+    // Cargar datos iniciales
     mostrarLoading(true, "Cargando datos iniciales...");
     
     google.script.run
@@ -420,7 +431,16 @@ document.addEventListener("DOMContentLoaded", function() {
             console.log("✅ Datos iniciales cargados correctamente");
             
             if (dataInicial && dataInicial.success) {
-                procesarDatosInicialesComercial(dataInicial, editId);
+                procesarDatosInicialesComercial(dataInicial);
+                
+                // Si hay edición, cargar después de tener los datos base
+                if (estadoApp.esEdicion) {
+                    console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
+                    cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
+                } else {
+                    console.log("📝 MODO NUEVA COTIZACIÓN");
+                    agregarLineaDetalle();
+                }
             } else {
                 mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización');
             }
@@ -433,59 +453,40 @@ document.addEventListener("DOMContentLoaded", function() {
         .getDatosInicialesComercial();
 });
 
-        function procesarDatosInicialesComercial(data, editId = null) {
-            console.log("🔄 Procesando datos iniciales con editId:", editId);
-            
-            if (!data || !data.success) {
-                mostrarError(data?.error || 'Datos inválidos recibidos', 'procesar datos iniciales');
-                return;
-            }
-            
-            // Cargar todas las listas necesarias
-            listaClientes = data.clientes || [];
-            listaServicios = data.servicios || [];
-            listaFormasPago = data.formasPago || [];
-            listaEmpresas = data.listaEmpresas || [];
-            listaTurnos = data.listaTurnos || [];
-            listaUndMedida = data.listaUndMedida || [];
-            listaHorasMinimas = data.listaHorasMinimas || [];
-            listaHorasSegun = data.listaHorasSegun || [];
-            listaEjecutivos = data.listaEjecutivos || ['ANTHONY', 'CARMEN'];
+function procesarDatosInicialesComercial(data) {
+    console.log("🔄 Procesando datos iniciales");
+    
+    if (!data || !data.success) {
+        mostrarError(data?.error || 'Datos inválidos recibidos', 'procesar datos iniciales');
+        return;
+    }
+    
+    // Cargar todas las listas necesarias
+    listaClientes = data.clientes || [];
+    listaServicios = data.servicios || [];
+    listaFormasPago = data.formasPago || [];
+    listaEmpresas = data.listaEmpresas || [];
+    listaTurnos = data.listaTurnos || [];
+    listaUndMedida = data.listaUndMedida || [];
+    listaHorasMinimas = data.listaHorasMinimas || [];
+    listaHorasSegun = data.listaHorasSegun || [];
+    listaEjecutivos = data.listaEjecutivos || ['ANTHONY', 'CARMEN'];
 
-            // Llenar selects
-            llenarSelect('formaPago', listaFormasPago);
-            llenarSelect('empresa', listaEmpresas);
-            llenarSelect('turno', listaTurnos);
-            llenarSelect('ejecutivo', listaEjecutivos);
+    // Llenar selects
+    llenarSelect('formaPago', listaFormasPago);
+    llenarSelect('empresa', listaEmpresas);
+    llenarSelect('turno', listaTurnos);
+    llenarSelect('ejecutivo', listaEjecutivos);
 
-            // Llenar datalists
-            llenarDatalistsClientes();
-            llenarDatalistsServicios();
+    // Llenar datalists
+    llenarDatalistsClientes();
+    llenarDatalistsServicios();
 
-            estadoApp.datosCargados = true;
-            console.log("✅ Datos iniciales procesados correctamente");
-            
-            // Manejar modo edición DESPUÉS de cargar datos
-            if (editId) {
-                console.log("🚀 ACTIVANDO MODO EDICIÓN para:", editId);
-                estadoApp.esEdicion = true;
-                estadoApp.numPedidoEdicion = editId;
-                
-                // Actualizar título inmediatamente
-                const titulo = document.getElementById('tituloFormulario');
-                if (titulo) {
-                    titulo.textContent = `EDITANDO PEDIDO: ${editId}`;
-                    titulo.style.color = '#e74c3c';
-                }
-                
-                // Cargar datos del pedido
-                cargarPedidoParaEdicion(editId);
-            } else {
-                console.log("📝 MODO NUEVA COTIZACIÓN");
-                agregarLineaDetalle();
-            }
-        }
-
+    estadoApp.datosCargados = true;
+    console.log("✅ Datos iniciales procesados correctamente");
+    
+    // NO manejar edición aquí - ya se maneja después en el success handler
+}
         // =============================================================================
         // FUNCIONES DE GESTIÓN DE CONTACTOS
         // =============================================================================
@@ -1444,6 +1445,17 @@ function seleccionarCliente(ruc, nombre) {
     abrirModalCotizacion(ruc, nombre);
   }
 }
+function debugModoEdicion() {
+    console.log("=== 🔧 DEBUG MODO EDICIÓN ===");
+    console.log("URL completa:", window.location.href);
+    console.log("Parámetros URL:", new URLSearchParams(window.location.search).toString());
+    console.log("Estado App:", estadoApp);
+    console.log("EditId desde URL:", new URLSearchParams(window.location.search).get('editar'));
+    console.log("=== FIN DEBUG ===");
+}
+
+// Ejecutar después de la carga
+setTimeout(debugModoEdicion, 1000);
     </script>
 </body>
 </html>
