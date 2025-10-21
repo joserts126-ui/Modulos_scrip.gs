@@ -284,34 +284,34 @@
                 .getDatosInicialesOT();
         }
 
-        function cargarDatosOTExistente() {
-            const numeroOT = document.getElementById('otIDExistente').value;
-            console.log("📥 Cargando datos existentes para OT:", numeroOT);
-            mostrarLoading(true, "Cargando datos de la OT...");
+function cargarDatosOTExistente() {
+    const numeroOT = document.getElementById('otIDExistente').value;
+    mostrarLoading(true, "Cargando datos de la OT...");
+    
+    google.script.run
+        .withSuccessHandler(function(resultado) {
+            mostrarLoading(false);
             
-            google.script.run
-                .withSuccessHandler(function(datosOT) {
-                    mostrarLoading(false);
-                    console.log("📋 Datos OT recibidos:", datosOT);
-                    if (datosOT.success) {
-                        otExistente = datosOT.data;
-                        llenarFormularioConDatos(otExistente);
-                    } else {
-                        alert("Error al cargar la OT: " + datosOT.message);
-                        // Redirigir a OT en lugar de recargar
-                        const urlBase = '<?!= getScriptUrl() ?>';
-                        window.open(urlBase + '?page=OT', '_self');
-                    }
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    console.error("Error cargando OT:", error);
-                    alert("Error al cargar la OT: " + error.message);
-                    const urlBase = '<?!= getScriptUrl() ?>';
-                    window.open(urlBase + '?page=OT', '_self');
-                })
-                .obtenerOTPorNumero(numeroOT);
-        }
+            if (resultado && resultado.success) {
+                // ✅ El servidor devuelve un objeto { success: true, data: { ... } }
+                otExistente = resultado.data;
+                llenarFormularioConDatos(otExistente);
+            } else {
+                alert("Error al cargar la OT: " + (resultado.message || 'Error desconocido'));
+                // Redirigir a OT en caso de fallo
+                const urlBase = '<?!= getScriptUrl() ?>';
+                window.open(urlBase + '?page=OT', '_self');
+            }
+        })
+        .withFailureHandler(function(error) {
+            mostrarLoading(false);
+            console.error("Error cargando OT:", error);
+            alert("Error al cargar la OT: " + error.message);
+            const urlBase = '<?!= getScriptUrl() ?>';
+            window.open(urlBase + '?page=OT', '_self');
+        })
+        .obtenerOTPorNumero(numeroOT); // <--- Usa la función robusta
+}
 
         function llenarFormularioConDatos(datos) {
             console.log("🔄 Llenando formulario con datos:", datos);
