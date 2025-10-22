@@ -1714,3 +1714,51 @@ function generarCotizacionSheet() {
 
   SpreadsheetApp.getUi().alert(`✅ ¡Cotización generada con éxito! El archivo "${nombreArchivoFinal}" se encuentra en la carpeta de destino.`);
 }
+
+/**
+ * Obtiene todos los detalles (líneas) de un pedido específico de la hoja DataCot.
+ * @param {string} numPedido El número de COT a buscar.
+ * @returns {Array<Object>} Un array de objetos con las líneas de servicio.
+ */
+function obtenerDetallesCompletosDePedido(numPedido) {
+    const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
+    const allData = obtenerDatosHoja(HOJA_COTIZACIONES);
+    const pedidoBuscado = String(numPedido).trim().toUpperCase();
+    const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0; 
+
+    // Filtrar todas las filas que coincidan con el código de pedido
+    const filasCoincidentes = allData.slice(1)
+        .filter(fila => String(fila[CODIGO_PEDIDO_COL] || '').trim().toUpperCase() === pedidoBuscado);
+
+    if (filasCoincidentes.length === 0) {
+        throw new Error(`No se encontraron líneas de servicio para el pedido: ${numPedido}`);
+    }
+
+    // Mapear los datos de cada línea (igual que en la edición)
+    const lineas = filasCoincidentes.map((fila) => {
+        const getValue = (colName) => getFilaValue(fila, COL_MAP, colName);
+
+        return {
+            descripcion: String(getValue('DESCRIPCION') || ''), 
+            // Usamos M. PEDIDO (Columna Q) que es el subtotal de la línea
+            valor: parseFloat(getValue('M. PEDIDO') || 0) || 0,
+            // (Se puede añadir aquí más detalles si la plantilla los necesita)
+        };
+    });
+
+    // Se extrae la información general de la primera fila
+    const primeraFila = filasCoincidentes[0];
+    const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP, colName);
+
+    return {
+        success: true,
+        ruc: String(getGenValue('ID CLIENTE') || ''),
+        cliente: String(getGenValue('CLIENTE') || ''),
+        fecha: getSafeDateString(getGenValue('FECHA COT')),
+        contacto: String(getGenValue('CONTACTO') || ''),
+        lugar: String(getGenValue('UBICACIÓN') || ''),
+        turno: String(getGenValue('TURNO') || ''),
+        total: parseFloat(getGenValue('Total servicio') || 0) || 0,
+        servicios: lineas
+    };
+}
