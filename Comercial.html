@@ -424,33 +424,74 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Cargar datos iniciales
     mostrarLoading(true, "Cargando datos iniciales...");
-    
-    google.script.run
-        .withSuccessHandler(function(dataInicial) {
+
+// 1. PRIMERA LLAMADA (Ligera)
+google.script.run
+    .withSuccessHandler(function(dataInicial) {
+        if (dataInicial && dataInicial.success) {
+            console.log("✅ Datos LIGEROS cargados");
+
+            // Procesar solo listas ligeras
+            listaFormasPago = dataInicial.formasPago || [];
+            listaEmpresas = dataInicial.listaEmpresas || [];
+            listaTurnos = dataInicial.listaTurnos || [];
+            listaHorasMinimas = dataInicial.listaHorasMinimas || [];
+            listaEjecutivos = dataInicial.listaEjecutivos || ['ANTHONY', 'CARMEN'];
+
+            llenarSelect('formaPago', listaFormasPago);
+            llenarSelect('empresa', listaEmpresas);
+            llenarSelect('turno', listaTurnos);
+            llenarSelect('ejecutivo', listaEjecutivos);
+
+            // 2. SEGUNDA LLAMADA (Pesada)
+            mostrarLoading(true, "Cargando Clientes y Servicios...");
+            google.script.run
+                .withSuccessHandler(function(dataPesada) {
+                    mostrarLoading(false);
+                    if (dataPesada && dataPesada.success) {
+                        console.log("✅ Datos PESADOS cargados");
+
+                        // Procesar listas pesadas
+                        listaClientes = dataPesada.clientes || [];
+                        listaServicios = dataPesada.servicios || [];
+                        listaUndMedida = dataPesada.listaUndMedida || [];
+                        listaHorasSegun = dataPesada.listaHorasSegun || [];
+
+                        llenarDatalistsClientes();
+                        llenarDatalistsServicios();
+
+                        estadoApp.datosCargados = true;
+
+                        // 3. Lógica de Edición/Nuevo (se ejecuta al final de todo)
+                        if (estadoApp.esEdicion) {
+                            console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
+                            cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
+                        } else {
+                            console.log("📝 MODO NUEVA COTIZACIÓN");
+                            agregarLineaDetalle();
+                        }
+
+                    } else {
+                        mostrarError(dataPesada?.error || 'Error al cargar Clientes/Servicios', 'inicialización pesada');
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    mostrarError(error, 'cargar datos pesados');
+                })
+                .getDatosPesadosComercial(); // Llama a la nueva función
+
+        } else {
             mostrarLoading(false);
-            console.log("✅ Datos iniciales cargados correctamente");
-            
-            if (dataInicial && dataInicial.success) {
-                procesarDatosInicialesComercial(dataInicial);
-                
-                // Si hay edición, cargar después de tener los datos base
-                if (estadoApp.esEdicion) {
-                    console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
-                    cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
-                } else {
-                    console.log("📝 MODO NUEVA COTIZACIÓN");
-                    agregarLineaDetalle();
-                }
-            } else {
-                mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización');
-            }
-        })
-        .withFailureHandler(function(error) {
-            mostrarLoading(false);
-            console.error("❌ Error cargando datos iniciales:", error);
-            mostrarError(error, 'cargar datos iniciales');
-        })
-        .getDatosInicialesComercial();
+            mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización ligera');
+        }
+    })
+    .withFailureHandler(function(error) {
+        mostrarLoading(false);
+        console.error("❌ Error cargando datos iniciales:", error);
+        mostrarError(error, 'cargar datos iniciales');
+    })
+    .getDatosInicialesComercial(); // Llama a la función ligera
 });
 
 function procesarDatosInicialesComercial(data) {
@@ -536,7 +577,7 @@ function procesarDatosInicialesComercial(data) {
             console.log("📞 Cargando contactos para RUC:", ruc);
             
             google.script.run
-                .withSuccessHandler(function(contactosData) {
+                .withSuccessHandler(function(contactosData) { // <--- ESTO YA LO TIENES
                     console.log("✅ Contactos recibidos:", contactosData);
                     
                     if (contactosData && contactosData.length > 0) {
@@ -548,8 +589,9 @@ function procesarDatosInicialesComercial(data) {
                         llenarDatalistContactos();
                     }
                 })
-                .withFailureHandler(function(error) {
+                .withFailureHandler(function(error) { // <--- AÑADE ESTO
                     console.error("❌ Error cargando contactos:", error);
+                    alert("Error al cargar contactos: " + error.message); // Muestra el error
                     listaContactos = [];
                     llenarDatalistContactos();
                 })
@@ -674,10 +716,12 @@ function procesarDatosInicialesComercial(data) {
             if (clienteEncontrado) {
                 targetInput.value = clienteEncontrado[columnIndexToSet];
                 
-                // ✅ CARGAR CONTACTOS cuando se selecciona un cliente
-                if (esRucInput) {
-                    const ruc = selectedValue;
-                    cargarContactosPorRUC(ruc);
+                // ✅ CORRECCIÓN: Obtener el RUC y cargar contactos SIEMPRE
+                // Determinar el RUC final, sin importar qué campo se cambió
+                const rucFinal = esRucInput ? selectedValue : clienteEncontrado[columnIndexToSet];
+                
+                if (rucFinal) {
+                    cargarContactosPorRUC(rucFinal);
                 }
                 
             } else {
@@ -1214,19 +1258,28 @@ function procesarDatosInicialesComercial(data) {
                         }
                     });
                     
-                    // ✅ Cargar contactos si hay RUC
+                    // ✅ Cargar contactos si hay RUC (VERSIÓN CORREGIDA)
                     if (datos.RUC) {
                         console.log("📞 Cargando contactos para RUC:", datos.RUC);
-                        // Pequeño delay para asegurar que el campo RUC esté lleno
-                        setTimeout(() => {
-                            cargarContactosPorRUC(datos.RUC);
-                            // Seleccionar contacto específico después de cargar
-                            setTimeout(() => {
+                        
+                        // Llama al servidor para OBTENER los contactos
+                        google.script.run
+                            .withSuccessHandler(function(contactosData) {
+                                console.log("✅ Contactos recibidos para edición:", contactosData);
+                                listaContactos = contactosData || [];
+                                
+                                // 1. LLENA el select
+                                llenarDatalistContactos(); 
+                                
+                                // 2. SELECCIONA el contacto (AHORA SÍ FUNCIONARÁ)
                                 if (datos.Contacto) {
                                     seleccionarContactoEspecifico(datos.Contacto);
                                 }
-                            }, 1000);
-                        }, 500);
+                            })
+                            .withFailureHandler(function(error) {
+                                console.error("❌ Error cargando contactos en modo edición:", error);
+                            })
+                            .getContactosParaComercial(datos.RUC);
                     }
                     
                     // ✅ CORRECCIÓN CRÍTICA: Manejar el SELECT de TURNO especial
