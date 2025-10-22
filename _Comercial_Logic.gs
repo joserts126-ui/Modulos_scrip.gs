@@ -2,7 +2,7 @@
 // === ESTE ARCHIVO CONTIENE LA LÓGICA DE NEGOCIO DEL MÓDULO COMERCIAL (EX MODULOS_SCRIP.GS) ===
 // === NOTA: ESTE ARCHIVO DEPENDE DE QUE EXISTAN _Core.gs y _Constants_Lists.gs ===
 // ==================================================================================================
-
+const MODO_DEBUG_PDF = true;
 // ====================================================
 // === FUNCIONES DE PROCESAMIENTO AUXILIAR CRÍTICO ===
 // ====================================================
@@ -268,21 +268,32 @@ function getListaClientes() {
 
 function getDatosInicialesComercial() {
     try {
+        // NOTA: Quitamos Clientes y Servicios de aquí
+        return {
+            success: true,
+            formasPago: LISTA_FORMAS_PAGO, 
+            listaEmpresas: LISTA_EMPRESAS,
+            listaTurnos: LISTA_TURNOS,
+            listaHorasMinimas: LISTA_HORAS_MINIMAS_UND,
+            listaEjecutivos: LISTA_EJECUTIVOS
+        };
+    } catch (e) {
+        return manejarError('getDatosInicialesComercial', e);
+    }
+}
+
+function getDatosPesadosComercial() {
+    try {
         const serviciosData = obtenerDatosHoja(HOJA_SERVICIOS);
         return {
             success: true,
             clientes: obtenerDatosHoja(HOJA_CLIENTES),
             servicios: serviciosData,
-            formasPago: LISTA_FORMAS_PAGO, 
-            listaEmpresas: LISTA_EMPRESAS,
-            listaTurnos: LISTA_TURNOS,
             listaUndMedida: getListaValoresUnicosOptimizada(serviciosData, 5), 
-            listaHorasMinimas: LISTA_HORAS_MINIMAS_UND,
-            listaHorasSegun: getListaValoresUnicosOptimizada(serviciosData, 4),
-            listaEjecutivos: LISTA_EJECUTIVOS
+            listaHorasSegun: getListaValoresUnicosOptimizada(serviciosData, 4)
         };
     } catch (e) {
-        return manejarError('getDatosInicialesComercial', e);
+        return manejarError('getDatosPesadosComercial', e);
     }
 }
 
@@ -1316,49 +1327,47 @@ function generarPDFCotizacion(cotizacionData) {
 // ====================================================
 
 /**
- * @param {number} rowIndex El número de fila del pedido en la HOJA_COTIZACIONES.
- * @returns {Object} Un objeto con { success: true, pdfUrl: URL } o { success: false, error: mensaje }.
+ * @param {number} rowIndex El número de fila de CUALQUIER línea del pedido.
+ * @returns {Object} Un objeto con la URL del PDF o de la Hoja de Debug.
  */
 function generarYDevolverPDF(rowIndex) {
     try {
-        // 1. Obtener la fila completa de la cotización usando READ_ROW
+        // 1. Obtener la fila solo para saber el N° de Pedido (COT)
         const pedidoRow = crudHoja('READ_ROW', HOJA_COTIZACIONES, { rowIndex: rowIndex });
-
         if (!pedidoRow) {
             return { success: false, error: "No se encontró el pedido con el índice: " + rowIndex };
         }
         
-        // 2. Obtener el MAPEO DE COLUMNAS
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
+        const numPedido = pedidoRow[COL_MAP['COT'] || 0]; // Columna 'COT'
+        if (!numPedido) {
+            return { success: false, error: "No se pudo encontrar el N° de Pedido (COT) en la fila." };
+        }
         
-        // 3. Mapear los datos al objeto que necesita generarPDFCotizacion
-        const dataParaPDF = {
-            ruc: pedidoRow[COL_MAP['ID CLIENTE']] || '',
-            cliente: pedidoRow[COL_MAP['CLIENTE']] || '', 
-            fecha: pedidoRow[COL_MAP['FECHA COT']] || new Date(),
-            contacto: pedidoRow[COL_MAP['CONTACTO']] || '',
-            correoCelular: '', // Dejamos vacío o lo mapeamos si tienes la columna
-            lugar: pedidoRow[COL_MAP['UBICACIÓN']] || '',
-            turno: pedidoRow[COL_MAP['TURNO']] || '',
-            duracion: '', // No mapeado
-            // Servicios y Total requieren una lógica adicional:
-            // Dado que un pedido tiene muchas líneas, debemos buscar todas las líneas.
-            // Para simplicidad por ahora (y evitar otra función pesada), usamos los datos de la primera línea:
-            servicios: [
-                { descripcion: "Pedido: " + pedidoRow[COL_MAP['COT']], valor: pedidoRow[COL_MAP['Total servicio']] || 0 }
-            ], 
-            total: pedidoRow[COL_MAP['Total servicio']] || 0 
-        };
+        // 2. Obtener TODOS los detalles (todas las líneas) usando el N° de Pedido
+        //    (Usa la función que acabamos de modificar)
+        const cotizacionData = obtenerDetallesCompletosDePedido(numPedido);
         
-        // 4. Generar el PDF (retorna un Blob)
-        const pdfBlob = generarPDFCotizacion(dataParaPDF);
-        const archivoEnDrive = DriveApp.createFile(pdfBlob);
+        // 3. Añadir datos que faltaban en el objeto
+        cotizacionData.numPedido = numPedido;
+
+        // 4. Generar el documento (PDF o Sheet)
+        const resultado = generarCotizacionSheet(cotizacionData); // Llamamos a la nueva función
+
+        if (MODO_DEBUG_PDF) {
+            Logger.log("Modo Debug: Hoja temporal generada: " + resultado.sheetUrl);
+            return { 
+                success: true, 
+                pdfUrl: resultado.sheetUrl, // Devuelve la URL de la hoja editable
+                message: "Modo Debug: Hoja temporal generada." 
+            };
+        } else {
+            return { 
+                success: true, 
+                pdfUrl: resultado.pdfUrl // Devuelve la URL del PDF
+            };
+        }
         
-        // 5. Devolver la URL
-        return { 
-            success: true, 
-            pdfUrl: archivoEnDrive.getUrl()
-        };
     } catch (e) {
         Logger.log("Error en generarYDevolverPDF: " + e.toString());
         return { success: false, error: e.message };
@@ -1506,213 +1515,192 @@ function manejarError(contexto, error) {
  * llenando los datos de cabecera y añadiendo dinámicamente las líneas de servicio.
  * Esta versión incorpora búsqueda de datos de RUC y Contacto de pestañas auxiliares.
  */
-function generarCotizacionSheet() {
-  
-  // ====================================================================
-  // 1. CONFIGURACIÓN
-  // ====================================================================
-
-  // IDs y Nombres de Archivos/Pestañas
-  const ID_PLANTILLA_SHEET = '19N-nRzPwQbcuRHogyUOkkIcpGmrLGyMT';
-  const ID_CARPETA_DESTINO = '1Z2M-jSQBI9RNQzMToh5OaXkDvbfftcVo';
-  const NOMBRE_PESTAÑA_DATA = 'DataCot';
-  const NOMBRE_PESTAÑA_CLIENTES = 'Clientes'; // Nueva pestaña
-  const NOMBRE_PESTAÑA_CONTACTOS = 'Contactos'; // Nueva pestaña
-  const NOMBRE_PESTAÑA_PLANTILLA = 'COT_ALP';
-  
-  // Ubicaciones de Datos
-  const FILA_INICIO_SERVICIOS_PLANTILLA = 18;
-  const INDICE_FILA_CABECERA = 1; // Fila 2 de DataCot
-  const INDICE_FILA_SERVICIOS = 2; // Fila 3 de DataCot
-
-  // ====================================================================
-  // 2. FUNCIONES DE UTILIDAD PARA MAPEO Y BÚSQUEDA
-  // ====================================================================
-  
-  /**
-   * Crea un objeto (mapa) de datos a partir de una fila, usando los encabezados
-   * como claves. Normaliza las claves a mayúsculas y quita espacios.
-   */
-  function createDataMap(headers, dataRow) {
-    const dataMap = {};
-    headers.forEach((header, index) => {
-      if (header) {
-        const key = header.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
-        dataMap[key] = dataRow[index];
-      }
-    });
-    return dataMap;
-  }
-  
-  /**
-   * Busca un valor en una pestaña por el nombre del encabezado (similar a un VLOOKUP).
-   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - La hoja donde buscar.
-   * @param {string} searchHeader - El encabezado de la columna de búsqueda.
-   * @param {any} searchValue - El valor a buscar.
-   * @param {string} returnHeader - El encabezado de la columna cuyo valor se desea.
-   * @returns {any|null} El valor encontrado o null.
-   */
-  function searchDataByHeader(sheet, searchHeader, searchValue, returnHeader) {
-    if (!sheet || !searchValue) return null;
+function generarCotizacionSheet(cotizacionData) {
     
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const normalizedHeaders = headers.map(h => h.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_'));
+    // 1. Seleccionar Plantilla (Sin cambios)
+    const lugar = cotizacionData.lugar ? cotizacionData.lugar.toUpperCase() : '';
+    let nombrePlantilla;
+    if (lugar.includes('ALPAMAYO')) nombrePlantilla = HOJA_PLANTILLA_ALPAMAYO;
+    else if (lugar.includes('GYM')) nombrePlantilla = HOJA_PLANTILLA_GYM;
+    else if (lugar.includes('SAN JOSE') || lugar.includes('GSJ')) nombrePlantilla = HOJA_PLANTILLA_SANJOSE;
+    else nombrePlantilla = HOJA_PLANTILLA_ALPAMAYO; 
+
+    const ssTemplate = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+    const hojaMaestra = ssTemplate.getSheetByName(nombrePlantilla);
     
-    // Encuentra los índices de las columnas de búsqueda y retorno
-    const searchIndex = normalizedHeaders.indexOf(searchHeader.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_'));
-    const returnIndex = normalizedHeaders.indexOf(returnHeader.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_'));
-    
-    if (searchIndex === -1 || returnIndex === -1) {
-      Logger.log(`Error: No se encontró el encabezado de búsqueda ('${searchHeader}') o de retorno ('${returnHeader}') en la hoja ${sheet.getName()}.`);
-      return null;
-    }
-    
-    // Recorre las filas (empezando por la segunda, después de los encabezados)
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][searchIndex] && data[i][searchIndex].toString().trim() === searchValue.toString().trim()) {
-        return data[i][returnIndex];
-      }
-    }
-    return null; // No encontrado
-  }
-
-
-  // ====================================================================
-  // 3. OBTENER DATA DEL GOOGLE SHEET DE ORIGEN
-  // ====================================================================
-
-  const ssData = SpreadsheetApp.getActiveSpreadsheet();
-  const hojaData = ssData.getSheetByName(NOMBRE_PESTAÑA_DATA);
-  const hojaClientes = ssData.getSheetByName(NOMBRE_PESTAÑA_CLIENTES);
-  const hojaContactos = ssData.getSheetByName(NOMBRE_PESTAÑA_CONTACTOS);
-
-  if (!hojaData) {
-    SpreadsheetApp.getUi().alert(`❌ Error: No se encontró la pestaña de datos "${NOMBRE_PESTAÑA_DATA}".`);
-    return;
-  }
-
-  const valores = hojaData.getDataRange().getValues();
-  const encabezados = valores[0];
-
-  // 3.1. Mapeo de Cabecera (Fila 2)
-  const dataRowCabecera = valores[INDICE_FILA_CABECERA];
-  const mapCabecera = createDataMap(encabezados, dataRowCabecera);
-  
-  // 3.2. Extracción y Mapeo de Servicio (Desde Fila 3)
-  const dataServicios = valores.slice(INDICE_FILA_SERVICIOS)
-    .filter(row => {
-      const servicioMap = createDataMap(encabezados, row);
-      return servicioMap['DESCRIPCION']; 
-    }); 
-    
-  // 3.3. Obtener RUC y Contacto desde pestañas auxiliares
-  const nombreCliente = mapCabecera['CLIENTE'] || 'Cliente Desconocido';
-  
-  // Buscar RUC usando el NOMBRE del CLIENTE
-  const rucCliente = searchDataByHeader(hojaClientes, 'NOMBRE', nombreCliente, 'RUC');
-  
-  // Buscar datos de contacto usando el RUC encontrado
-  const nombreContacto = searchDataByHeader(hojaContactos, 'RUC', rucCliente, 'NOMBRE');
-  const emailContacto = searchDataByHeader(hojaContactos, 'RUC', rucCliente, 'EMAIL');
-  const cargoContacto = searchDataByHeader(hojaContactos, 'RUC', rucCliente, 'CARGO');
-
-
-  // ====================================================================
-  // 4. CREAR COPIA DE LA PLANTILLA Y CONFIGURACIÓN
-  // ====================================================================
-
-  const numeroCotizacion = mapCabecera['NUM_COT'] || '000';
-  const nombreArchivoFinal = `Cotización N° ${numeroCotizacion} - ${nombreCliente}`;
-
-  const plantillaFile = DriveApp.getFileById(ID_PLANTILLA_SHEET);
-  const archivoCopia = plantillaFile.makeCopy(nombreArchivoFinal, DriveApp.getFolderById(ID_CARPETA_DESTINO));
-  const ssCotizacion = SpreadsheetApp.openById(archivoCopia.getId());
-  const hojaCotizacion = ssCotizacion.getSheetByName(NOMBRE_PESTAÑA_PLANTILLA);
-  
-  if (!hojaCotizacion) {
-    SpreadsheetApp.getUi().alert(`❌ Error: No se encontró la pestaña de plantilla "${NOMBRE_PESTAÑA_PLANTILLA}" en la copia.`);
-    return;
-  }
-  
-  // ====================================================================
-  // 5. LLENAR DATOS DE CABECERA
-  // ====================================================================
-
-  hojaCotizacion.getRange('C3').setValue(numeroCotizacion);
-  hojaCotizacion.getRange('C5').setValue(nombreCliente);
-  hojaCotizacion.getRange('C6').setValue(rucCliente || mapCabecera['ID_CLIENTE'] || ''); // RUC encontrado o ID de DataCot
-  hojaCotizacion.getRange('C7').setValue(nombreContacto || mapCabecera['CONTACTO'] || ''); // Nombre de contacto encontrado o Contacto de DataCot
-  hojaCotizacion.getRange('C8').setValue(mapCabecera['TOTAL_DIAS'] || ''); 
-  
-  // 🚨 Opcional: Si quieres agregar más datos en la cabecera, úsalos aquí (Ej: Email y Cargo)
-  // hojaCotizacion.getRange('C9').setValue(emailContacto || '');
-  // hojaCotizacion.getRange('D9').setValue(cargoContacto || '');
-
-  // ====================================================================
-  // 6. LLENAR DATOS DE SERVICIOS (Llenado Dinámico)
-  // ====================================================================
-  
-  let filaActual = FILA_INICIO_SERVICIOS_PLANTILLA;
-  let itemNum = 1;
-  const subtotalesCeldas = []; 
-
-  // Insertar filas necesarias
-  if (dataServicios.length > 1) {
-    hojaCotizacion.insertRowsAfter(filaActual, dataServicios.length - 1);
-  }
-  
-  dataServicios.forEach((dataRowServicio, index) => {
-    const servicioMap = createDataMap(encabezados, dataRowServicio);
-
-    const descripcion = servicioMap['DESCRIPCION'] || '';
-    // Usamos TOTAL_SERVICIO de la fila de servicio como el valor de la línea
-    const totalLinea = servicioMap['TOTAL_SERVICIO'] || 0; 
-    
-    // Línea de Servicio Principal
-    hojaCotizacion.getRange('A' + filaActual).setValue(itemNum);
-    hojaCotizacion.getRange('B' + filaActual).setValue(descripcion);
-    hojaCotizacion.getRange('F' + filaActual).setValue(totalLinea);
-    subtotalesCeldas.push('F' + filaActual);
-    
-    // Verificar Movilización
-    const esUltimaLinea = (index === dataServicios.length - 1);
-    // Usamos MOV_Y_DES_MOV_ de la fila de servicio actual.
-    const montoMovilizacion = servicioMap['MOV_Y_DES_MOV_'] || 0; 
-
-    if (esUltimaLinea && montoMovilizacion > 0) {
-      
-      filaActual++; 
-      hojaCotizacion.insertRowAfter(filaActual - 1); 
-      
-      const itemMovilizacion = itemNum + '.1';
-      
-      hojaCotizacion.getRange('A' + filaActual).setValue(itemMovilizacion);
-      hojaCotizacion.getRange('B' + filaActual).setValue('Movilización y Desmovilización');
-      hojaCotizacion.getRange('F' + filaActual).setValue(montoMovilizacion);
-      subtotalesCeldas.push('F' + filaActual);
+    if (!hojaMaestra) {
+        throw new Error("❌ No se encontró la hoja de plantilla: " + nombrePlantilla);
     }
 
-    filaActual++; 
-    itemNum++;
-  });
-  
-  // ====================================================================
-  // 7. CÁLCULO DEL SUBTOTAL FINAL
-  // ====================================================================
-  
-  // El subtotal final va en la fila inmediatamente posterior a la última línea (F19, F20, etc.)
-  const filaSubtotalFinal = filaActual;
-  const rangoSubtotales = subtotalesCeldas.join('+');
-  
-  // Colocar la fórmula en la celda F de la fila correspondiente
-  hojaCotizacion.getRange('F' + filaSubtotalFinal).setFormula('=' + rangoSubtotales);
-  
-  // ====================================================================
-  // 8. FINALIZAR
-  // ====================================================================
+    // 2. Crear Copia Temporal (Sin cambios)
+    const nombreTemporal = "TEMP_PDF_" + cotizacionData.numPedido + "_" + new Date().getTime();
+    const hojaTemporal = hojaMaestra.copyTo(ssTemplate);
+    hojaTemporal.setName(nombreTemporal);
+    hojaTemporal.showSheet();
 
-  SpreadsheetApp.getUi().alert(`✅ ¡Cotización generada con éxito! El archivo "${nombreArchivoFinal}" se encuentra en la carpeta de destino.`);
+    const SERVICIOS = cotizacionData.servicios || []; 
+    const START_ROW = 18; // Fila donde empieza el primer item
+
+    try {
+        // 3. Rellenar Cabecera (Mapeo corregido)
+        hojaTemporal.getRange('C3').setValue(cotizacionData.numPedido || ''); 
+        hojaTemporal.getRange('C5').setValue(cotizacionData.cliente || '');   
+        hojaTemporal.getRange('C6').setValue(cotizacionData.ruc || '');      
+        hojaTemporal.getRange('C7').setValue(cotizacionData.contacto || ''); 
+        hojaTemporal.getRange('C8').setValue(cotizacionData.contactoInfo || ''); 
+        
+        // --- INICIO DE CORRECCIÓN DE FECHA ---
+        // Convertir el texto ISO (cotizacionData.fecha) de nuevo a un objeto Date
+        const fechaObj = new Date(cotizacionData.fecha || new Date());
+        // Poner el objeto Date en la celda y APLICAR el formato
+        hojaTemporal.getRange('G3').setValue(fechaObj).setNumberFormat('dd/MM/yyyy'); 
+        // --- FIN DE CORRECCIÓN DE FECHA ---
+        
+        hojaTemporal.getRange('C12').setValue(cotizacionData.lugar || '');   
+        hojaTemporal.getRange('C13').setValue(cotizacionData.turno || '');   
+
+        // 4. Lógica para agregar líneas de servicio
+        let itemNum = 1;
+        let currentRow = START_ROW;
+        // const celdasSubtotal = []; // <-- YA NO SE USA
+
+        // 4.1 Contar filas necesarias (Sin cambios)
+        let filasNecesarias = 0;
+        SERVICIOS.forEach(s => {
+            filasNecesarias++; 
+            if (s.movilizacion && s.movilizacion > 0) {
+                filasNecesarias++; 
+            }
+        });
+
+        // 4.2 Insertar las filas (Sin cambios)
+        if (filasNecesarias > 1) {
+            // Inserta filas *después* de la fila de inicio
+            hojaTemporal.insertRowsAfter(START_ROW, filasNecesarias - 1);
+        }
+
+        // 4.3 Llenar las filas (Mantiene la lógica de MERGE)
+        SERVICIOS.forEach(s => {
+            const movilizacion = s.movilizacion || 0;
+            const valorServicio = s.valor || 0; 
+
+            // A. LÍNEA DE SERVICIO PRINCIPAL
+            
+            // --- Lógica de MERGE (se mantiene) ---
+            hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge();
+            hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+
+            hojaTemporal.getRange(`A${currentRow}`).setValue(itemNum);
+            hojaTemporal.getRange(`B${currentRow}`).setValue(s.descripcion); 
+            hojaTemporal.getRange(`F${currentRow}`).setValue(valorServicio); 
+            
+            // celdasSubtotal.push(`F${currentRow}`); // <-- YA NO SE USA
+            currentRow++; 
+
+            // B. LÍNEA DE MOVILIZACIÓN (SI APLICA)
+            if (movilizacion > 0) {
+                const itemMovNum = `${itemNum}.1`; 
+                
+                // --- Lógica de MERGE (se mantiene) ---
+                hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge();
+                hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+                
+                hojaTemporal.getRange(`A${currentRow}`).setValue(itemMovNum);
+                hojaTemporal.getRange(`B${currentRow}`).setValue("Movilización y Desmovilización");
+                hojaTemporal.getRange(`F${currentRow}`).setValue(movilizacion);
+                
+                // celdasSubtotal.push(`F${currentRow}`); // <-- YA NO SE USA
+                currentRow++; 
+            }
+            
+            itemNum++; 
+        });
+
+        // 5. Agregar la línea de total (CON CAMBIOS EN LA FÓRMULA)
+        const filaTotal = currentRow;
+        const ultimaFilaItems = filaTotal - 1; // La fila justo antes del total
+
+        // Combinar celdas de la etiqueta "SUBTOTAL"
+        hojaTemporal.getRange(`A${filaTotal}:E${filaTotal}`).merge();
+        hojaTemporal.getRange(`A${filaTotal}`).setValue("SUBTOTAL");
+        
+        // --- CAMBIO DE FÓRMULA ---
+        // Combinar celdas del total
+        hojaTemporal.getRange(`F${filaTotal}:G${filaTotal}`).merge();
+        // Establecer la fórmula usando el RANGO F:G
+        hojaTemporal.getRange(`F${filaTotal}`).setFormula(`=SUM(F${START_ROW}:G${ultimaFilaItems})`);
+
+        // 6. Preparar URLs (Sin cambios)
+        const URL = ssTemplate.getUrl();
+        const sheetUrl = `${URL.replace('/edit', '')}/edit#gid=${hojaTemporal.getSheetId()}`; 
+        const exportUrl = URL.replace('/edit', '/export?exportFormat=pdf&gid=' + hojaTemporal.getSheetId() + '&format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&sheetnames=false');
+
+        // 7. Generar el PDF (Sin cambios)
+        const response = UrlFetchApp.fetch(exportUrl, {
+            headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
+            muteHttpExceptions: true
+        });
+        const pdfBlob = response.getBlob().setName(`${cotizacionData.cliente}_COT_${cotizacionData.numPedido}.pdf`);
+        const pdfFile = DriveApp.createFile(pdfBlob);
+        
+        // 8. Limpieza (Sin cambios)
+        if (!MODO_DEBUG_PDF) {
+            ssTemplate.deleteSheet(hojaTemporal);
+        }
+
+        // 9. Devolver AMBAS URLs (Sin cambios)
+        return {
+            pdfUrl: pdfFile.getUrl(),
+            sheetUrl: sheetUrl
+        };
+
+    } catch (e) {
+        Logger.log('Error al generar PDF: ' + e.toString());
+        if (!MODO_DEBUG_PDF && hojaTemporal) {
+            ssTemplate.deleteSheet(hojaTemporal);
+        }
+        throw new Error("Error en el PDF: " + e.message);
+    }
+}
+/**
+ * Busca info de contacto (email/tel) basado en el RUC y el Nombre del Contacto.
+ */
+function buscarInfoContacto(ruc, nombreContacto) {
+    if (!ruc || !nombreContacto) return '';
+    try {
+        const allData = obtenerDatosHoja(HOJA_CONTACTOS); // Usa cache
+        if (allData.length <= 1) return '';
+        
+        const COL_MAP_CON = getColumnMap(HOJA_CONTACTOS);
+        const RUC_COL = COL_MAP_CON['RUC']; //
+        const NOMBRE_COL = COL_MAP_CON['NOMBRE']; //
+        const EMAIL_COL = COL_MAP_CON['EMAIL']; //
+        const TEL_COL = COL_MAP_CON['TELEFONO']; //
+
+        if (RUC_COL === undefined || NOMBRE_COL === undefined) return ''; // Hoja mal configurada
+
+        const rucBuscado = String(ruc).trim();
+        const nombreBuscado = String(nombreContacto).trim();
+
+        for (let i = 1; i < allData.length; i++) {
+            const row = allData[i];
+            if (String(row[RUC_COL] || '').trim() === rucBuscado && 
+                String(row[NOMBRE_COL] || '').trim() === nombreBuscado) {
+                
+                const email = String(row[EMAIL_COL] || '').trim();
+                const tel = String(row[TEL_COL] || '').trim();
+                
+                if (email && tel) return `${email} / ${tel}`;
+                if (email) return email;
+                if (tel) return tel;
+                return ''; // Encontrado pero sin email/tel
+            }
+        }
+        return ''; // No encontrado
+    } catch (e) {
+        Logger.log(`Error en buscarInfoContacto: ${e.message}`);
+        return '';
+    }
 }
 
 /**
@@ -1735,27 +1723,30 @@ function obtenerDetallesCompletosDePedido(numPedido) {
     }
 
     // Mapear los datos de cada línea (igual que en la edición)
-    const lineas = filasCoincidentes.map((fila) => {
+      const lineas = filasCoincidentes.map((fila) => {
         const getValue = (colName) => getFilaValue(fila, COL_MAP, colName);
 
         return {
             descripcion: String(getValue('DESCRIPCION') || ''), 
-            // Usamos M. PEDIDO (Columna Q) que es el subtotal de la línea
             valor: parseFloat(getValue('M. PEDIDO') || 0) || 0,
-            // (Se puede añadir aquí más detalles si la plantilla los necesita)
+            movilizacion: parseFloat(getValue('MOV. Y DES. MOV.') || 0) || 0
         };
-    });
+      });
 
     // Se extrae la información general de la primera fila
     const primeraFila = filasCoincidentes[0];
     const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP, colName);
+    const rucCliente = String(getGenValue('ID CLIENTE') || '');
+    const nombreContacto = String(getGenValue('CONTACTO') || '');
+    const infoContacto = buscarInfoContacto(rucCliente, nombreContacto);
 
-    return {
+   return {
         success: true,
-        ruc: String(getGenValue('ID CLIENTE') || ''),
+        ruc: rucCliente, // Usar la variable
         cliente: String(getGenValue('CLIENTE') || ''),
         fecha: getSafeDateString(getGenValue('FECHA COT')),
-        contacto: String(getGenValue('CONTACTO') || ''),
+        contacto: nombreContacto, // Usar la variable
+        contactoInfo: infoContacto, // <-- NUEVO CAMPO PARA C8
         lugar: String(getGenValue('UBICACIÓN') || ''),
         turno: String(getGenValue('TURNO') || ''),
         total: parseFloat(getGenValue('Total servicio') || 0) || 0,
