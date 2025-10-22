@@ -205,3 +205,14 @@ function getListaValoresUnicos(sheetName, columnIndex) {
         return []; 
     }
 }
+
+function forzarAutorizacion() {
+  // Esta función solo existe para forzar la re-autorización
+  try {
+    const ss = SpreadsheetApp.openById("15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y");
+    const folder = DriveApp.getFolderById("1h4LZiA9Iwx54jHqOyHqFvDJykGipM6YO");
+    Logger.log("Hoja: " + ss.getName() + ", Carpeta: " + folder.getName());
+  } catch (e) {
+    Logger.log("Error de autorización: " + e.message);
+  }
+}
