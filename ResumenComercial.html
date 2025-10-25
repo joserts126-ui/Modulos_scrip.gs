@@ -13,58 +13,65 @@
             <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a>
             <h1>Resumen de Cotizaciones</h1>
         </div>
-        <div class="topBarra-derecha">
-            <button onclick="abrirNuevoPedido()" class="boton-nuevo-pedido">
-                ➕ Nueva Cotización
-            </button>
-            <button onclick="debugFrontend()" class="boton-debug" style="background: #8e44aa; color: white; margin-left: 10px;">
-                🐛 Debug
-            </button>
         </div>
-    </div>
 
     <div class="contenedorModulos">
         <div class="card">
-            <h2>Lista de Cotizaciones Registradas</h2>
-            
-            <div style="margin-bottom: 15px;">
-                <input type="text" id="filtroPedidos" placeholder="Buscar por código, cliente o estado..." 
-                       style="padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px;">
-            </div>
 
-            <div style="overflow-x: auto;">
-                <table id="tablaResumen" class="tabla-resumen">
+            <div class="header-resumen-con-paginacion">
+                
+                <div class="header-fila-superior">
+                     <button onclick="abrirNuevoPedido()" class="boton-nuevo-pedido btn-base btn-success">
+                        ➕ Nueva Cotización
+                     </button>
+                     <div class="search-container">
+                         <input type="text" id="filtroPedidos" placeholder="Buscar..."
+                                style="padding: 6px 10px; width: 300px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em;">
+                     </div>
+                </div>
+
+                <div class="header-fila-inferior">
+                    <h2>Lista de Cotizaciones Registradas</h2>
+                    <div class="paginacion-controles-simple">
+                         <select id="filasPorPagina" onchange="cambiarFilasPorPagina()" title="Filas por página" style="padding: 4px; font-size: 0.9em; margin-right: 15px;">
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="80" selected>80</option>
+                            <option value="100">100</option>
+                         </select>
+                         <span id="infoPagina" class="info-pagina-simple"></span>
+                         <button id="btnAnterior" onclick="cambiarPagina(-1)" class="btn-paginacion" title="Anterior" disabled>&lt;</button>
+                         <button id="btnSiguiente" onclick="cambiarPagina(1)" class="btn-paginacion" title="Siguiente" disabled>&gt;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="tabla-contenedor-scroll">
+                <table id="tablaResumen" class="tabla-resumen tabla-scroll">
                     <thead>
                         <tr>
-                            <th style="width: 150px;">N° PEDIDO</th>
-                            <th style="width: 100px;">FECHA</th>
-                            <th style="min-width: 200px;">CLIENTE</th>
-                            <th style="width: 120px;">MONTO TOTAL</th>
-                            <th style="width: 80px;">MONEDA</th>
-                            <th style="width: 120px;">ESTADO</th>
-                            <th style="width: 100px;">ACCIÓN</th>
-                            <th style="width: 100px;" class="col-pdf">PDF</th>
+                            <th onclick="ordenarTabla(0, 'texto')">N° PEDIDO <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(1, 'fecha')">FECHA <span class="sort-icon"></span></th>
+                            <th style="min-width: 150px;" onclick="ordenarTabla(2, 'texto')">CLIENTE <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(3, 'texto')">VENDEDOR <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(4, 'texto')">COMPAÑÍA <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(5, 'numero')">MONTO TOTAL <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(6, 'texto')">MONEDA <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(7, 'texto')">ESTADO <span class="sort-icon"></span></th>
+                            <th>ACCIÓN</th>
+                            <th class="col-pdf">PDF</th>
                         </tr>
                     </thead>
                     <tbody id="cuerpoTablaResumen">
                         <tr>
-                            <td colspan="8" style="text-align: center; padding: 20px;">
-                                Cargando datos...
+                            <td colspan="10" style="text-align: center; padding: 20px;"> Cargando datos...
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+            </div> </div> <div id="loadingOverlay" class="loading-overlay" style="display: none;">
         </div>
-    </div>
-
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-        <div class="loading-spinner">
-            <p id="loadingText">Cargando...</p>
-            <div class="spinner"></div>
-        </div>
-    </div>
 
 <script>
     console.log("🔗 Script URL obtenida:", '<?!= getScriptUrl() ?>');
@@ -77,10 +84,11 @@
 
     // Configuración global (El índice ROW_INDEX es la última columna del array de 8 columnas)
     const CONFIG = {
-        columnas: {
-            NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, MONTO: 3, MONEDA: 4, ESTADO: 5, ROW_INDEX: 7 // 8va columna (índice 7)
-        }
-    };
+    columnas: { 
+        NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, VENDEDOR: 3, COMPANIA: 4,
+        MONTO: 5, MONEDA: 6, ESTADO: 7, ID_CLIENTE: 8, ROW_INDEX: 9 
+    }
+};
 
     // Función unificada para llamadas a Google Apps Script
     async function ejecutarGAS(funcion, parametros = null) {
@@ -134,65 +142,166 @@
             console.error("Error cargando datos:", error);
         }
     }
+// === Variables Globales para Paginación ===
+let paginaActual = 1;
+let filasPorPagina = 80; // Valor inicial
+let datosFiltradosPaginacion = []; // Datos actualmente filtrados para paginar
 
+// === MODIFICAR renderizarTablaResumen ===
 function renderizarTablaResumen(datos) {
-    const tbody = document.getElementById("cuerpoTablaResumen");
-    tbody.innerHTML = "";
+    // Guarda los datos completos (o filtrados) para paginar
+    datosFiltradosPaginacion = datos || [];
+    // Define filasPorPagina según el selector
+    const selectFilas = document.getElementById("filasPorPagina");
+    filasPorPagina = parseInt(selectFilas.value) || 80;
 
-    if (!datos || datos.length <= 1) {
-        tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
-        return;
+    paginaActual = 1; // Resetear a la primera página cada vez que se renderiza (ej. al filtrar)
+
+    mostrarPagina(paginaActual); // Muestra la primera página
+}
+
+// === NUEVA FUNCIÓN para mostrar una página específica ===
+function mostrarPagina(numeroPagina) {
+        const tbody = document.getElementById("cuerpoTablaResumen");
+        tbody.innerHTML = "";
+
+        const datosParaMostrar = datosFiltradosPaginacion;
+
+        // --- Corrección: Validar si hay datos reales ---
+        if (!datosParaMostrar || datosParaMostrar.length <= 1 || datosParaMostrar[1][0] === "Error") { // <= 1 por encabezado, o si el backend devolvió error
+            const mensaje = (datosParaMostrar && datosParaMostrar.length > 1 && datosParaMostrar[1][0] === "Error") ? datosParaMostrar[1][2] : "No hay cotizaciones para mostrar.";
+            tbody.innerHTML = crearFilaVacia(mensaje);
+            actualizarControlesPaginacion(0);
+            return;
+        }
+        // --- Fin Corrección ---
+
+
+        paginaActual = numeroPagina;
+        const totalFilasDatos = datosParaMostrar.length - 1;
+        const indiceInicio = (paginaActual - 1) * filasPorPagina;
+        const indiceFin = indiceInicio + filasPorPagina;
+        const filasPagina = datosParaMostrar.slice(indiceInicio + 1, indiceFin + 1);
+
+         if (filasPagina.length === 0 && paginaActual > 1) { /* ... ir a pág anterior ... */ }
+         else if (filasPagina.length === 0 && paginaActual === 1) { /* ... mostrar fila vacía ... */ }
+
+
+        const scriptUrl = '<?!= getScriptUrl() ?>';
+
+        filasPagina.forEach((fila) => {
+            // Leer datos usando CONFIG actualizado
+            const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
+            const fecha = fila[CONFIG.columnas.FECHA];
+            const cliente = fila[CONFIG.columnas.CLIENTE];
+            const vendedor = fila[CONFIG.columnas.VENDEDOR]; // Nuevo
+            const compania = fila[CONFIG.columnas.COMPANIA]; // Nuevo
+            const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
+            const moneda = String(fila[CONFIG.columnas.MONEDA] || '').toUpperCase(); // Asegurar mayúsculas
+            const estado = fila[CONFIG.columnas.ESTADO];
+            const rowIndexOriginal = fila[CONFIG.columnas.ROW_INDEX];
+
+            if (!numPedido || typeof rowIndexOriginal !== 'number' || rowIndexOriginal < 2) return;
+
+            // Formateo de Moneda
+            const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES') ? 'S/ ' : '$ ';
+            // Usar toLocaleString para formato de miles y decimales correcto
+            const montoFormateado = simboloMoneda + monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const tr = document.createElement("tr");
+            // Añadir nuevas celdas td
+            tr.innerHTML = `
+                <td>${escapeHtml(numPedido)}</td>
+                <td>${escapeHtml(fecha)}</td>
+                <td>${escapeHtml(cliente)}</td>
+                <td>${escapeHtml(vendedor)}</td>      <td>${escapeHtml(compania)}</td>      <td class="monto-col">${montoFormateado}</td> <td>${escapeHtml(moneda)}</td>
+                <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado || 'Desconocido')}</span></td>
+                <td><button onclick="editarCotizacionSegura('${escapeHtml(numPedido)}')" class="btn-editar">✏️ Editar</button></td>
+                <td style="text-align: center;"><button onclick="generarPDF(${rowIndexOriginal})" class="btn-pdf" data-row="${rowIndexOriginal}">📄 PDF</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        actualizarControlesPaginacion(totalFilasDatos);
+        console.log(`Página ${paginaActual} renderizada...`); // Opcional
     }
 
-    const ROW_INDEX_COL = datos[0].length - 1; 
-    const scriptUrl = '<?!= getScriptUrl() ?>';
+// === NUEVA FUNCIÓN para actualizar los controles de paginación ===
+function actualizarControlesPaginacion(totalFilasDatos) {
+    const infoPagina = document.getElementById("infoPagina");
+    const btnAnterior = document.getElementById("btnAnterior");
+    const btnSiguiente = document.getElementById("btnSiguiente");
 
-    datos.slice(1).forEach((fila) => {
-        const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
-        const fecha = fila[CONFIG.columnas.FECHA];
-        const cliente = fila[CONFIG.columnas.CLIENTE];
-        const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
-        const moneda = fila[CONFIG.columnas.MONEDA];
-        const estado = fila[CONFIG.columnas.ESTADO];
-        const rowIndex = fila[ROW_INDEX_COL]; 
+    const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
 
-        if (!numPedido || typeof rowIndex !== 'number' || rowIndex < 2) return; 
+    if (totalFilasDatos === 0) {
+        infoPagina.textContent = "0 resultados";
+        btnAnterior.disabled = true;
+        btnSiguiente.disabled = true;
+    } else {
+        const inicio = (paginaActual - 1) * filasPorPagina + 1;
+        const fin = Math.min(inicio + filasPorPagina - 1, totalFilasDatos);
+        infoPagina.textContent = `${inicio}-${fin} de ${totalFilasDatos}`;
 
-        const tr = document.createElement("tr");
-        
-        // ✅ VERSIÓN SEGURA - Sin template strings complejos
-        tr.innerHTML = `
-            <td>${escapeHtml(numPedido)}</td>
-            <td>${escapeHtml(fecha)}</td>
-            <td>${escapeHtml(cliente)}</td>
-            <td class="monto-col">${monto.toFixed(2)}</td>
-            <td>${escapeHtml(moneda)}</td>
-            <td>
-                <span class="estado-${estado ? estado.replace(/\s+/g, '-') : 'Desconocido'}">
-                    ${escapeHtml(estado || 'Desconocido')}
-                </span>
-            </td>
-            <td>
-                <button onclick="editarCotizacionSegura('${numPedido}')" class="btn-editar">
-                    ✏️ Editar
-                </button>
-            </td>
-            <td style="text-align: center;">
-                <button 
-                    onclick="generarPDF(${rowIndex})" 
-                    class="btn-pdf"
-                    data-row="${rowIndex}"
-                >
-                    📄 PDF
-                </button>
-            </td>
-        `;
-        
-        tbody.appendChild(tr);
-    });
-
-    console.log("✅ Tabla renderizada con " + (datos.length - 1) + " cotizaciones");
+        btnAnterior.disabled = (paginaActual === 1);
+        btnSiguiente.disabled = (paginaActual === totalPaginas);
+    }
 }
+
+// === NUEVA FUNCIÓN para cambiar de página ===
+function cambiarPagina(direccion) { // direccion es +1 (siguiente) o -1 (anterior)
+    const nuevaPagina = paginaActual + direccion;
+    const totalFilasDatos = datosFiltradosPaginacion.length - 1;
+    const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
+
+    // Validar límites
+    if (nuevaPagina >= 1 && nuevaPagina <= totalPaginas) {
+        mostrarPagina(nuevaPagina);
+    }
+}
+
+ // === NUEVA FUNCIÓN para cambiar filas por página ===
+function cambiarFilasPorPagina() {
+    const selectFilas = document.getElementById("filasPorPagina");
+    filasPorPagina = parseInt(selectFilas.value) || 80;
+    // Volver a mostrar la primera página con la nueva cantidad de filas
+    mostrarPagina(1); 
+}
+
+// === MODIFICAR filtrarPedidos para usar paginación ===
+ function filtrarPedidos() {
+    const filtro = document.getElementById("filtroPedidos").value.toLowerCase();
+
+    let datosParaFiltrar = datosCotizaciones; // Siempre filtrar sobre los datos originales completos
+    let datosFiltradosResultado = [datosParaFiltrar[0]]; // Mantener encabezados
+
+    if (!filtro) {
+        // Si no hay filtro, usar todos los datos
+         datosFiltradosResultado = datosParaFiltrar;
+    } else {
+         // Aplicar filtro
+        datosParaFiltrar.slice(1).forEach(fila => {
+            const numPedido = String(fila[CONFIG.columnas.NUM_PEDIDO] || '').toLowerCase();
+            const cliente = String(fila[CONFIG.columnas.CLIENTE] || '').toLowerCase();
+            const estado = String(fila[CONFIG.columnas.ESTADO] || '').toLowerCase();
+
+            if (numPedido.includes(filtro) || cliente.includes(filtro) || estado.includes(filtro)) {
+                datosFiltradosResultado.push(fila);
+            }
+        });
+    }
+
+    // Llamar a renderizarTablaResumen con los datos filtrados (esta función resetea a pág 1)
+    renderizarTablaResumen(datosFiltradosResultado);
+}
+
+// Inicializar el selector de filas al cargar
+ document.addEventListener("DOMContentLoaded", function() {
+      const selectFilas = document.getElementById("filasPorPagina");
+      selectFilas.value = filasPorPagina; // Asegurar que muestre 80 al inicio
+ });
+
+// === FIN CÓDIGO PAGINACIÓN ===
 
 // ✅ FUNCIÓN AUXILIAR PARA ESCAPAR HTML
 function escapeHtml(unsafe) {
@@ -383,6 +492,100 @@ function debugURL(scriptUrl, numPedido) {
     console.log("🔗 Navegando a:", url);
     window.top.location.href = url;
 }
+
+// === Variables Globales para Ordenación ===
+let columnaOrden = -1; // Columna actualmente ordenada (-1 = ninguna)
+let direccionOrden = 'asc'; // 'asc' o 'desc'
+
+/**
+ * Ordena la tabla de cotizaciones por la columna especificada.
+ * @param {number} indiceColumna - El índice de la columna (0, 1, 2...).
+ * @param {string} tipoDato - 'texto', 'numero' o 'fecha'.
+ */
+function ordenarTabla(indiceColumna, tipoDato) {
+    console.log(`Ordenando por columna ${indiceColumna}, tipo ${tipoDato}`);
+    const tbody = document.getElementById("cuerpoTablaResumen");
+    // Convertir filas HTML a un array de arrays para poder ordenar
+    const filasArray = Array.from(tbody.querySelectorAll("tr"));
+
+    // Determinar nueva dirección de orden
+    if (indiceColumna === columnaOrden) {
+        direccionOrden = (direccionOrden === 'asc') ? 'desc' : 'asc';
+    } else {
+        columnaOrden = indiceColumna;
+        direccionOrden = 'asc'; // Por defecto ascendente al cambiar de columna
+    }
+
+    // Función de comparación
+    const compararFilas = (filaA, filaB) => {
+        const valorA = filaA.cells[indiceColumna].textContent || filaA.cells[indiceColumna].innerText;
+        const valorB = filaB.cells[indiceColumna].textContent || filaB.cells[indiceColumna].innerText;
+
+        let comparacion = 0;
+
+        switch (tipoDato) {
+            case 'numero':
+                // Extraer solo números y punto decimal
+                const numA = parseFloat(valorA.replace(/[^0-9.-]+/g,""));
+                const numB = parseFloat(valorB.replace(/[^0-9.-]+/g,""));
+                comparacion = (isNaN(numA) ? 0 : numA) - (isNaN(numB) ? 0 : numB);
+                break;
+            case 'fecha':
+                // Asumir formato DD/MM/AAAA y convertir a objeto Date para comparar
+                try {
+                    const partesA = valorA.split('/');
+                    const partesB = valorB.split('/');
+                    // Formato: AAAA, MM-1, DD
+                    const fechaA = new Date(partesA[2], partesA[1] - 1, partesA[0]);
+                    const fechaB = new Date(partesB[2], partesB[1] - 1, partesB[0]);
+                    comparacion = fechaA - fechaB;
+                } catch (e) {
+                    console.warn("Error parseando fecha:", valorA, valorB);
+                    comparacion = valorA.localeCompare(valorB, 'es', { sensitivity: 'base' }); // Fallback a texto
+                }
+                break;
+            case 'texto':
+            default:
+                comparacion = valorA.localeCompare(valorB, 'es', { sensitivity: 'base' }); // Comparación de texto insensible a mayúsculas/acentos
+                break;
+        }
+
+        return (direccionOrden === 'asc') ? comparacion : -comparacion;
+    };
+
+    // Ordenar el array de filas
+    filasArray.sort(compararFilas);
+
+    // Limpiar tbody
+    tbody.innerHTML = "";
+
+    // Volver a añadir las filas ordenadas
+    filasArray.forEach(fila => tbody.appendChild(fila));
+
+    // Actualizar iconos visuales en encabezados
+    actualizarIconosOrden(indiceColumna, direccionOrden);
+}
+
+/**
+ * Actualiza los iconos de flecha en los encabezados de la tabla.
+ */
+function actualizarIconosOrden(indiceColumnaActiva, direccion) {
+    const encabezados = document.querySelectorAll("#tablaResumen th .sort-icon");
+    encabezados.forEach((icono, index) => {
+        icono.classList.remove('asc', 'desc');
+        icono.style.opacity = '0.4'; // Resetear opacidad
+        // El índice del icono puede no coincidir directamente si hay TH no ordenables
+        // Buscamos el índice correcto basado en el TH padre
+        const thPadre = icono.closest('th');
+        if (thPadre && thPadre.cellIndex === indiceColumnaActiva) {
+            icono.classList.add(direccion);
+            icono.style.opacity = '1'; // Hacer visible el icono activo
+        }
+    });
+}
+
+// === FIN CÓDIGO ORDENACIÓN ===
+
 </script>
 </body>
 </html>
