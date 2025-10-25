@@ -9,19 +9,13 @@
 <body>
     <div class="barraTopComercial">
         <div class="topBarra-izquierda">
-            <h1>REGISTRO: NUEVA COTIZACIÓN</h1>
-            <h1 id="tituloFormulario">Registro de Nueva Cotización</h1>
-        </div>
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a></div>
         <div class="topBarra-derecha">
-            <button onclick="window.top.location.href = '<?!= getScriptUrl() ?>?page=ResumenComercial'" class="boton-regresar">
-                ← Regresar al Resumen
+            <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen
             </button>
-            <button onclick="window.top.location.href = '<?!= getScriptUrl() ?>?page=Modulos'" class="boton-regresar">
-                Volver a Módulos
+            <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF"> 📄 PDF
             </button>
-            <button type="button" onclick="generarPDF()" class="btn-guardar-top" id="btnGenerarPDF" style="background-color: #dc3545;">
-    📄 Generar PDF
-</button>
         </div>
     </div>
 
@@ -105,6 +99,7 @@
                             <th class="col-precio-unit">Precio Unit.</th>
                             <th class="col-subtotal">Subtotal</th>
                             <th class="col-accion">Acción</th>
+                            <th>Acta</th> </tr>
                         </tr>
                     </thead>
                     <tbody id="cuerpoDetalle"></tbody>
@@ -165,6 +160,12 @@
     </div>
 
 <script>
+
+  function navegarAResumen() {
+        const urlBase = '<?!= getScriptUrl() ?>';
+        window.top.location.href = urlBase + '?page=ResumenComercial';
+    }
+
 // Función para generar PDF
 function generarPDF() {
     const numPedido = estadoApp.esEdicion ? estadoApp.numPedidoEdicion : 
@@ -891,6 +892,17 @@ function procesarDatosInicialesComercial(data) {
                 <td><input type="number" name="precio_unitario_${rowId}" value="${parseFloat(data.PRECIO).toFixed(2)}" min="0" oninput="calcularTodo(this)" step="0.01" class="detalle-input text-right" required></td>
                 <td><span class="subtotal-display display-only-cell text-right">${parseFloat(data.SUB).toFixed(2)}</span></td>
                 <td><button type="button" onclick="eliminarLineaDetalle('linea-${rowId}')">🗑️</button></td>
+                
+                <td>
+                <button type="button" 
+                onclick="gestionarActa('${estadoApp.esEdicion ? estadoApp.numPedidoEdicion : 'NUEVO_PEDIDO'}', ${rowId}, '${escapeJsString(data.COD)}', '${escapeJsString(data.DESC)}')" 
+                id="btnActa-${rowId}" 
+                class="btn-info" /* Puedes usar otra clase de botón */
+                style="padding: 3px 6px; font-size: 11px;" /* Estilo compacto */
+                title="Gestionar Acta de Servicio para esta línea">
+            Acta...
+        </button>
+    </td>
                 <input type="hidden" name="subtotal_linea_${rowId}" value="${parseFloat(data.SUB).toFixed(2)}">
                 <input type="hidden" name="dias_cotizados_val_${rowId}" value="${Math.ceil(data.DIAS_COT).toFixed(0)}">
             `;
@@ -1507,6 +1519,100 @@ function debugModoEdicion() {
     console.log("=== FIN DEBUG ===");
 }
 
+/**
+ * Función auxiliar para escapar caracteres especiales en strings 
+ * que se usarán dentro de llamadas a funciones JavaScript en HTML.
+ */
+function escapeJsString(str) {
+    if (!str) return '';
+    return str.replace(/\\/g, '\\\\')
+              .replace(/'/g, "\\'")
+              .replace(/"/g, '\\"')
+              .replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r');
+}
+
+/**
+     * REEMPLAZO v6 de gestionarActa
+     * Usa sessionStorage para pasar datos a Acta.html en lugar de parámetros URL largos.
+     */
+    function gestionarActa(cotNumeroParam, lineaIndex, servicioCod, servicioDesc) {
+        console.log(`Gestionando Acta - Parámetros recibidos: COT='${cotNumeroParam}', Línea=${lineaIndex}`);
+
+        let cotNumeroFinal = null;
+
+        // 1. Determinar el número de COT correcto (Sin cambios)
+        if (estadoApp.esEdicion && estadoApp.numPedidoEdicion) {
+            cotNumeroFinal = estadoApp.numPedidoEdicion;
+        } else if (cotNumeroParam && cotNumeroParam !== 'NUEVO_PEDIDO') {
+             cotNumeroFinal = cotNumeroParam;
+        }
+
+        // 2. Validar si tenemos un número de COT válido (Sin cambios)
+        if (!cotNumeroFinal) { /* ... alert ... */ return; }
+        if (isNaN(lineaIndex) || lineaIndex < 1) { /* ... alert ... */ return; }
+
+        const btn = document.getElementById(`btnActa-${lineaIndex}`);
+        if(btn) { btn.textContent = "Verificando..."; btn.disabled = true; }
+
+        // 3. Llamar al backend para verificar si el acta existe
+        google.script.run
+            .withSuccessHandler(function(actaId) {
+                if(btn) { btn.textContent = "Acta..."; btn.disabled = false; }
+                
+                const urlBase = '<?!= getScriptUrl() ?>';
+                let urlDestino = '';
+                
+                // --- INICIO: Guardar en sessionStorage y construir URL simple ---
+                let datosParaActa = {};
+
+                if (actaId) { // Editar
+                    console.log("Acta encontrada:", actaId, "- Preparando para edición.");
+                    datosParaActa = {
+                        modo: 'editar',
+                        actaId: actaId
+                        // No necesitamos pasar más datos, Acta.html los cargará por ID
+                    };
+                    // URL solo necesita indicar la página y el modo (opcionalmente el ID para claridad)
+                     urlDestino = `${urlBase}?page=Acta&modo=editar&ref=${actaId}`; 
+                     
+                } else { // Crear
+                    console.log("Acta no encontrada - Preparando para creación.");
+                    datosParaActa = {
+                        modo: 'crear',
+                        cot: cotNumeroFinal, 
+                        linea: lineaIndex,
+                        // Pasamos cod y desc aquí para que Acta.html los tenga
+                        cod: servicioCod || '', 
+                        desc: servicioDesc || '' 
+                    };
+                     // URL solo necesita indicar la página y el modo
+                     urlDestino = `${urlBase}?page=Acta&modo=crear`;
+                }
+                
+                // Guardar los datos en sessionStorage ANTES de abrir la ventana
+                try {
+                    sessionStorage.setItem('datosParaActa', JSON.stringify(datosParaActa));
+                    console.log("Datos guardados en sessionStorage:", datosParaActa);
+                    
+                    // Abrir la ventana con la URL simple
+                    console.log("Abriendo URL:", urlDestino);
+                    window.open(urlDestino, '_blank'); 
+
+                } catch (e) {
+                     console.error("Error al guardar en sessionStorage:", e);
+                     mostrarError("No se pudo preparar la información para la página del Acta.", 'sessionStorage');
+                     if(btn) { btn.textContent = "Acta..."; btn.disabled = false; } // Restaurar botón si falla aquí
+                }
+                // --- FIN: Guardar en sessionStorage ---
+
+            })
+            .withFailureHandler(function(error) {
+                 if(btn) { btn.textContent = "Acta..."; btn.disabled = false; }
+                 mostrarError(error, 'verificar acta');
+            })
+            .verificarActaExistente(cotNumeroFinal, lineaIndex); 
+    }
 // Ejecutar después de la carga
 setTimeout(debugModoEdicion, 1000);
     </script>
