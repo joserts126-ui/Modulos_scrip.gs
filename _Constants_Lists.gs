@@ -27,7 +27,7 @@ const FOLDER_ID_CARMEN = "1h4LZiA9Iwx54jHqOyHqFvDJykGipM6YO";
 const FOLDER_ID_GYM     = "1ODozAGz2AeDmFGk_rT_axt7bhG6SdLv2"; // Gruas y Montacargas San Jose SAC
 const FOLDER_ID_SJ      = "1bO8-_ZWM2nFfc1jl4PDYrf6aTnKqp7s4"; // Gruas San Jose Peru SAC
 const FOLDER_ID_ALP     = "1ZrPgv6mfTZk5r4GE49tAlc9C559b_M93"; // Alpamayo
-
+const HOJA_ACTAS = "Actas";
 // --- IDs DE ARCHIVOS DE PLANTILLA (¡DEBES RELLENAR ESTOS!) ---
 // Ve a tu Google Drive, haz clic derecho en el archivo plantilla y "Obtener enlace"
 // Copia el ID desde el enlace (ej. .../d/AQUI_VA_EL_ID/edit)
