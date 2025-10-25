@@ -1145,8 +1145,9 @@ button {
 
 /* Columna de monto con alineación a la derecha */
 .monto-col {
-    text-align: right;
+    text-align: right !important;
     font-weight: bold;
+    white-space: nowrap; /* Evita que el número se parta */
 }
 
 /* Modal grande para detalles del pedido */
@@ -1815,4 +1816,201 @@ input:not([readonly]) {
     color: #333;
     border: 1px solid #ccc;
 }
+
+/* Estilos para ordenación de tabla */
+.tabla-resumen th {
+    cursor: pointer; /* Indica que se puede hacer clic */
+    position: relative; /* Para posicionar el icono */
+}
+.tabla-resumen th .sort-icon {
+    display: inline-block;
+    width: 16px; /* Ancho para el icono */
+    height: 16px; /* Alto para el icono */
+    margin-left: 5px;
+    opacity: 0.4; /* Icono tenue por defecto */
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: contain; /* Ajusta el tamaño del icono */
+    vertical-align: middle;
+}
+.tabla-resumen th .sort-icon.asc {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-up-short" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/></svg>');
+    opacity: 1; /* Icono visible y claro */
+}
+.tabla-resumen th .sort-icon.desc {
+     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-down-short" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 4a.5.5 0 0 1 .5.5v5.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.293V4.5A.5.5 0 0 1 8 4z"/></svg>');
+     opacity: 1; /* Icono visible y claro */
+}
+
+/* Estilos para el nuevo header dentro del card */
+.header-resumen {
+    display: flex; /* Activa Flexbox */
+    justify-content: space-between; /* Empuja izq y der a los extremos */
+    align-items: center; /* Centra verticalmente */
+    margin-bottom: 15px; /* Espacio antes de la tabla */
+    flex-wrap: wrap; /* Permite que se envuelva en pantallas pequeñas */
+    gap: 10px; /* Espacio entre elementos si se envuelven */
+}
+
+.header-izquierda {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Espacio entre título y botón */
+}
+
+.header-izquierda h2 {
+    margin: 0; /* Quita margen por defecto del h2 */
+    border-bottom: none; /* Quita la línea inferior si no la quieres aquí */
+    padding-bottom: 0;
+}
+
+.header-derecha {
+    /* El input de búsqueda ya está a la derecha por justify-content */
+}
+
+/* Estilos para la tabla con scroll y paginación */
+.tabla-contenedor-scroll {
+    width: 100%; /* Ocupa todo el ancho del card */
+    max-height: 65vh; /* Altura máxima antes de mostrar scroll (ajústala) */
+    overflow-y: auto; /* Scroll vertical SOLO para la tabla */
+    border: 1px solid #ddd; /* Opcional: borde alrededor del área de scroll */
+}
+
+.tabla-scroll {
+     width: 100%; /* Asegura que la tabla use el ancho del contenedor */
+     border-collapse: collapse;
+     table-layout: auto; /* Importante para que las columnas se ajusten */
+}
+
+.tabla-scroll thead th {
+    position: sticky; /* Encabezado fijo */
+    top: 0; /* Pegado arriba */
+    background-color: #5cb85c; /* Asegura un fondo sólido */
+    color: white;
+    z-index: 10; /* Encima del contenido del tbody */
+    /* Estilos de encabezado que ya tenías */
+     padding: 8px 12px;
+     border: 1px solid #ddd;
+     text-align: left;
+     font-weight: bold;
+     white-space: nowrap;
+}
+
+ .tabla-scroll tbody td {
+     /* Estilos de celdas que ya tenías */
+     padding: 6px 12px;
+     border: 1px solid #ddd;
+     text-align: left;
+     word-wrap: break-word;
+     white-space: nowrap;
+     font-size: 0.9em; /* Opcional: reducir tamaño de fuente */
+     overflow: hidden; /* Oculta texto que desborda */
+     text-overflow: ellipsis; /* Añade "..." al texto cortado */
+ }
+
+/* Ajuste para el contenedor principal y card si es necesario */
+.contenedorModulos {
+     padding: 20px; /* Mantiene padding */
+     width: auto; /* Permite que se ajuste */
+     max-width: 100%; /* Evita desbordamiento horizontal */
+     box-sizing: border-box;
+}
+ .card {
+     width: 100%; /* Hace que el card ocupe el ancho disponible */
+     box-sizing: border-box; /* Incluye padding en el ancho */
+     overflow: hidden; /* Evita que el contenido interno desborde visualmente */
+ }
+
+/* Estilos para paginación */
+.paginacion-controles {
+    margin-top: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end; /* Alinea controles a la derecha */
+    gap: 10px;
+    padding: 10px;
+    background-color: #f8f9fa; /* Fondo ligero */
+    border-top: 1px solid #ddd;
+}
+ .paginacion-controles button {
+     padding: 5px 10px;
+     cursor: pointer;
+ }
+ .paginacion-controles button:disabled {
+     cursor: not-allowed;
+     opacity: 0.5;
+ }
+  .paginacion-controles select {
+      padding: 5px;
+  }
+
+.header-resumen-con-paginacion {
+    display: flex;
+    flex-direction: column; /* Organiza las filas una debajo de otra */
+    margin-bottom: 15px; /* Espacio antes de la tabla */
+    border-bottom: 1px solid #eee; /* Separador ligero */
+    padding-bottom: 10px;
+}
+
+.header-fila-superior {
+    display: flex;
+    justify-content: space-between; /* Botón a la izq, Búsqueda a la der */
+    align-items: center;
+    width: 100%;
+    margin-bottom: 10px;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+/* --- Estilos para Paginación Simplificada --- */
+
+.paginacion-controles-simple {
+    display: flex;
+    align-items: center; /* Centra verticalmente */
+    gap: 8px; /* Espacio pequeño entre elementos */
+    font-size: 0.9em; /* Tamaño de fuente más pequeño */
+    color: #555; /* Color de texto grisáceo */
+}
+
+.info-pagina-simple {
+    font-weight: bold;
+    min-width: 80px; /* Espacio para "1-80 / XXXX" */
+    text-align: right; /* Alinea el texto a la derecha */
+}
+
+.btn-paginacion {
+    background-color: #f0f0f0; /* Fondo gris claro */
+    border: 1px solid #ccc;
+    color: #333;
+    padding: 4px 8px; /* Padding pequeño */
+    font-size: 1em; /* Usa tamaño relativo del contenedor padre */
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1; /* Evita espacio extra vertical */
+}
+
+.btn-paginacion:hover:not(:disabled) {
+    background-color: #e0e0e0;
+}
+
+.btn-paginacion:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Ajustes responsivos opcionales */
+@media (max-width: 800px) { /* Ajusta breakpoint */
+  .header-fila-superior, .header-fila-inferior {
+     flex-direction: column;
+     align-items: stretch;
+     gap: 10px;
+  }
+  .header-fila-superior .search-container { order: 2; width: 100%;}
+  .header-fila-superior .search-container input { width: 100%; box-sizing: border-box; }
+  .header-fila-superior .boton-nuevo-pedido { order: 1; align-self: flex-start;} /* Botón arriba a la izq */
+
+  .header-fila-inferior h2 { order: 1; margin-bottom: 10px; text-align: left;}
+  .header-fila-inferior .paginacion-controles-simple { order: 2; justify-content: space-between; }
+}
+
 </style>
