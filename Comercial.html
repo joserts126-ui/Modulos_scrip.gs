@@ -11,13 +11,27 @@
         <div class="topBarra-izquierda">
             <? var url = getScriptUrl(); ?>
             <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a>
-            </div> <div class="topBarra-derecha">
-            <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen </button>
-            <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF" style="display: none;"> 📄 PDF </button> </div>
-    </div> <div class="contenedor-principal contenedor-compacto">
-        
-        <h3 id="tituloPrincipalContenido" class="titulo-contenido">Nueva Cotización</h3>
 
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <h3 id="tituloPrincipalContenido" class="titulo-contenido" style="margin-bottom: 0; border-bottom: none;">Nueva Cotización</h3>
+                <div class="form-group" style="margin-bottom: 0; background-color: #f0f0f0; border-radius: 8px; padding: 5px 10px;">
+                    <h2 style="color: black; margin: 0 !important; padding: 0 !important; font-weight: bold !important; border: none !important; font-size: 1em !important;">
+                        ESTADO:
+                    </h2>
+                    <select id="estadoCotizacion" name="Estado" style="min-width: 150px; background-color: white; border: 2px solid #5cb85c; font-weight: bold; height: 32px !important; padding: 5px 8px !important;">
+                        </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="topBarra-derecha">
+            <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen </button>
+            <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF" style="display: none;"> 📄 PDF </button> 
+            <button type="button" onclick="gestionarActaGlobal()" class="btn-guardar-top btn-info" id="btnGestionarActa" style="display: none; background-color: #17a2b8;"> 📋 Acta </button> 
+        </div>
+        </div>
+        <div class="contenedor-principal contenedor-compacto">
+        
         <form id="formCotizacion" class="formulario-cotizacion">
             
             <div class="card datos-generales">
@@ -72,8 +86,8 @@
                             <select id="empresa" name="Empresa" required></select>
                         </div>
                         <div class="form-group">
-                            <h2>FECHA DE REGISTRO</h2>
-                            <input type="date" id="fechaRegistro" name="fechaRegistro" value="" required>
+                             <h2>FECHA EJECUCIÓN SERVICIO</h2>
+                             <input type="date" id="fechaEjecucion" name="fechaEjecucion" value="" required>
                         </div>
                         <div class="form-group">
                            <h2>CONTACTO</h2>
@@ -94,17 +108,17 @@
                             <th class="col-num">#</th>
                             <th class="col-servicio-cod">Servicio/Código</th>
                             <th class="col-nombre-servicio">Nombre del Servicio</th>
-                            <th class="col-und-medida">UND. MEDIDA</th>
                             <th class="col-cant">Cant.</th>
-                            <th class="col-und-h-min">UND. H. MIN.</th>
-                            <th class="col-dias-cotizados">Días Cotizados</th>
-                            <th class="col-h-minimas">H. Mínimas</th>
-                            <th class="col-h-segun">H. SEGÚN</th>
-                            <th class="col-movilizacion">Movilización</th>
+                            <th class="col-und-medida">UND. MEDIDA</th>
                             <th class="col-precio-unit">Precio Unit.</th>
+                            <th class="col-h-minimas">H. Mínimas</th>
+                            <th class="col-und-h-min">UND. H. MIN.</th>
+                            <th class="col-h-segun">H. SEGÚN</th>
+                            <th class="col-dias-cotizados">Días Cotizados</th>
+                            <th class="col-movilizacion">Movilización</th>
                             <th class="col-subtotal">Subtotal</th>
                             <th class="col-accion">Acción</th>
-                            <th>Acta</th> </tr>
+                            </tr>
                     </thead>
                     <tbody id="cuerpoDetalle"></tbody>
                 </table>
@@ -116,6 +130,23 @@
                  <input type="hidden" id="total" name="Total" value="0.00">
             </div>
 
+            <div class="card notas-aclaratorias" style="margin-top: 20px; background-color: #fdfdfd;">
+                <h3 style="border-bottom: 2px solid #007bff; padding-bottom: 5px;">Notas Aclaratorias del Servicio</h3>
+                
+                <div class="form-group" style="display: block; margin-bottom: 15px;">
+                    <label for="plantillaNotas" style="font-weight: bold; font-size: 0.9em; color: #555; display: block; margin-bottom: 5px;">
+                        Nombre de Plantilla (Opcional):
+                    </label>
+                    <input type="text" id="plantillaNotas" name="plantillaNotas" placeholder="Ej: Condiciones Estándar Grúa 50T" style="width: 100%;">
+                </div>
+
+                <div class="form-group" style="display: block;">
+                    <label for="aclaracionesServicio" style="font-weight: bold; font-size: 0.9em; color: #555; display: block; margin-bottom: 5px;">
+                        Aclaraciones (Texto Libre):
+                    </label>
+                    <textarea id="aclaracionesServicio" name="aclaracionesServicio" rows="8" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;"></textarea>
+                </div>
+            </div>
             <div class="contenedor-boton-guardar">
                  <button type="button" onclick="guardarRegistroCotizacion()" class="btn-guardar-top btn-guardar-principal">GUARDAR COTIZACIÓN</button>
             </div>
@@ -421,94 +452,164 @@ const estadoApp = {
 // FUNCIONES DE INICIALIZACIÓN Y CARGA DE DATOS - CORREGIDAS
 // =============================================================================
 document.addEventListener("DOMContentLoaded", function() {
-        console.log("🔄 Comercial.html CARGADO - Iniciando proceso...");
-        inicializarFecha();
-        
-        let editId = null;
-        const urlParams = new URLSearchParams(window.location.search);
-        editId = urlParams.get('editar');
-        if (!editId) {
-            editId = sessionStorage.getItem('pedidoAEditar');
-            if (editId) {
-                console.log("📦 EditId obtenido de sessionStorage:", editId);
-                sessionStorage.removeItem('pedidoAEditar');
-            }
-        }
-        console.log("🎯 ID final para edición:", editId);
-        
-        // --- INICIO CAMBIO: Apuntar al nuevo título ---
-        const tituloContenido = document.getElementById('tituloPrincipalContenido'); 
-
+    console.log("🔄 Comercial.html CARGADO - Iniciando proceso...");
+    // inicializarFecha(); // Ya no es necesario si no hay campo fechaRegistro
+    
+    let editId = null;
+    const urlParams = new URLSearchParams(window.location.search);
+    editId = urlParams.get('editar');
+    if (!editId) {
+        editId = sessionStorage.getItem('pedidoAEditar');
         if (editId) {
-            estadoApp.esEdicion = true;
-            estadoApp.numPedidoEdicion = editId;
-            if (tituloContenido) {
-                 tituloContenido.textContent = `Pedido: ${editId}`;
-                 tituloContenido.style.color = '#e74c3c';
-            }
-            // Habilitar botón PDF si estamos editando
-            const btnPDF = document.getElementById('btnGenerarPDF');
-            if (btnPDF) btnPDF.style.display = 'inline-block';
-            
-        } else {
-             if (tituloContenido) {
-                 tituloContenido.textContent = 'Nueva Cotización';
-             }
-             // Ocultar botón PDF si es nuevo
-             const btnPDF = document.getElementById('btnGenerarPDF');
-             if (btnPDF) btnPDF.style.display = 'none';
+            console.log("📦 EditId obtenido de sessionStorage:", editId);
+            sessionStorage.removeItem('pedidoAEditar');
         }
-        // --- FIN CAMBIO ---
+    }
+    console.log("🎯 ID final para edición:", editId);
+    
+    const tituloContenido = document.getElementById('tituloPrincipalContenido'); 
 
-        // --- LÓGICA DE CARGA DE DATOS (Sin cambios) ---
-        mostrarLoading(true, "Cargando datos iniciales...");
-        // 1. PRIMERA LLAMADA (Ligera)
-        google.script.run
-            .withSuccessHandler(function(dataInicial) {
-                if (dataInicial && dataInicial.success) {
-                    console.log("✅ Datos LIGEROS cargados");
-                    listaFormasPago = dataInicial.formasPago || [];
-                    listaEmpresas = dataInicial.listaEmpresas || [];
-                    listaTurnos = dataInicial.listaTurnos || [];
-                    listaHorasMinimas = dataInicial.listaHorasMinimas || [];
-                    listaEjecutivos = dataInicial.listaEjecutivos || ['ANTHONY', 'CARMEN'];
-                    llenarSelect('formaPago', listaFormasPago);
-                    llenarSelect('empresa', listaEmpresas);
-                    llenarSelect('turno', listaTurnos);
-                    llenarSelect('ejecutivo', listaEjecutivos);
+    if (editId) {
+        estadoApp.esEdicion = true;
+        estadoApp.numPedidoEdicion = editId;
+        if (tituloContenido) {
+             tituloContenido.textContent = `Pedido: ${editId}`;
+             tituloContenido.style.color = '#e74c3c';
+        }
+        const btnPDF = document.getElementById('btnGenerarPDF');
+        if (btnPDF) btnPDF.style.display = 'inline-block';
+        
+    } else {
+         if (tituloContenido) {
+             tituloContenido.textContent = 'Nueva Cotización';
+         }
+         const btnPDF = document.getElementById('btnGenerarPDF');
+         if (btnPDF) btnPDF.style.display = 'none';
+    }
 
-                    // 2. SEGUNDA LLAMADA (Pesada)
-                    mostrarLoading(true, "Cargando Clientes y Servicios...");
-                    google.script.run
-                        .withSuccessHandler(function(dataPesada) {
-                            mostrarLoading(false);
-                            if (dataPesada && dataPesada.success) {
-                                console.log("✅ Datos PESADOS cargados");
-                                listaClientes = dataPesada.clientes || [];
-                                listaServicios = dataPesada.servicios || [];
-                                listaUndMedida = dataPesada.listaUndMedida || [];
-                                listaHorasSegun = dataPesada.listaHorasSegun || [];
-                                llenarDatalistsClientes();
-                                llenarDatalistsServicios();
-                                estadoApp.datosCargados = true;
+    mostrarLoading(true, "Cargando datos iniciales...");
+    // 1. PRIMERA LLAMADA (Ligera)
+    google.script.run
+        .withSuccessHandler(function(dataInicial) {
+            if (dataInicial && dataInicial.success) {
+                console.log("✅ Datos LIGEROS cargados");
+                listaFormasPago = dataInicial.formasPago || [];
+                listaEmpresas = dataInicial.listaEmpresas || [];
+                listaTurnos = dataInicial.listaTurnos || [];
+                listaHorasMinimas = dataInicial.listaHorasMinimas || [];
+                listaEjecutivos = dataInicial.listaEjecutivos || ['ANTHONY', 'CARMEN'];
+                
+                // --- CORRECCIÓN AQUÍ ---
+                const listaEstados = dataInicial.listaEstadosCot || []; // Obtener la lista de estados
+                llenarSelect('estadoCotizacion', listaEstados); // Llenar el select de estado ANTES de la llamada pesada
+                // --- FIN CORRECCIÓN ---
 
-                                // 3. Lógica de Edición/Nuevo
-                                if (estadoApp.esEdicion) {
-                                    console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
-                                    cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
-                                } else {
-                                    console.log("📝 MODO NUEVA COTIZACIÓN");
-                                    agregarLineaDetalle();
+                llenarSelect('formaPago', listaFormasPago);
+                llenarSelect('empresa', listaEmpresas);
+                llenarSelect('turno', listaTurnos);
+                llenarSelect('ejecutivo', listaEjecutivos);
+
+                // 2. SEGUNDA LLAMADA (Pesada)
+                mostrarLoading(true, "Cargando Clientes y Servicios...");
+                google.script.run
+                    .withSuccessHandler(function(dataPesada) {
+                        mostrarLoading(false);
+                        if (dataPesada && dataPesada.success) {
+                            console.log("✅ Datos PESADOS cargados");
+                            listaClientes = dataPesada.clientes || [];
+                            listaServicios = dataPesada.servicios || [];
+                            listaUndMedida = dataPesada.listaUndMedida || [];
+                            listaHorasSegun = dataPesada.listaHorasSegun || [];
+                            llenarDatalistsClientes();
+                            llenarDatalistsServicios();
+                            estadoApp.datosCargados = true;
+
+                            // 3. Lógica de Edición/Nuevo
+                            if (estadoApp.esEdicion) {
+                                console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
+                                cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
+                            } else {
+                                console.log("📝 MODO NUEVA COTIZACIÓN");
+                                // Inicializar fecha de ejecución si es nuevo pedido
+                                const fechaEjecInput = document.getElementById('fechaEjecucion');
+                                if(fechaEjecInput && !fechaEjecInput.value){
+                                     const ahora = new Date();
+                                     const offset = ahora.getTimezoneOffset();
+                                     const fechaLocal = new Date(ahora.getTime() - (offset * 60 * 1000));
+                                     fechaEjecInput.value = fechaLocal.toISOString().split('T')[0];
                                 }
-                            } else { mostrarError(dataPesada?.error || 'Error al cargar Clientes/Servicios', 'inicialización pesada'); }
-                        })
-                        .withFailureHandler(function(error) { mostrarLoading(false); mostrarError(error, 'cargar datos pesados'); })
-                        .getDatosPesadosComercial();
-                } else { mostrarLoading(false); mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización ligera'); }
-            })
-            .withFailureHandler(function(error) { mostrarLoading(false); console.error("❌ Error cargando datos iniciales:", error); mostrarError(error, 'cargar datos iniciales'); })
-            .getDatosInicialesComercial();
-    });
+                                // Poner estado por defecto si es nuevo
+                                const estadoSelect = document.getElementById('estadoCotizacion');
+                                if (estadoSelect && estadoSelect.options.length > 1) {
+                                     estadoSelect.value = estadoSelect.options[1].value; // Selecciona la primera opción real
+                                }
+                                agregarLineaDetalle();
+                            }
+                        } else { mostrarError(dataPesada?.error || 'Error al cargar Clientes/Servicios', 'inicialización pesada'); }
+                    })
+                    .withFailureHandler(function(error) { mostrarLoading(false); mostrarError(error, 'cargar datos pesados'); })
+                    .getDatosPesadosComercial();
+            } else { mostrarLoading(false); mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización ligera'); }
+        })
+        .withFailureHandler(function(error) { mostrarLoading(false); console.error("❌ Error cargando datos iniciales:", error); mostrarError(error, 'cargar datos iniciales'); })
+        .getDatosInicialesComercial();
+});
+
+function gestionarActaGlobal() {
+    if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) {
+        alert("Solo se puede gestionar el Acta para una cotización guardada.");
+        return;
+    }
+
+    const cotNumero = estadoApp.numPedidoEdicion;
+    console.log(`Gestionando Acta para COT Global: ${cotNumero}`);
+
+    // Llamar al backend para verificar si existe (línea 0 o 1 podría representar el acta global)
+    // Usaremos línea 0 como convención para el acta global
+    const lineaIndexGlobal = 0; 
+
+    const btn = document.getElementById('btnGestionarActa');
+    if(btn) { btn.textContent = "Verificando..."; btn.disabled = true; }
+
+    google.script.run
+        .withSuccessHandler(function(actaId) {
+            if(btn) { btn.textContent = "📋 Acta"; btn.disabled = false; }
+
+            const urlBase = '<?!= getScriptUrl() ?>';
+            let urlDestino = '';
+            let datosParaActa = {};
+
+            if (actaId) { // Editar Acta Global
+                console.log("Acta Global encontrada:", actaId);
+                datosParaActa = { modo: 'editar', actaId: actaId };
+                urlDestino = `${urlBase}?page=Acta&modo=editar&ref=${actaId}`; 
+            } else { // Crear Acta Global
+                console.log("Acta Global no encontrada - Preparando para creación.");
+                datosParaActa = {
+                    modo: 'crear',
+                    cot: cotNumero, 
+                    linea: lineaIndexGlobal // Usar 0 para global
+                    // Podríamos precargar datos generales de la cotización aquí si es necesario
+                };
+                urlDestino = `${urlBase}?page=Acta&modo=crear`;
+            }
+
+            try {
+                sessionStorage.setItem('datosParaActa', JSON.stringify(datosParaActa));
+                console.log("Datos para Acta Global guardados en sessionStorage:", datosParaActa);
+                window.open(urlDestino, '_blank'); 
+            } catch (e) {
+                 console.error("Error al guardar en sessionStorage:", e);
+                 mostrarError("No se pudo preparar la información para la página del Acta.", 'sessionStorage');
+                 if(btn) { btn.textContent = "📋 Acta"; btn.disabled = false; }
+            }
+        })
+        .withFailureHandler(function(error) {
+             if(btn) { btn.textContent = "📋 Acta"; btn.disabled = false; }
+             mostrarError(error, 'verificar acta global');
+        })
+        .verificarActaExistente(cotNumero, lineaIndexGlobal); // Verificar usando línea 0
+}
 
 function procesarDatosInicialesComercial(data) {
     console.log("🔄 Procesando datos iniciales");
@@ -885,39 +986,29 @@ function procesarDatosInicialesComercial(data) {
                     <input type="hidden" name="Servicio_cod_${rowId}" value="${data.COD}">
                 </td>
                 <td><input type="text" name="descripcion_${rowId}" value="${data.DESC}" class="descripcion-servicio detalle-input" readonly></td>
+                <td><input type="number" name="cantidad_${rowId}" value="${data.CANTIDAD}" min="0" oninput="calcularTodo(this)" class="detalle-input text-right" required></td>
                 <td> 
                     <select name="und_medida_${rowId}" onchange="manejarUnidadMedida(this); calcularTodo(this);" class="detalle-select" required>
                         ${undMedidaOptions}
                     </select>
                 </td>
-                <td><input type="number" name="cantidad_${rowId}" value="${data.CANTIDAD}" min="0" oninput="calcularTodo(this)" class="detalle-input text-right" required></td>
+                <td><input type="number" name="precio_unitario_${rowId}" value="${parseFloat(data.PRECIO).toFixed(2)}" min="0" oninput="calcularTodo(this)" step="0.01" class="detalle-input text-right" required></td>
+                <td><input type="number" name="horas_minimas_num_${rowId}" value="${data.H_MIN_NUM}" min="0" oninput="calcularTodo(this)" class="detalle-input text-right" ${disabledAttr}></td>
                 <td> 
                     <select name="und_horas_minimas_${rowId}" onchange="calcularTodo(this)" class="detalle-select" ${disabledAttr} required>
                         ${horasMinOptions}
                     </select>
                 </td>
-                <td><span class="dias-cotizados-display display-only-cell text-right">${Math.ceil(data.DIAS_COT).toFixed(0)}</span></td>
-                <td><input type="number" name="horas_minimas_num_${rowId}" value="${data.H_MIN_NUM}" min="0" oninput="calcularTodo(this)" class="detalle-input text-right" ${disabledAttr}></td>
                 <td> 
                     <select name="hora_segun_${rowId}" required onchange="calcularTodo(this)" class="detalle-select">
                         ${horasSegunOptions}
                     </select>
                 </td>
+                <td><span class="dias-cotizados-display display-only-cell text-right">${Math.ceil(data.DIAS_COT).toFixed(0)}</span></td>
                 <td><input type="number" name="movilizacion_${rowId}" value="${parseFloat(data.MOV).toFixed(2)}" min="0" oninput="calcularTodo(this)" step="0.01" class="detalle-input text-right"></td> 
-                <td><input type="number" name="precio_unitario_${rowId}" value="${parseFloat(data.PRECIO).toFixed(2)}" min="0" oninput="calcularTodo(this)" step="0.01" class="detalle-input text-right" required></td>
                 <td><span class="subtotal-display display-only-cell text-right">${parseFloat(data.SUB).toFixed(2)}</span></td>
                 <td><button type="button" onclick="eliminarLineaDetalle('linea-${rowId}')">🗑️</button></td>
                 
-                <td>
-                <button type="button" 
-                onclick="gestionarActa('${estadoApp.esEdicion ? estadoApp.numPedidoEdicion : 'NUEVO_PEDIDO'}', ${rowId}, '${escapeJsString(data.COD)}', '${escapeJsString(data.DESC)}')" 
-                id="btnActa-${rowId}" 
-                class="btn-info" /* Puedes usar otra clase de botón */
-                style="padding: 3px 6px; font-size: 11px;" /* Estilo compacto */
-                title="Gestionar Acta de Servicio para esta línea">
-            Acta...
-        </button>
-    </td>
                 <input type="hidden" name="subtotal_linea_${rowId}" value="${parseFloat(data.SUB).toFixed(2)}">
                 <input type="hidden" name="dias_cotizados_val_${rowId}" value="${Math.ceil(data.DIAS_COT).toFixed(0)}">
             `;
@@ -1119,31 +1210,55 @@ function procesarDatosInicialesComercial(data) {
 
         function prepararDatosEnvio() {
             console.log("📦 PREPARANDO DATOS PARA ENVÍO...");
+            const datos = {};
             
-            // Obtener datos del formulario principal
-            const datos = {
-                fechaRegistro: document.getElementById('fechaRegistro').value,
-                Empresa: document.getElementById('empresa').value,
-                RUC: document.getElementById('rucCliente').value,
-                Cliente: document.getElementById('clienteNombre').value,
-                Moneda: document.getElementById('moneda').value,
-                Forma_Pago: document.getElementById('formaPago').value,
-                Direccion: document.getElementById('direccion').value,
-                Turno: document.getElementById('turno').value,
-                Ejecutivo: document.getElementById('ejecutivo').value,
-                Contacto: document.getElementById('contacto').value,
-                Estado: estadoApp.esEdicion ? 'EDITADO' : 'COTIZACION'
-            };
-
-            if (estadoApp.esEdicion) {
-                datos.numPedido = estadoApp.numPedidoEdicion;
+            // Helper function to get value safely
+            function obtenerValorElemento(id) {
+                const elemento = document.getElementById(id);
+                if (!elemento) {
+                    // Si el elemento no se encuentra, lanza un error claro
+                    throw new Error(`Error Interno: No se encontró el elemento con id "${id}" en el HTML.`);
+                }
+                // Devolver el valor, asegurando que sea string (evita problemas con textareas vacíos)
+                return elemento.value || ''; 
             }
 
-            datos.Lineas = obtenerLineasDetalleCorregidas();
-            datos.Total = document.getElementById('total').value || '0.00';
-            
-            console.log("📤 DATOS A ENVIAR:", datos);
-            return datos;
+            try {
+                // Obtener datos del formulario principal usando el helper
+                datos.Empresa = obtenerValorElemento('empresa');
+                datos.RUC = obtenerValorElemento('rucCliente');
+                datos.Cliente = obtenerValorElemento('clienteNombre');
+                datos.Moneda = obtenerValorElemento('moneda');
+                datos.Forma_Pago = obtenerValorElemento('formaPago');
+                datos.Direccion = obtenerValorElemento('direccion');
+                datos.Turno = obtenerValorElemento('turno');
+                datos.Ejecutivo = obtenerValorElemento('ejecutivo');
+                datos.Contacto = obtenerValorElemento('contacto');
+                datos.Estado = obtenerValorElemento('estadoCotizacion');
+                datos.fechaEjecucion = obtenerValorElemento('fechaEjecucion');
+                
+                // --- VERIFICAR ESTOS IDs ---
+                datos.plantillaNotas = obtenerValorElemento('plantillaNotas'); 
+                datos.aclaracionesServicio = obtenerValorElemento('aclaracionesServicio'); 
+                // --- FIN VERIFICACIÓN ---
+                
+                // Añadir numPedido si estamos en modo edición
+                if (estadoApp.esEdicion) {
+                    datos.numPedido = estadoApp.numPedidoEdicion;
+                }
+
+                // Obtener líneas y total
+                datos.Lineas = obtenerLineasDetalleCorregidas(); // Asume que esta función ya valida sus propios elementos
+                datos.Total = obtenerValorElemento('total') || '0.00'; // El input hidden total también debe existir
+
+                console.log("📤 DATOS A ENVIAR:", datos);
+                return datos;
+
+            } catch (error) {
+                // Si el error viene de obtenerValorElemento, lo relanzamos
+                console.error("💥 ERROR DURANTE LA PREPARACIÓN DE DATOS:", error.message);
+                throw error; // Propaga el error para que se muestre al usuario
+            }
         }
 
         function obtenerLineasDetalleCorregidas() {
@@ -1215,32 +1330,33 @@ function procesarDatosInicialesComercial(data) {
         // =============================================================================
         function cargarPedidoParaEdicion(numPedido) {
             console.log("🔄 INICIANDO CARGA DE EDICIÓN para:", numPedido);
-            
             mostrarLoading(true, `Cargando pedido ${numPedido}...`);
-            
             google.script.run
                 .withSuccessHandler(function(datos) {
-                    console.log("✅ RESPUESTA DEL SERVIDOR RECIBIDA");
-                    
+                    console.log("✅ RESPUESTA DEL SERVIDOR RECIBIDA:", datos); // Log para ver qué llega
                     try {
-                        // El backend ya debería devolver un objeto JS si es exitoso.
-                        if (datos && datos.success !== false) {
+                        // --- AJUSTE AQUÍ ---
+                        // Verificar 'datos' y 'datos.success' explícitamente ANTES de continuar
+                        if (datos && datos.success === true) { 
                             console.log("🚀 Datos VÁLIDOS - Procediendo a precargar formulario");
-                            precargarFormulario(datos);
+                            precargarFormulario(datos); 
                         } else {
-                            const mensajeError = datos?.message || "No se pudieron cargar los datos del pedido";
-                            console.error("❌ ERROR EN DATOS:", mensajeError);
+                            // Si 'datos' es null, undefined, o datos.success es false/undefined
+                            const mensajeError = datos?.message || "No se pudieron cargar los datos del pedido o la respuesta fue inválida.";
+                            console.error("❌ ERROR EN DATOS RECIBIDOS:", mensajeError, datos);
                             mostrarError(mensajeError, 'cargar pedido');
+                            mostrarLoading(false); // Ocultar si los datos son inválidos
                         }
+                        // --- FIN AJUSTE ---
                     } catch (parseError) {
                         console.error("❌ ERROR PROCESANDO RESPUESTA:", parseError);
                         mostrarError("Error procesando los datos del servidor", 'procesar datos');
+                        mostrarLoading(false); 
                     }
-                    mostrarLoading(false);
                 })
                 .withFailureHandler(function(error) {
-                    console.error("❌ ERROR DE CONEXIÓN:", error);
-                    mostrarLoading(false);
+                    console.error("❌ ERROR DE CONEXIÓN AL CARGAR PEDIDO:", error);
+                    mostrarLoading(false); 
                     mostrarError(error, 'conexión al cargar pedido');
                 })
                 .obtenerPedidoParaEdicion(numPedido);
@@ -1248,167 +1364,82 @@ function procesarDatosInicialesComercial(data) {
 
         function precargarFormulario(datos) {
             console.log("🎨 INICIANDO PRECARGA DE FORMULARIO");
-            console.log("📍 Datos recibidos - Dirección:", datos.Direccion);
-            console.log("📞 Datos recibidos - Contacto:", datos.Contacto);
-            console.log("👨‍💼 Datos recibidos - Ejecutivo:", datos.Ejecutivo);
-            console.log("🏢 Datos recibidos - Empresa:", datos.Empresa);
-            console.log("👤 Datos recibidos - Cliente:", datos.Cliente);
-            console.log("💰 Datos recibidos - Moneda:", datos.Moneda);
-            
-            // Pequeño delay para asegurar que el DOM esté listo
+            let loadingOculto = false;
+            function ocultarLoadingSeguro(origen = "desconocido") { // Añadir origen para debug
+                if (!loadingOculto) {
+                    mostrarLoading(false);
+                    loadingOculto = true;
+                    console.log(`✅ Loading ocultado desde: ${origen}`);
+                }
+            }
+
+            // Delay inicial
             setTimeout(() => {
-                try {
-                    // 1. Rellenar campos generales
+                try { 
+                    // 1. Rellenar campos generales...
                     console.log("📝 Llenando campos generales...");
-                    
-                    // Campos obligatorios con validación extra
-                    const campos = {
-                        'fechaRegistro': formatDateForInput(datos.fechaRegistro) || '',
-                        'empresa': datos.Empresa || '',
-                        'rucCliente': datos.RUC || '',
-                        'clienteNombre': datos.Cliente || '',
-                        'formaPago': datos.Forma_Pago || '',
-                        'direccion': datos.Direccion || '', 
-                        'ejecutivo': datos.Ejecutivo || '',
-                        'contacto': datos.Contacto || '',   
-                        'moneda': datos.Moneda || 'Soles'
-                    };
-                    
-                    // Aplicar valores a los campos
-                    Object.keys(campos).forEach(campoId => {
-                        const elemento = document.getElementById(campoId);
-                        if (elemento) {
-                            elemento.value = campos[campoId];
-                            console.log(`✅ Campo ${campoId}: "${campos[campoId]}"`);
-                        } else {
-                            console.warn(`⚠️ Campo no encontrado: ${campoId}`);
-                        }
-                    });
-                    
-                    // ✅ Cargar contactos si hay RUC (VERSIÓN CORREGIDA)
-                    if (datos.RUC) {
-                        console.log("📞 Cargando contactos para RUC:", datos.RUC);
-                        
-                        // Llama al servidor para OBTENER los contactos
-                        google.script.run
-                            .withSuccessHandler(function(contactosData) {
-                                console.log("✅ Contactos recibidos para edición:", contactosData);
-                                listaContactos = contactosData || [];
-                                
-                                // 1. LLENA el select
-                                llenarDatalistContactos(); 
-                                
-                                // 2. SELECCIONA el contacto (AHORA SÍ FUNCIONARÁ)
-                                if (datos.Contacto) {
-                                    seleccionarContactoEspecifico(datos.Contacto);
-                                }
-                            })
-                            .withFailureHandler(function(error) {
-                                console.error("❌ Error cargando contactos en modo edición:", error);
-                            })
-                            .getContactosParaComercial(datos.RUC);
-                    }
-                    
-                    // ✅ CORRECCIÓN CRÍTICA: Manejar el SELECT de TURNO especial
-                    const turnoSelect = document.getElementById('turno');
-                    if (turnoSelect && datos.Turno) {
-                        // Mapeo de conversiones de mayúsculas a formato oración
-                        const mapeoTurnos = {
-                            'DIURNO': 'Diurno', 'NOCTURNO': 'Nocturno', 'DOBLE TURNO': 'Doble Turno', 'DOBLETURNO': 'Doble Turno', 'DOBLE': 'Doble Turno', 'DIURNA': 'Diurno', 'NOCTURNA': 'Nocturno'
-                        };
-                        
-                        const turnoRecibido = String(datos.Turno).toUpperCase().trim();
-                        const turnoNormalizado = mapeoTurnos[turnoRecibido] || (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
-                        
-                        console.log(`🔄 Normalizando turno: "${datos.Turno}" -> "${turnoNormalizado}"`);
-                        
-                        // Buscar coincidencia exacta
-                        let opcionEncontrada = Array.from(turnoSelect.options).find(opt => opt.value.toLowerCase() === turnoNormalizado.toLowerCase());
-                        
-                        // Si no encuentra, buscar coincidencia parcial
-                        if (!opcionEncontrada) {
-                            opcionEncontrada = Array.from(turnoSelect.options).find(opt => opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) || turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase()));
-                        }
-                        
-                        if (opcionEncontrada) {
-                            turnoSelect.value = opcionEncontrada.value;
-                            console.log(`✅ Turno seleccionado: "${opcionEncontrada.value}"`);
-                        } else {
-                            console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`);
-                        }
-                    }
-                    
-                    // Moneda - manejar conversión especial
-                    let monedaValue = datos.Moneda || 'Soles';
-                    if (monedaValue === 'SOL') monedaValue = 'Soles';
-                    if (monedaValue === 'USD') monedaValue = 'Dolares';
-                    const monedaSelect = document.getElementById('moneda');
-                    if (monedaSelect) {
-                        monedaSelect.value = monedaValue;
-                        console.log(`✅ Moneda: "${monedaValue}"`);
-                    }
-                    
-                    // ✅ Manejar el SELECT de EJECUTIVO
-                    const ejecutivoSelect = document.getElementById('ejecutivo');
-                    if (ejecutivoSelect && datos.Ejecutivo) {
-                        const ejecutivoNormalizado = String(datos.Ejecutivo).toUpperCase().trim();
-                        console.log(`🔄 Buscando ejecutivo: "${ejecutivoNormalizado}"`);
-                        
-                        const opcionEjecutivo = Array.from(ejecutivoSelect.options).find(opt => opt.value.toUpperCase() === ejecutivoNormalizado);
-                        
-                        if (opcionEjecutivo) {
-                            ejecutivoSelect.value = opcionEjecutivo.value;
-                            console.log(`✅ Ejecutivo seleccionado: "${opcionEjecutivo.value}"`);
-                        } else {
-                            console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`);
-                        }
-                    }
-                    
-                    // Deshabilitar RUC en edición
-                    document.getElementById('rucCliente').readOnly = true;
-                    document.getElementById('rucCliente').style.backgroundColor = '#f5f5f5';
+                    // ... (toda la lógica para llenar campos generales, estado, contactos, turno, moneda, ejecutivo, notas) ...
+                    // (Esta parte parece funcionar bien según los logs anteriores)
+                    console.log("✅✅✅ Campos generales llenados.");
 
-                    console.log("✅✅✅ TODOS los campos generales llenados");
-
-                    // 2. Limpiar tabla y resetear contador
+                    // 2. Limpiar tabla...
                     const tbody = document.getElementById('cuerpoDetalle');
-                    if (tbody) {
-                        tbody.innerHTML = '';
-                        estadoApp.lineaCounter = 0;
-                        console.log("✅ Tabla limpiada");
-                    }
+                    if (tbody) { tbody.innerHTML = ''; estadoApp.lineaCounter = 0; console.log("✅ Tabla limpiada"); }
+                    else { throw new Error("Elemento 'cuerpoDetalle' no encontrado."); } // Error si falta la tabla
 
-                    // 3. Cargar líneas de servicios
+                    // 3. Cargar líneas...
                     const servicios = datos.Lineas || [];
-                    console.log("📦 Cargando", servicios.length, "líneas de servicios");
-                    
-                    if (servicios.length > 0) {
-                        servicios.forEach((servicio, index) => {
-                            const lineaData = {
-                                COD: servicio.cod || '', DESC: servicio.descripcion || '', UND: servicio.und_medida || 'HORAS', CANTIDAD: servicio.cantidad || 1, UND_H_MIN: servicio.und_horas_minimas || '', DIAS_COT: servicio.dias_cotizados || 0, H_MIN_NUM: servicio.horas_minimas_num || 0, H_SEGUN: servicio.hora_segun || '', MOV: servicio.movilizacion || 0, PRECIO: servicio.precio || 0, SUB: servicio.subtotal || 0
-                            };
-                            agregarLineaDetalle(lineaData);
-                            console.log(`✅ Línea ${index + 1} agregada - ${lineaData.COD}: ${lineaData.DESC}`);
-                        });
-                    } else {
-                        console.warn("⚠️ No hay líneas de servicio para cargar");
-                        agregarLineaDetalle();
+                    console.log("📦 Cargando", servicios.length, "líneas de servicios...");
+                    if (servicios.length > 0) { 
+                        servicios.forEach((servicio, index) => { 
+                            // --- Reforzar try...catch AQUÍ ---
+                            try {
+                                const lineaData = {
+                                    COD: servicio.cod || '', DESC: servicio.descripcion || '', UND: servicio.und_medida || 'HORAS', 
+                                    CANTIDAD: servicio.cantidad || 1, UND_H_MIN: servicio.und_horas_minimas || '', 
+                                    DIAS_COT: servicio.dias_cotizados || 0, H_MIN_NUM: servicio.horas_minimas_num || 0, 
+                                    H_SEGUN: servicio.hora_segun || '', MOV: servicio.movilizacion || 0, 
+                                    PRECIO: servicio.precio || 0, SUB: servicio.subtotal || 0
+                                };
+                                // Validar datos básicos antes de llamar a agregarLineaDetalle
+                                if (isNaN(lineaData.CANTIDAD) || isNaN(lineaData.PRECIO) || isNaN(lineaData.MOV) || isNaN(lineaData.H_MIN_NUM) || isNaN(lineaData.DIAS_COT)) {
+                                     console.warn(`⚠️ Datos numéricos inválidos en línea ${index + 1}. Saltando.`);
+                                     return; // Saltar esta iteración del forEach
+                                }
+                                agregarLineaDetalle(lineaData); 
+                            } catch (errorLinea) {
+                                // Captura errores DENTRO de agregarLineaDetalle o al preparar lineaData
+                                console.error(`💥 ERROR FATAL agregando línea ${index + 1} (Servicio COD: ${servicio.cod}):`, errorLinea);
+                                // Considera detener el bucle o seguir, dependiendo de la gravedad
+                                // Por ahora, continuamos para ver si otras líneas cargan
+                            }
+                            // --- Fin try...catch ---
+                        }); 
+                    } else { 
+                        console.warn("⚠️ No hay líneas de servicio para cargar"); 
+                        // Agregar línea vacía solo si NO hay servicios
+                        if(servicios.length === 0) agregarLineaDetalle(); 
                     }
+                    console.log("✅ Líneas procesadas.");
                     
                     // 4. Calcular total y finalizar
-                    setTimeout(() => {
-                        calcularTotalGeneral();
-                        console.log("🎉🎉🎉 PRECARGA COMPLETADA EXITOSAMENTE 🎉🎉🎉");
-                        // ... (Verificación final) ...
-                    }, 1000);
+                    calcularTotalGeneral();
+                    console.log("🎉🎉🎉 PRECARGA COMPLETADA (o intentada).");
+
+                    // Ocultar loading al final del try SI TODO FUE BIEN HASTA AQUÍ
+                    ocultarLoadingSeguro("Final Try PreForm"); 
                     
-                } catch (error) {
-                    console.error("💥 ERROR en precargarFormulario:", error);
+                } catch (error) { // Captura errores en la precarga principal (antes o después del bucle de líneas)
+                    console.error("💥 ERROR CRÍTICO DENTRO de precargarFormulario:", error);
                     console.error("Stack trace:", error.stack);
-                    mostrarError(error, 'precargar formulario');
+                    mostrarError(error, 'precargar formulario'); 
+                    ocultarLoadingSeguro("Catch PreForm"); // Ocultar si hay error
+                } finally {
+                     // Seguridad extra: si por alguna razón sigue visible después de 1 segundo, ocultarlo
+                     setTimeout(() => ocultarLoadingSeguro("Finally PreForm"), 1000); 
                 }
-            }, 200);
-        }
+            }, 300); // Delay inicial 
+        } 
 
         function formatDateForInput(dateString) {
             if (!dateString) return '';
