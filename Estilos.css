@@ -94,22 +94,25 @@ h2 {
 /* Etiquetas y Títulos */
 .formulario-campos h2 {
     color: black; /* Color de letra negro solicitado */
-    font-size: 1em; /* Reducimos el tamaño de la etiqueta */
-    margin-bottom: 5px;
+    font-size: 0.9em; /* Reducimos el tamaño de la etiqueta */
+    margin: 0 0 5px 0 !important;
+    padding: 0 !important;
+    border-bottom: none !important;
     width: 100%; /* El h2 toma todo el ancho del contenedor flex item */
+    font-weight: normal;
+    line-height: 1.2;
 }
 
 /* Reducción de tamaño de inputs y selects */
 .formulario-campos input[type="text"],
 .formulario-campos select {
-    padding: 6px 10px; /* Un poco menos de padding que antes */
+    padding: 6px 10px; 
     border: 1px solid #ccc;
     border-radius: 4px;
-    width: 100%; 
+    flex-grow: 1; /* Hace que el input ocupe el espacio restante */
     box-sizing: border-box;
-    font-size: 0.9em; /* Letra un poco más pequeña */
-    margin-bottom: 15px; /* Espacio después de cada campo */
-}
+    font-size: 0.9em; 
+  }
 
 /* ------------------------------------------------------------------
  * ESTILOS DE LA TABLA Y AUTOCOMPLETADO
@@ -573,13 +576,11 @@ table.servicios-tabla td button:hover {
 }
 
 .tabla-listado {
-    /* 🔑 AÑADIDO: Asegura un ancho mínimo para que todas las 13 columnas quepan */
-    min-width: 1150px; 
-    width: 100%;
-    border-collapse: collapse; /* Para que las celdas se junten */
+    min-width: 1400px; /* <-- Mantenemos esto (le da un gran ancho) */
+    /* width: 100%; */ /* <-- LÍNEA ELIMINADA */
+    border-collapse: collapse; 
     margin-top: 10px;
-    /* 💡 table-layout: fixed; solo funciona bien si la suma de los anchos es exactamente 100% o el ancho total */
-    table-layout: fixed; 
+    table-layout: auto; /* <-- Mantenemos esto (permite que las columnas se ajusten) */
 }
 
 .tabla-listado th, 
@@ -697,9 +698,11 @@ body {
     margin: 0;
 }
 .contenedor-principal {
-    max-width: 1400px;
-    margin: 20px auto;
-    padding: 0 20px;
+    /*max-width: 100%; */ /* <-- Eliminado */
+    margin: 20px 0;   /* <-- Modificado (quitamos 'auto' para que no se centre) */
+    padding: 0;         /* <-- Modificado (quitamos el padding lateral) */
+    width: 100%;        /* <-- Añadido (asegura el ancho completo) */
+    box-sizing: border-box; /* <-- Añadido (para que el width 100% respete bordes/padding) */
 }
 h1, h3, h2 {
     color: #333;
@@ -713,6 +716,8 @@ h1, h3, h2 {
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
+    width: 100%; 
+    box-sizing: border-box;
 }
 
 /* Formulario principal de campos */
@@ -724,10 +729,11 @@ h1, h3, h2 {
     grid-template-columns: 1fr 1fr;
 }
 .formulario-campos h2 {
-    font-size: 14px;
-    font-weight: bold;
+    color: black; 
+    font-size: 1em; 
     margin-bottom: 5px;
-    color: #555;
+    flex-shrink: 0; /* Evita que la etiqueta se encoja */
+    width: 150px; /* Define un ancho fijo para la etiqueta (ajústalo a tu gusto) */
 }
 input[type="text"], 
 input[type="number"], 
@@ -1796,6 +1802,9 @@ button {
 
 .form-group {
     margin-bottom: 15px;
+    display: flex;
+    align-items: center; /* Centra verticalmente la etiqueta y el input */
+    gap: 10px; /* Espacio entre la etiqueta y el input */
 }
 
 .form-label {
@@ -1918,7 +1927,7 @@ input:not([readonly]) {
  .card {
      width: 100%; /* Hace que el card ocupe el ancho disponible */
      box-sizing: border-box; /* Incluye padding en el ancho */
-     overflow: hidden; /* Evita que el contenido interno desborde visualmente */
+     /* overflow: hidden; */ /* <-- ELIMINADO: Esto es lo que estaba cortando la tabla */
  }
 
 /* Estilos para paginación */
@@ -2011,6 +2020,123 @@ input:not([readonly]) {
 
   .header-fila-inferior h2 { order: 1; margin-bottom: 10px; text-align: left;}
   .header-fila-inferior .paginacion-controles-simple { order: 2; justify-content: space-between; }
+}
+
+/* --- Ajustes para Comercial.html (COMPACTACIÓN) --- */
+
+/* Hacer contenedor principal más estrecho */
+.contenedor-principal.contenedor-compacto {
+    max-width: 100%; /* Ajusta este valor (más pequeño = más estrecho) */
+    margin: 15px auto; /* Reducir margen vertical */
+    padding: 0 15px; /* Reducir padding lateral */
+}
+
+/* Estilo para el nuevo título dentro del contenido */
+.titulo-contenido {
+    font-size: 1.6em;
+    color: #4CAF50;
+    margin-bottom: 15px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid #5cb85c; /* Subrayado */
+    text-align: left;
+    margin-top: 10px; /* Margen superior */
+}
+
+/* Compactar el formulario de datos generales */
+.formulario-compacto {
+    padding: 15px; /* Menos padding interno */
+}
+
+.formulario-compacto .formulario-campos {
+    gap: 10px 15px; /* Reducir espacio vertical (10px) y horizontal (15px) */
+}
+
+/* Quitar subrayado y reducir margen de etiquetas h2 DENTRO del formulario */
+.card.formulario-compacto .formulario-campos h2 {
+    border-bottom: none !important; /* Quitar subrayado */
+    padding: 0 !important;
+    margin: 0 0 3px 0 !important; /* Solo margen inferior reducido */
+    font-size: 0.85em !important; /* Etiqueta más pequeña */
+    font-weight: normal !important; /* Quitar negrita */
+    color: #555 !important;
+    line-height: 1.2 !important;
+}
+
+/* Reducir altura y tamaño de fuente de inputs/selects */
+.formulario-compacto .formulario-campos input[type="text"],
+.formulario-compacto .formulario-campos input[type="date"],
+.formulario-compacto .formulario-campos select {
+    padding: 5px 8px !important; /* Menos padding */
+    font-size: 0.85em !important; /* Fuente más pequeña */
+    height: 32px !important; /* Altura fija más baja */
+    margin-bottom: 5px !important; /* Menos espacio después */
+}
+
+/* Ajustar select (a veces necesitan line-height) */
+.formulario-compacto .formulario-campos select {
+     line-height: 20px !important; /* Centrar texto verticalmente */
+}
+
+/* Opcional: Reducir margen inferior del card */
+.datos-generales.formulario-compacto {
+    margin-bottom: 15px;
+}
+
+/* ===== CORRECCIÓN PARA ALINEACIÓN DE H2 CON CONTROLES EN FORMULARIO COMERCIAL ===== */
+
+/* Contenedor principal para cada campo del formulario */
+.formulario-campos.dos-columnas > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; /* Alinea todo al inicio */
+    min-height: 70px; /* Altura mínima para mantener consistencia */
+}
+
+/* Ajuste específico para las etiquetas h2 en el formulario comercial */
+.card.datos-generales .formulario-campos.dos-columnas h2 {
+    margin: 0 0 5px 0 !important; /* Solo margen inferior */
+    padding: 0 !important;
+    border-bottom: none !important;
+    font-size: 0.9em !important;
+    font-weight: 100% !important;
+    color: #555 !important;
+    line-height: 1.2 !important; /* Misma altura de línea que los controles */
+    height: auto !important;
+    min-height: 20px !important; /* Altura mínima consistente */
+}
+
+/* Asegurar que los controles tengan altura consistente */
+.card.datos-generales .formulario-campos.dos-columnas input[type="text"],
+.card.datos-generales .formulario-campos.dos-columnas input[type="date"],
+.card.datos-generales .formulario-campos.dos-columnas select {
+    height: 32px !important;
+    line-height: 20px !important;
+    padding: 5px 8px !important;
+    margin: 0 !important; /* Quitar márgenes que afecten la alineación */
+    box-sizing: border-box !important;
+}
+
+/* Alineación vertical perfecta */
+.formulario-campos.dos-columnas > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px !important; /* Espacio mínimo entre h2 y el control */
+}
+
+/* Para formulario compacto - ajustes adicionales */
+.formulario-compacto .formulario-campos.dos-columnas > div {
+    min-height: 60px; /* Menor altura en modo compacto */
+}
+
+.formulario-compacto .formulario-campos.dos-columnas h2 {
+    font-size: 0.85em !important;
+    margin-bottom: 3px !important;
+}
+
+.formulario-compacto .formulario-campos.dos-columnas input[type="text"],
+.formulario-compacto .formulario-campos.dos-columnas input[type="date"],
+.formulario-compacto .formulario-campos.dos-columnas select {
+    height: 30px !important;
 }
 
 </style>
