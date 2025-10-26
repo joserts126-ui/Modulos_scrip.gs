@@ -10,74 +10,79 @@
     <div class="barraTopComercial">
         <div class="topBarra-izquierda">
             <? var url = getScriptUrl(); ?>
-            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a></div>
-        <div class="topBarra-derecha">
-            <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen
-            </button>
-            <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF"> 📄 PDF
-            </button>
-        </div>
-    </div>
+            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a>
+            </div> <div class="topBarra-derecha">
+            <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen </button>
+            <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF" style="display: none;"> 📄 PDF </button> </div>
+    </div> <div class="contenedor-principal contenedor-compacto">
+        
+        <h3 id="tituloPrincipalContenido" class="titulo-contenido">Nueva Cotización</h3>
 
-    <div class="contenedor-principal">
         <form id="formCotizacion" class="formulario-cotizacion">
+            
             <div class="card datos-generales">
                 <h3>Datos de la Cotización</h3>
                 <div class="formulario-campos dos-columnas">
+                    
                     <div>
-                        <h2>MONEDA</h2>
-                        <select id="moneda" name="Moneda" required>
-                            <option value="Soles">Soles (S/.)</option>
-                            <option value="Dolares">Dólares ($)</option>
-                        </select>
+                        <div class="form-group">
+                            <h2>MONEDA</h2>
+                            <select id="moneda" name="Moneda" required>
+                                <option value="Soles">Soles (S/.)</option>
+                                <option value="Dolares">Dólares ($)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <h2>RUC / DNI</h2>
+                            <input type="text" id="rucCliente" name="RUC" placeholder="Escriba RUC o DNI" required
+                                list="datalist-rucs-clientes"
+                                onchange="manejarSeleccionCliente(this, 'clienteNombre')">
+                        </div>
+                        <div class="form-group">
+                            <h2>DIRECCIÓN</h2>
+                            <input type="text" id="direccion" name="Direccion" placeholder="Dirección de la obra" required>
+                        </div>
+                        <div class="form-group">
+                            <h2>TURNO</h2>
+                            <select id="turno" name="Turno" required></select>
+                        </div>
+                        <div class="form-group">
+                            <h2>EJECUTIVO/ASESOR</h2>
+                            <select id="ejecutivo" name="Ejecutivo" required>
+                            <option value="" disabled selected>-- Seleccione --</option>
+                            <option value="ANTHONY">ANTHONY</option>
+                            <option value="CARMEN">CARMEN</option>
+                            </select>
+                        </div>
                     </div>
+                    
                     <div>
-                        <h2>FORMA DE PAGO</h2>
-                        <select id="formaPago" name="Forma_Pago" required></select>
+                        <div class="form-group">
+                            <h2>FORMA DE PAGO</h2>
+                            <select id="formaPago" name="Forma_Pago" required></select>
+                        </div>
+                        <div class="form-group">
+                            <h2>CLIENTE / RAZÓN SOCIAL</h2>
+                            <input type="text" id="clienteNombre" name="Cliente" placeholder="Escriba el nombre o Razón Social" required
+                                list="datalist-nombres-clientes"
+                                onchange="manejarSeleccionCliente(this, 'rucCliente')">
+                        </div>
+                        <div class="form-group">
+                            <h2>EMPRESA (Operadora)</h2>
+                            <select id="empresa" name="Empresa" required></select>
+                        </div>
+                        <div class="form-group">
+                            <h2>FECHA DE REGISTRO</h2>
+                            <input type="date" id="fechaRegistro" name="fechaRegistro" value="" required>
+                        </div>
+                        <div class="form-group">
+                           <h2>CONTACTO</h2>
+                           <select id="contacto" name="Contacto" required>
+                           <option value="" disabled selected>-- Seleccione Contacto --</option>
+                           </select>
+                        </div>
                     </div>
-                    <div>
-                        <h2>RUC / DNI</h2>
-                        <input type="text" id="rucCliente" name="RUC" placeholder="Escriba RUC o DNI" required
-                            list="datalist-rucs-clientes"
-                            onchange="manejarSeleccionCliente(this, 'clienteNombre')">
-                    </div>
-                    <div>
-                        <h2>CLIENTE / RAZÓN SOCIAL</h2>
-                        <input type="text" id="clienteNombre" name="Cliente" placeholder="Escriba el nombre o Razón Social" required
-                            list="datalist-nombres-clientes"
-                            onchange="manejarSeleccionCliente(this, 'rucCliente')">
-                    </div>
-                    <div>
-                        <h2>DIRECCIÓN</h2>
-                        <input type="text" id="direccion" name="Direccion" placeholder="Dirección de la obra" required>
-                    </div>
-                    <div>
-                        <h2>EMPRESA (Operadora)</h2>
-                        <select id="empresa" name="Empresa" required></select>
-                    </div>
-                    <div>
-                        <h2>TURNO</h2>
-                        <select id="turno" name="Turno" required></select>
-                    </div>
-                    <div>
-                        <h2>FECHA DE REGISTRO</h2>
-                        <input type="date" id="fechaRegistro" name="fechaRegistro" value="" required>
-                    </div>
-                    <div>
-                        <h2>EJECUTIVO/ASESOR</h2>
-                        <select id="ejecutivo" name="Ejecutivo" required>
-                        <option value="" disabled selected>-- Seleccione --</option>
-                        <option value="ANTHONY">ANTHONY</option>
-                        <option value="CARMEN">CARMEN</option>
-                        </select>
-                    </div>
-        
-                    <div>
-                       <h2>CONTACTO</h2>
-                       <select id="contacto" name="Contacto" required>
-                       <option value="" disabled selected>-- Seleccione Contacto --</option>
-                       </select>
-                    </div>
+
                 </div>
             </div>
 
@@ -100,7 +105,6 @@
                             <th class="col-subtotal">Subtotal</th>
                             <th class="col-accion">Acción</th>
                             <th>Acta</th> </tr>
-                        </tr>
                     </thead>
                     <tbody id="cuerpoDetalle"></tbody>
                 </table>
@@ -108,12 +112,12 @@
             </div>
 
             <div class="card resumen-total">
-                <h3 class="total-label">TOTAL: <span id="totalCotizacion">0.00</span></h3>
-                <input type="hidden" id="total" name="Total" value="0.00">
+                 <h3 class="total-label">TOTAL: <span id="totalCotizacion">0.00</span></h3>
+                 <input type="hidden" id="total" name="Total" value="0.00">
             </div>
 
             <div class="contenedor-boton-guardar">
-                <button type="button" onclick="guardarRegistroCotizacion()" class="btn-guardar-top btn-guardar-principal">GUARDAR COTIZACIÓN</button>
+                 <button type="button" onclick="guardarRegistroCotizacion()" class="btn-guardar-top btn-guardar-principal">GUARDAR COTIZACIÓN</button>
             </div>
         </form>
     </div>
@@ -164,6 +168,36 @@
   function navegarAResumen() {
         const urlBase = '<?!= getScriptUrl() ?>';
         window.top.location.href = urlBase + '?page=ResumenComercial';
+    }
+  
+  function llamarGenerarPDF() {
+         if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) {
+            alert('Solo se puede generar PDF para una cotización existente (en modo edición).');
+            return;
+        }
+        generarPDFDesdeComercial(estadoApp.numPedidoEdicion);
+     }
+  
+  function generarPDFDesdeComercial(numPedido) {
+        mostrarLoading(true, 'Generando PDF...');
+        google.script.run
+            .withSuccessHandler(function(resultado) { 
+                mostrarLoading(false); 
+                if(resultado.success){ 
+                    window.open(resultado.pdfUrl, '_blank'); 
+                    if(resultado.sheetUrl) { window.open(resultado.sheetUrl, '_blank'); }
+                    alert('Archivos generados exitosamente.'); 
+                } else { 
+                    alert('Error al generar PDF: '+ (resultado.error || 'Error desconocido')); 
+                } 
+            })
+            .withFailureHandler(function(error) { 
+                mostrarLoading(false); 
+                alert('Error Conexión (PDF): '+error.message); 
+            })
+            // Asegúrate que esta función exista en tu .gs
+            // Si no, usa la que te di: generarPDFPorNumeroPedido
+            .generarYDevolverPDF(numPedido); 
     }
 
 // Función para generar PDF
@@ -387,113 +421,94 @@ const estadoApp = {
 // FUNCIONES DE INICIALIZACIÓN Y CARGA DE DATOS - CORREGIDAS
 // =============================================================================
 document.addEventListener("DOMContentLoaded", function() {
-    console.log("🔄 Comercial.html CARGADO - Iniciando proceso...");
-    inicializarFecha();
-    
-    // ✅ DETECCIÓN MEJORADA - Probar ambos métodos
-    let editId = null;
-    
-    // 1. Intentar desde URL
-    const urlParams = new URLSearchParams(window.location.search);
-    editId = urlParams.get('editar');
-    
-    // 2. Si no hay en URL, intentar desde sessionStorage
-    if (!editId) {
-        editId = sessionStorage.getItem('pedidoAEditar');
-        if (editId) {
-            console.log("📦 EditId obtenido de sessionStorage:", editId);
-            // Limpiar después de usar
-            sessionStorage.removeItem('pedidoAEditar');
-        }
-    }
-    
-    console.log("🎯 ID final para edición:", editId);
-    
-    console.log("🎯 ID para edición desde URL:", editId);
-    
-    if (editId) {
-        estadoApp.esEdicion = true;
-        estadoApp.numPedidoEdicion = editId;
+        console.log("🔄 Comercial.html CARGADO - Iniciando proceso...");
+        inicializarFecha();
         
-        // Actualizar título inmediatamente
-        const titulo = document.getElementById('tituloFormulario');
-        if (titulo) {
-            titulo.textContent = `EDITANDO PEDIDO: ${editId}`;
-            titulo.style.color = '#e74c3c';
+        let editId = null;
+        const urlParams = new URLSearchParams(window.location.search);
+        editId = urlParams.get('editar');
+        if (!editId) {
+            editId = sessionStorage.getItem('pedidoAEditar');
+            if (editId) {
+                console.log("📦 EditId obtenido de sessionStorage:", editId);
+                sessionStorage.removeItem('pedidoAEditar');
+            }
         }
-    }
+        console.log("🎯 ID final para edición:", editId);
+        
+        // --- INICIO CAMBIO: Apuntar al nuevo título ---
+        const tituloContenido = document.getElementById('tituloPrincipalContenido'); 
 
-    // Cargar datos iniciales
-    mostrarLoading(true, "Cargando datos iniciales...");
-
-// 1. PRIMERA LLAMADA (Ligera)
-google.script.run
-    .withSuccessHandler(function(dataInicial) {
-        if (dataInicial && dataInicial.success) {
-            console.log("✅ Datos LIGEROS cargados");
-
-            // Procesar solo listas ligeras
-            listaFormasPago = dataInicial.formasPago || [];
-            listaEmpresas = dataInicial.listaEmpresas || [];
-            listaTurnos = dataInicial.listaTurnos || [];
-            listaHorasMinimas = dataInicial.listaHorasMinimas || [];
-            listaEjecutivos = dataInicial.listaEjecutivos || ['ANTHONY', 'CARMEN'];
-
-            llenarSelect('formaPago', listaFormasPago);
-            llenarSelect('empresa', listaEmpresas);
-            llenarSelect('turno', listaTurnos);
-            llenarSelect('ejecutivo', listaEjecutivos);
-
-            // 2. SEGUNDA LLAMADA (Pesada)
-            mostrarLoading(true, "Cargando Clientes y Servicios...");
-            google.script.run
-                .withSuccessHandler(function(dataPesada) {
-                    mostrarLoading(false);
-                    if (dataPesada && dataPesada.success) {
-                        console.log("✅ Datos PESADOS cargados");
-
-                        // Procesar listas pesadas
-                        listaClientes = dataPesada.clientes || [];
-                        listaServicios = dataPesada.servicios || [];
-                        listaUndMedida = dataPesada.listaUndMedida || [];
-                        listaHorasSegun = dataPesada.listaHorasSegun || [];
-
-                        llenarDatalistsClientes();
-                        llenarDatalistsServicios();
-
-                        estadoApp.datosCargados = true;
-
-                        // 3. Lógica de Edición/Nuevo (se ejecuta al final de todo)
-                        if (estadoApp.esEdicion) {
-                            console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
-                            cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
-                        } else {
-                            console.log("📝 MODO NUEVA COTIZACIÓN");
-                            agregarLineaDetalle();
-                        }
-
-                    } else {
-                        mostrarError(dataPesada?.error || 'Error al cargar Clientes/Servicios', 'inicialización pesada');
-                    }
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    mostrarError(error, 'cargar datos pesados');
-                })
-                .getDatosPesadosComercial(); // Llama a la nueva función
-
+        if (editId) {
+            estadoApp.esEdicion = true;
+            estadoApp.numPedidoEdicion = editId;
+            if (tituloContenido) {
+                 tituloContenido.textContent = `Pedido: ${editId}`;
+                 tituloContenido.style.color = '#e74c3c';
+            }
+            // Habilitar botón PDF si estamos editando
+            const btnPDF = document.getElementById('btnGenerarPDF');
+            if (btnPDF) btnPDF.style.display = 'inline-block';
+            
         } else {
-            mostrarLoading(false);
-            mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización ligera');
+             if (tituloContenido) {
+                 tituloContenido.textContent = 'Nueva Cotización';
+             }
+             // Ocultar botón PDF si es nuevo
+             const btnPDF = document.getElementById('btnGenerarPDF');
+             if (btnPDF) btnPDF.style.display = 'none';
         }
-    })
-    .withFailureHandler(function(error) {
-        mostrarLoading(false);
-        console.error("❌ Error cargando datos iniciales:", error);
-        mostrarError(error, 'cargar datos iniciales');
-    })
-    .getDatosInicialesComercial(); // Llama a la función ligera
-});
+        // --- FIN CAMBIO ---
+
+        // --- LÓGICA DE CARGA DE DATOS (Sin cambios) ---
+        mostrarLoading(true, "Cargando datos iniciales...");
+        // 1. PRIMERA LLAMADA (Ligera)
+        google.script.run
+            .withSuccessHandler(function(dataInicial) {
+                if (dataInicial && dataInicial.success) {
+                    console.log("✅ Datos LIGEROS cargados");
+                    listaFormasPago = dataInicial.formasPago || [];
+                    listaEmpresas = dataInicial.listaEmpresas || [];
+                    listaTurnos = dataInicial.listaTurnos || [];
+                    listaHorasMinimas = dataInicial.listaHorasMinimas || [];
+                    listaEjecutivos = dataInicial.listaEjecutivos || ['ANTHONY', 'CARMEN'];
+                    llenarSelect('formaPago', listaFormasPago);
+                    llenarSelect('empresa', listaEmpresas);
+                    llenarSelect('turno', listaTurnos);
+                    llenarSelect('ejecutivo', listaEjecutivos);
+
+                    // 2. SEGUNDA LLAMADA (Pesada)
+                    mostrarLoading(true, "Cargando Clientes y Servicios...");
+                    google.script.run
+                        .withSuccessHandler(function(dataPesada) {
+                            mostrarLoading(false);
+                            if (dataPesada && dataPesada.success) {
+                                console.log("✅ Datos PESADOS cargados");
+                                listaClientes = dataPesada.clientes || [];
+                                listaServicios = dataPesada.servicios || [];
+                                listaUndMedida = dataPesada.listaUndMedida || [];
+                                listaHorasSegun = dataPesada.listaHorasSegun || [];
+                                llenarDatalistsClientes();
+                                llenarDatalistsServicios();
+                                estadoApp.datosCargados = true;
+
+                                // 3. Lógica de Edición/Nuevo
+                                if (estadoApp.esEdicion) {
+                                    console.log("🚀 CARGANDO DATOS DE EDICIÓN:", estadoApp.numPedidoEdicion);
+                                    cargarPedidoParaEdicion(estadoApp.numPedidoEdicion);
+                                } else {
+                                    console.log("📝 MODO NUEVA COTIZACIÓN");
+                                    agregarLineaDetalle();
+                                }
+                            } else { mostrarError(dataPesada?.error || 'Error al cargar Clientes/Servicios', 'inicialización pesada'); }
+                        })
+                        .withFailureHandler(function(error) { mostrarLoading(false); mostrarError(error, 'cargar datos pesados'); })
+                        .getDatosPesadosComercial();
+                } else { mostrarLoading(false); mostrarError(dataInicial?.error || 'Error al cargar datos iniciales', 'inicialización ligera'); }
+            })
+            .withFailureHandler(function(error) { mostrarLoading(false); console.error("❌ Error cargando datos iniciales:", error); mostrarError(error, 'cargar datos iniciales'); })
+            .getDatosInicialesComercial();
+    });
 
 function procesarDatosInicialesComercial(data) {
     console.log("🔄 Procesando datos iniciales");
