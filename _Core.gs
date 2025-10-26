@@ -10,11 +10,18 @@ const cache = CacheService.getScriptCache();
  */
 function doGet(e) {
     const page = e.parameter.page || 'Modulos'; 
-    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT'];
+    // Añadir 'Acta' a la lista
+    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta']; // <-- Añadido 'Acta'
     if (validPages.includes(page)) {
-        return HtmlService.createTemplateFromFile(page).evaluate();
+        // Usar createTemplateFromFile para permitir variables de scriptlet si las necesitas en Acta.html
+        return HtmlService.createTemplateFromFile(page).evaluate() 
+            .setTitle(page) // Opcional: Poner título a la pestaña del navegador
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); // Importante para evitar errores en algunos navegadores/contextos
     }
-    return HtmlService.createTemplateFromFile('Modulos').evaluate();
+    // Página por defecto
+    return HtmlService.createTemplateFromFile('Modulos').evaluate()
+        .setTitle('Módulos Principales')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /**
