@@ -1,225 +1,69 @@
 // ====================================================
-// === CORE: MANEJO DE VISTAS (doGet) Y UTILIDADES ===
+// === CONFIGURACIÓN GLOBAL Y CONSTANTES DE HOJA ===
 // ====================================================
 
-// Cache para optimización
-const cache = CacheService.getScriptCache();
+const HOJA_ID_PRINCIPAL = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y"; 
+const HOJA_CLIENTES = "Clientes";
+const HOJA_CONTACTOS = "Contactos";
+const HOJA_DIRECCIONES = "Direcciones";
+const HOJA_SERVICIOS = "Servicios";
+const HOJA_COTIZACIONES = "DataCot";
+const HOJA_COMPLEMENTOS_COT = "ComplementosDataCot";
 
-/**
- * Maneja las solicitudes GET y sirve las páginas correspondientes
- */
-function doGet(e) {
-    const page = e.parameter.page || 'Modulos'; 
-    // Añadir 'Acta' a la lista
-    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta']; // <-- Añadido 'Acta'
-    if (validPages.includes(page)) {
-        // Usar createTemplateFromFile para permitir variables de scriptlet si las necesitas en Acta.html
-        return HtmlService.createTemplateFromFile(page).evaluate() 
-            .setTitle(page) // Opcional: Poner título a la pestaña del navegador
-            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); // Importante para evitar errores en algunos navegadores/contextos
-    }
-    // Página por defecto
-    return HtmlService.createTemplateFromFile('Modulos').evaluate()
-        .setTitle('Módulos Principales')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
+// Constantes para las pestañas de plantillas
+const HOJA_PLANTILLA_ALPAMAYO = 'COT_ALP';
+const HOJA_PLANTILLA_GYM = 'COT_GYM';
+const HOJA_PLANTILLA_SANJOSE = 'COT_GSJ';
 
-/**
- * Obtiene la URL del script desplegado
- */
-function getScriptUrl() {
-    return ScriptApp.getService().getUrl();
-}
-
-/**
- * Incluye archivos HTML parciales
- */
-function include(filename) {
-    return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
+const CLIENTE_COLS = { RUC: 0, NOMBRE: 1 };
+const CONTACTO_COLS = { RUC: 1, NOMBRE: 2, EMAIL: 3, TELEFONO: 4, CARGO: 5 };
+const DIRECCION_COLS = { RUC: 1, TIPO: 2, DIRECCION: 3, CIUDAD: 4 };
 
 // ====================================================
-// === FUNCIONES NUCLEO DE DATOS (CRUD y CACHE) ===
+// === IDs DE CARPETAS Y PLANTILLAS PARA PDF/SHEET ===
 // ====================================================
 
-/**
- * Obtiene el mapa de columnas (encabezado -> índice) para una hoja.
- * @param {string} sheetName El nombre de la hoja.
- * @returns {Object} Un mapa de {HEADER_NAME_UPPERCASE: index}.
- */
-function getColumnMap(sheetName) {
-    const cacheKey = `header_map_${sheetName}`;
-    let cachedMap = cache.get(cacheKey);
+// --- IDs DE CARPETAS DE DESTINO (Rellenados desde tus links) ---
+const FOLDER_ID_CARMEN = "1h4LZiA9Iwx54jHqOyHqFvDJykGipM6YO";
+const FOLDER_ID_GYM     = "1ODozAGz2AeDmFGk_rT_axt7bhG6SdLv2"; // Gruas y Montacargas San Jose SAC
+const FOLDER_ID_SJ      = "1bO8-_ZWM2nFfc1jl4PDYrf6aTnKqp7s4"; // Gruas San Jose Peru SAC
+const FOLDER_ID_ALP     = "1ZrPgv6mfTZk5r4GE49tAlc9C559b_M93"; // Alpamayo
+const HOJA_ACTAS = "Actas";
+// --- IDs DE ARCHIVOS DE PLANTILLA (¡DEBES RELLENAR ESTOS!) ---
+// Ve a tu Google Drive, haz clic derecho en el archivo plantilla y "Obtener enlace"
+// Copia el ID desde el enlace (ej. .../d/AQUI_VA_EL_ID/edit)
+const ID_PLANTILLA_FILE_ALP = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y";
+const ID_PLANTILLA_FILE_GYM = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y";
+const ID_PLANTILLA_FILE_SJ  = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y";
 
-    if (cachedMap) {
-        return JSON.parse(cachedMap);
-    }
+// ====================================================
+// === LISTAS ESTÁTICAS COMO CONSTANTES GLOBALES ===
+// ====================================================
 
-    try {
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(sheetName);
+const LISTA_TURNOS = ["Diurno", "Nocturno", "Doble Turno"];
+const LISTA_EMPRESAS = ["ALPAMAYO", "SAN JOSE", "GYM"];
+const LISTA_ESTADOS_COT = ["Cotización", "Pedido", "Cancelado", "Finalizado"];
+const LISTA_FORMAS_PAGO = [
+    "CONTADO", "50% de adelanto", "CREDITO. 30 DIAS", "CREDITO. 15 DIAS", 
+    "CREDITO. 45 DIAS", "CREDITO. 60 DIAS", "CREDITO. 90 DIAS"
+];
+const LISTA_HORAS_MINIMAS_UND = ["Mensual", "Diarias", "Semanal"]; 
 
-        if (!sheet || sheet.getLastRow() < 1) {
-            Logger.log(`Advertencia: Hoja ${sheetName} vacía o no existe.`);
-            return {};
-        }
+// ====================================================
+// === CONSTANTES DE NEGOCIO Y CÁLCULO ===
+// ====================================================
 
-        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const map = {};
-        
-        headers.forEach((header, index) => {
-            if (header) {
-                map[header.trim().toUpperCase()] = index;
-            }
-        });
+const VALOR_DIAS_MES = 30; 
+const VALOR_HORAS_DIA = 24; 
+const LISTA_EJECUTIVOS = ['ANTHONY', 'CARMEN', 'RENATO', 'JOSUE', 'PEDRO'];
 
-        cache.put(cacheKey, JSON.stringify(map), 3600); 
-        return map;
+const HOJA_OT = 'OT'; 
+const HOJA_PEDIDOS_OT = 'Pedidos';
 
-    } catch (e) {
-        Logger.log(`Error creando mapa de columnas para ${sheetName}: ${e.message}`);
-        return {};
-    }
-}
-
-/**
- * Función unificada para operaciones CRUD en hojas
- */
-function crudHoja(operacion, sheetName, datos = null, filtro = null) {
-    try {
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(sheetName);
-        
-        if (!sheet) throw new Error(`Hoja '${sheetName}' no encontrada`);
-        // Invalidar cache
-        cache.remove(`hoja_${sheetName}`);
-
-        switch(operacion) {
-            case 'READ':
-                if (sheet.getLastRow() < 1) return [];
-                return sheet.getDataRange().getValues();
-
-            case 'READ_ROW': 
-                const rowIndexToRead = parseInt(datos.rowIndex);
-                if (rowIndexToRead > 1 && rowIndexToRead <= sheet.getLastRow()) {
-                    const lastCol = sheet.getLastColumn();
-                    return sheet.getRange(rowIndexToRead, 1, 1, lastCol).getValues()[0];
-                }
-                throw new Error("Índice de fila inválido o fuera de rango para lectura");
-            
-            case 'CREATE':
-                const valoresCrear = Array.isArray(datos) ? datos : datos.valores;
-                sheet.appendRow(valoresCrear);
-                return { success: true, message: "Registro creado exitosamente", tipo: 'creacion' };
-            
-            case 'UPDATE':
-                const rowIndex = parseInt(datos.rowIndex);
-                if (rowIndex > 1) {
-                    sheet.getRange(rowIndex, 1, 1, datos.valores.length)
-                         .setValues([datos.valores]);
-                    return { success: true, message: "Registro actualizado exitosamente", tipo: 'actualizacion' };
-                }
-                throw new Error("Índice de fila inválido para actualización");
-            
-            case 'FILTER':
-                const allData = sheet.getDataRange().getValues();
-                if (!filtro || Object.keys(filtro).length === 0) return allData;
-                
-                const headers = allData[0];
-                const filtered = allData.slice(1).filter(row => 
-                    Object.entries(filtro).every(([key, value]) => {
-                        const colIndex = headers.indexOf(key);
-                        return colIndex !== -1 && String(row[colIndex]).trim() === String(value).trim();
-                    })
-                );
-                return [headers].concat(filtered);
-                
-            default:
-                throw new Error(`Operación '${operacion}' no soportada`);
-        }
-    } catch (error) {
-        Logger.log(`ERROR en crudHoja(${operacion}, ${sheetName}): ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * Función unificada para obtener datos con cache OPTIMIZADA
- */
-function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10) {
-    const cacheKey = `hoja_${sheetName}`;
-    const startTime = new Date().getTime();
-    
-    try {
-        if (useCache) {
-            const cached = cache.get(cacheKey);
-            if (cached) {
-                const endTime = new Date().getTime();
-                Logger.log(`⚡ CACHE HIT para ${sheetName}: ${endTime - startTime}ms`);
-                return JSON.parse(cached);
-            }
-        }
-        
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(sheetName);
-        
-        if (!sheet || sheet.getLastRow() === 0) {
-            return [];
-        }
-        
-        // Limitar cantidad de filas si es muy grande (máximo 1000 filas)
-        const lastRow = Math.min(sheet.getLastRow(), 1000);
-        const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
-        if (useCache && data.length > 0) {
-            cache.put(cacheKey, JSON.stringify(data), cacheMinutes * 60);
-        }
-        
-        const endTime = new Date().getTime();
-        Logger.log(`📥 DATOS OBTENIDOS ${sheetName}: ${endTime - startTime}ms - ${data.length} filas`);
-        
-        return data;
-    } catch (error) {
-        Logger.log(`❌ ERROR en obtenerDatosHoja: ${error.message}`);
-        return [];
-    }
-}
-
-/**
- * Obtiene valores únicos de una columna optimizada con cache
- */
-function getListaValoresUnicosOptimizada(allData, columnIndex) {
-    if (!allData || allData.length <= 1) return [];
-    const listaUnica = new Set();
-    for (let i = 1; i < allData.length; i++) {
-        const valor = allData[i][columnIndex];
-        if (valor !== undefined && valor !== null) {
-            const valorLimpio = String(valor).trim();
-            if (valorLimpio) listaUnica.add(valorLimpio);
-        }
-    }
-    return Array.from(listaUnica);
-}
-
-/**
- * Obtiene lista de valores únicos de una hoja específica
- */
-function getListaValoresUnicos(sheetName, columnIndex) {
-    try {
-        const allData = obtenerDatosHoja(sheetName);
-        return getListaValoresUnicosOptimizada(allData, columnIndex - 1); 
-    } catch (e) {
-        Logger.log(`ERROR en getListaValoresUnicos para ${sheetName}: ${e.message}`);
-        return []; 
-    }
-}
-
-function forzarAutorizacion() {
-  // Esta función solo existe para forzar la re-autorización
-  try {
-    const ss = SpreadsheetApp.openById("15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y");
-    const folder = DriveApp.getFolderById("1h4LZiA9Iwx54jHqOyHqFvDJykGipM6YO");
-    Logger.log("Hoja: " + ss.getName() + ", Carpeta: " + folder.getName());
-  } catch (e) {
-    Logger.log("Error de autorización: " + e.message);
-  }
-}
+// Mapea el nombre corto de la empresa (de la cotización) 
+// al nombre EXACTO de la carpeta en Drive.
+const MAPA_NOMBRES_EMPRESAS = {
+    "ALPAMAYO": "GRUAS ALPAMAYO SAC", // Cambiado
+    "SAN JOSE": "GRUAS SAN JOSE PERU SAC", // Cambiado
+    "GYM": "GRUAS Y MONTACARGAS SAN JOSE SAC" // Cambiado
+};
