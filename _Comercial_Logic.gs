@@ -20,23 +20,6 @@ function normalizarTurno(turno) {
 }
 
 /**
- * Procesa el monto rápidamente (necesario para Resumen).
- */
-function procesarMontoRapido(rawMonto) {
-    if (typeof rawMonto === 'number') return rawMonto;
-    if (!rawMonto) return 0;
-    const strMonto = String(rawMonto);
-    let numero = '';
-    for (let i = 0; i < strMonto.length; i++) {
-        const char = strMonto[i];
-        if ((char >= '0' && char <= '9') || char === '.' || char === '-') {
-            numero += char;
-        }
-    }
-    return parseFloat(numero) || 0;
-}
-
-/**
  * Formatea la fecha rápidamente (necesario para Resumen).
  */
 function formatearFechaRapido(rawFecha, timeZone) {
@@ -89,18 +72,6 @@ function buscarRegistro(sheetName, criterio, columnaBusqueda = 0) {
 // ====================================================
 
 /**
- * Normaliza el nombre del turno. Necesario para obtenerPedidoParaEdicion.
- */
-function normalizarTurno(turno) {
-    if (!turno || typeof turno !== 'string') return 'Diurno';
-    const turnoUpper = turno.toUpperCase().trim();
-    if (turnoUpper.includes('DIURNO')) return 'Diurno';
-    if (turnoUpper.includes('NOCTURNO')) return 'Nocturno';
-    if (turnoUpper.includes('DOBLE')) return 'Doble Turno';
-    return 'Diurno';
-}
-
-/**
  * Procesa el monto rápidamente (necesario para Resumen).
  */
 function procesarMontoRapido(rawMonto) {
@@ -115,25 +86,6 @@ function procesarMontoRapido(rawMonto) {
         }
     }
     return parseFloat(numero) || 0;
-}
-
-/**
- * Formatea la fecha rápidamente (necesario para Resumen).
- */
-function formatearFechaRapido(rawFecha, timeZone) {
-    if (!rawFecha) return '';
-    if (rawFecha instanceof Date) {
-        return Utilities.formatDate(rawFecha, timeZone, 'dd/MM/yyyy');
-    }
-    try {
-        const dateObj = new Date(rawFecha);
-        if (!isNaN(dateObj)) {
-             return Utilities.formatDate(dateObj, timeZone, 'dd/MM/yyyy');
-        }
-    } catch(e) {
-        return String(rawFecha).substring(0, 10);
-    }
-    return String(rawFecha).substring(0, 10);
 }
 
 // ====================================================
@@ -275,7 +227,8 @@ function getDatosInicialesComercial() {
             listaEmpresas: LISTA_EMPRESAS,
             listaTurnos: LISTA_TURNOS,
             listaHorasMinimas: LISTA_HORAS_MINIMAS_UND,
-            listaEjecutivos: LISTA_EJECUTIVOS
+            listaEjecutivos: LISTA_EJECUTIVOS,
+            listaEstadosCot: LISTA_ESTADOS_COT
         };
     } catch (e) {
         return manejarError('getDatosInicialesComercial', e);
@@ -344,7 +297,14 @@ function getContactosParaComercial(ruc) {
 // ====================================================
 
 function guardarCotizacion(datos) {
-    // Implementación usando getColumnMap (de _Core.gs) y lógica de eliminación/creación
+    // --- NUEVA VERIFICACIÓN DE PERMISO ---
+    const permisos = obtenerPermisosUsuario();
+    if (!permisos.puedeEditarCotizacion) { // <-- CORREGIDO: Usar el permiso correcto 'puedeEditarCotizacion'
+        // Devolver un error manejable
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar cotizaciones." };
+    }
+    // --- FIN DE VERIFICACIÓN ---
+
     try {
         const datosSanitizados = sanitizarDatos(datos);
         const erroresValidacion = validarDatosCotizacion(datosSanitizados);
@@ -366,14 +326,17 @@ function guardarCotizacion(datos) {
                 'FECHA INICIO', 'FECHA FIN', 'PLACA', 'UND. HORAS. MINIMAS', 'HORAS SEGÚN', 'HORAS MINIMAS', 
                 'TOTAL HORAS MINIMAS', 'TOTAL DIAS', 'ESTADO DE SERVICIO', 'ACTA', 'VALORIZADO', 'FACTURA', 
                 'F. PAGO', 'Link COT', 'Link Act', 'Link Val', 'Link Factura', 'Observaciones', 'UBICACIÓN', 
-                'CONTACTO', 'MES', 'AÑO'
+                'CONTACTO', 'MES', 'AÑO', 'FECHA EJECUCION' // <-- Asegúrate que FECHA EJECUCION exista aquí
             ];
             hojaCot.getRange(1, 1, 1, encabezados.length).setValues([encabezados]);
         }
 
         let codigoPedido;
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-
+        
+        // --- FECHA DE REGISTRO SE DEFINE UNA SOLA VEZ AQUÍ ---
+        const fechaRegistro = new Date(); 
+        
         if (datosSanitizados.numPedido) {
             const allData = hojaCot.getDataRange().getValues();
             const CODIGO_COL_INDEX = COL_MAP['COT'] || 0; 
@@ -396,11 +359,10 @@ function guardarCotizacion(datos) {
             if (intentos >= 5) throw new Error("No se pudo generar un código único.");
         }
 
-        const fechaRegistro = new Date(datosSanitizados.fechaRegistro || new Date());
         const lineas = datosSanitizados.Lineas || [];
         if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio a la cotización");
-
-        const TOTAL_COLS = 48; 
+        
+        const TOTAL_COLS = hojaCot.getLastColumn() > 0 ? hojaCot.getLastColumn() : 48; 
         let filaActual = hojaCot.getLastRow() + 1;
         
         for (let i = 0; i < lineas.length; i++) {
@@ -409,7 +371,7 @@ function guardarCotizacion(datos) {
             
             // ASIGNACIÓN DE DATOS GENERALES USANDO MAPEO (CRÍTICO)
             filaCompleta[COL_MAP['COT']] = codigoPedido;
-            filaCompleta[COL_MAP['FECHA COT']] = fechaRegistro;
+            filaCompleta[COL_MAP['FECHA COT']] = fechaRegistro; // Usa la fecha definida al inicio
             filaCompleta[COL_MAP['EMPRESA']] = datosSanitizados.Empresa || '';
             filaCompleta[COL_MAP['EJECUTIVO']] = datosSanitizados.Ejecutivo || '';
             filaCompleta[COL_MAP['ID CLIENTE']] = datosSanitizados.RUC || '';
@@ -421,8 +383,21 @@ function guardarCotizacion(datos) {
             filaCompleta[COL_MAP['UBICACIÓN']] = datosSanitizados.Direccion || ''; 
             filaCompleta[COL_MAP['CONTACTO']] = datosSanitizados.Contacto || '';
             
+            // --- Guardar fecha de ejecución ---
+            if (COL_MAP['FECHA EJECUCION'] !== undefined) {
+                 // Formatear la fecha antes de guardar si viene como string
+                 let fechaEjec = datosSanitizados.fechaEjecucion;
+                 if (fechaEjec && !(fechaEjec instanceof Date)) {
+                     try { fechaEjec = new Date(fechaEjec); } catch(e){ fechaEjec = null; }
+                 }
+                 filaCompleta[COL_MAP['FECHA EJECUCION']] = fechaEjec instanceof Date && !isNaN(fechaEjec) ? fechaEjec : null;
+            } else {
+                 Logger.log("Advertencia: No se encontró la columna 'FECHA EJECUCION' en DataCot.");
+            }
+            // ---
+            
             if (i === 0) filaCompleta[COL_MAP['Total servicio']] = parseFloat(datosSanitizados.Total) || 0;
-
+            
             // ASIGNACIÓN DE DATOS DE LÍNEA USANDO MAPEO
             filaCompleta[COL_MAP['COD']] = linea.cod || '';
             filaCompleta[COL_MAP['DESCRIPCION']] = linea.descripcion || '';
@@ -439,6 +414,9 @@ function guardarCotizacion(datos) {
             hojaCot.getRange(filaActual, 1, 1, filaCompleta.length).setValues([filaCompleta]);
             filaActual++;
         }
+        
+        // --- Guardar notas en la hoja complementaria ---
+        guardarDatosComplementarios(codigoPedido, datosSanitizados);
 
         return { success: true, message: datosSanitizados.numPedido ? 'Cotización actualizada con éxito. Código: ' + codigoPedido : 'Cotización registrada con éxito. Código: ' + codigoPedido, codigoPedido: codigoPedido };
     } catch (error) {
@@ -447,51 +425,72 @@ function guardarCotizacion(datos) {
 }
 
 /**
- * Devuelve la representación de fecha segura (ISO string) o un valor por defecto.
+ * Devuelve la representación de fecha segura (ISO string) o null si no es válida.
  */
-function getSafeDateString(value, defaultValue) {
-    if (value instanceof Date) {
-        return value.toISOString();
-    }
-    if (value) {
+function getSafeDateString(value, defaultValue = null) { // Cambiado defaultValue a null
+    let date = null;
+    if (value instanceof Date && !isNaN(value)) {
+        date = value;
+    } else if (value) {
         try {
-            const date = new Date(value);
-            if (!isNaN(date)) {
-                return date.toISOString();
+            const parsedDate = new Date(value);
+            if (!isNaN(parsedDate)) {
+                date = parsedDate;
             }
         } catch (e) {
-            // Ignorar error de parseo
+            // Ignorar error de parseo, date sigue siendo null
         }
     }
-    return new Date(defaultValue || new Date()).toISOString();
+
+    if (date) {
+        // Devolver en formato YYYY-MM-DD para compatibilidad con input date
+         try {
+             // Asegurarse de usar UTC para evitar problemas de zona horaria al formatear solo la fecha
+             return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
+         } catch (formatError) {
+              Logger.log("Error formateando fecha en getSafeDateString: " + formatError);
+              return null; // Devolver null si falla el formateo
+         }
+    } else if (defaultValue !== null) {
+         // Si hay un valor por defecto Y la fecha es inválida, usar el valor por defecto
+         // (Aunque para fechaEjecucion, probablemente queramos null)
+         try {
+             const defaultDate = new Date(defaultValue);
+             if(!isNaN(defaultDate)){
+                 return Utilities.formatDate(defaultDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+             }
+         } catch(e){
+              Logger.log("Error procesando defaultValue en getSafeDateString: " + e);
+         }
+    }
+    
+    // Si no hay fecha válida y no hay valor por defecto válido (o es null), devolver null
+    return null; 
 }
 
 function obtenerPedidoParaEdicion(numPedido) {
     try {
-        const COL_MAP = getColumnMap(HOJA_COTIZACIONES); 
+        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
         const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 15); 
         const pedidoBuscado = String(numPedido).trim().toUpperCase();
-        const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0; 
+        const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0;
         
-        // 1. Encontrar todas las filas coincidentes
         const filasCoincidentes = allData.slice(1)
             .filter(fila => String(fila[CODIGO_PEDIDO_COL] || '').trim().toUpperCase() === pedidoBuscado);
-        
         if (filasCoincidentes.length === 0) throw new Error(`Pedido ${numPedido} no encontrado. Verifique el código.`);
         
         const primeraFila = filasCoincidentes[0];
-        
-        // Función auxiliar para obtener valores de la primera fila de forma segura
         const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP, colName);
-
-        // 2. EXTRACCIÓN DE DATOS GENERALES RESILIENTE
+        
         const datosGenerales = {
-            fechaRegistro: getSafeDateString(getGenValue('FECHA COT')),
+            //fechaRegistro: getSafeDateString(getGenValue('FECHA COT')), // Ya no se necesita mostrar
             
+            fechaEjecucion: getSafeDateString(getGenValue('FECHA EJECUCION'), null), // Asume columna existe
+            Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'), // <-- SE QUEDA ESTA DEFINICIÓN
             Empresa: String(getGenValue('EMPRESA') || ''), 
             RUC: String(getGenValue('ID CLIENTE') || ''),
             Cliente: String(getGenValue('CLIENTE') || ''), 
-            Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'),
+            // Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'), // <-- SE ELIMINA ESTA REPETICIÓN
             Moneda: String(getGenValue('MONEDA') || 'SOLES'), 
             Forma_Pago: String(getGenValue('F. PAGO') || ''),
             Direccion: String(getGenValue('UBICACIÓN') || ''), 
@@ -500,10 +499,8 @@ function obtenerPedidoParaEdicion(numPedido) {
             Contacto: String(getGenValue('CONTACTO') || '') 
         };
         
-        // 3. EXTRACCIÓN DE LÍNEAS DE SERVICIO EXTREMADAMENTE RESILIENTE
         const lineas = filasCoincidentes.map((fila) => {
-            const getValue = (colName) => getFilaValue(fila, COL_MAP, colName); // Alias para la fila actual
-
+            const getValue = (colName) => getFilaValue(fila, COL_MAP, colName); 
             return {
                 cod: String(getValue('COD') || ''), 
                 descripcion: String(getValue('DESCRIPCION') || ''),
@@ -519,10 +516,33 @@ function obtenerPedidoParaEdicion(numPedido) {
             };
         });
         
-        // 4. Construcción del resultado final
+        // --- Obtener notas complementarias ---
+        let notas = { plantillaNotas: '', aclaracionesServicio: '' };
+        try {
+            const COL_MAP_COMP = getColumnMap(HOJA_COMPLEMENTOS_COT);
+            const allDataComp = obtenerDatosHoja(HOJA_COMPLEMENTOS_COT, false); 
+            const COT_COL = COL_MAP_COMP['COT'];
+            const PLANTILLA_COL = COL_MAP_COMP['PLANTILLA'];
+            const ACLARACIONES_COL = COL_MAP_COMP['ACLARACIONESDELSERVICIO'];
+
+            if (COT_COL !== undefined) {
+                const filaNota = allDataComp.slice(1).find(row => 
+                    String(row[COT_COL] || '').trim() === pedidoBuscado
+                );
+                if (filaNota) {
+                    notas.plantillaNotas = filaNota[PLANTILLA_COL] || '';
+                    notas.aclaracionesServicio = filaNota[ACLARACIONES_COL] || '';
+                }
+            }
+        } catch (e) {
+            Logger.log(`Advertencia: No se pudieron cargar las notas para ${numPedido}. ${e.message}`);
+        }
+        // ---
+
         const resultado = { 
             success: true, 
             ...datosGenerales, 
+            ...notas, // Fusiona las notas aquí
             Lineas: lineas, 
             Total: parseFloat(getGenValue('Total servicio') || 0) || 0, 
             totalLineas: lineas.length, 
@@ -530,14 +550,11 @@ function obtenerPedidoParaEdicion(numPedido) {
             usuario: obtenerEmailSeguro(), 
             autorizado: true 
         };
-
+        
         return resultado;
         
     } catch (error) {
-        // Registrar el error específico en los logs del servidor
         Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}`);
-        
-        // Devolver un mensaje de error manejado por el frontend
         return manejarError('obtenerPedidoParaEdicion', error);
     }
 }
@@ -550,6 +567,13 @@ function obtenerPedidoParaEdicion(numPedido) {
  * Guarda o actualiza un Contacto usando crudHoja.
  */
 function guardarOActualizarContacto(data) {
+    // --- NUEVA VERIFICACIÓN DE PERMISO ---
+    const permisos = obtenerPermisosUsuario();
+    if (!permisos.puedeEditarServicios) {
+        // Devolver un error manejable
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
+    }
+    // --- FIN DE VERIFICACIÓN ---
     try {
         const datosSanitizados = sanitizarDatos(data);
         const rowIndex = parseInt(datosSanitizados.rowIndex);
@@ -668,6 +692,13 @@ function getDatosInicialesServicios() {
 }
 
 function guardarOActualizarServicio(dataObject) {
+  // --- NUEVA VERIFICACIÓN DE PERMISO ---
+    const permisos = obtenerPermisosUsuario();
+    if (!permisos.puedeEditarServicios) {
+        // Devolver un error manejable
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
+    }
+    // --- FIN DE VERIFICACIÓN ---
     try {
         const codigoServicio = (dataObject['ID Servicio'] || '').toString().trim();
         const descripcion = (dataObject['Descripción del Servicio'] || '').toString().trim();
@@ -1158,6 +1189,13 @@ function filtrarPedidosPorClienteYServicio(rucCliente, idServicio) {
  * Implementa mapeo para escritura robusta.
  */
 function guardarOT(data) {
+    // --- NUEVA VERIFICACIÓN DE PERMISO ---
+    const permisos = obtenerPermisosUsuario();
+    if (!permisos.puedeEditarServicios) {
+        // Devolver un error manejable
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
+    }
+    // --- FIN DE VERIFICACIÓN ---
     try {
         const OT_SHEET = HOJA_OT;
         const COL_MAP = getColumnMap(OT_SHEET);
@@ -1357,43 +1395,6 @@ function testCargaDatos() {
 }
 
 /**
- * Procesa el monto rápidamente (asume que existe y está correcta)
- */
-function procesarMontoRapido(rawMonto) {
-    if (typeof rawMonto === 'number') return rawMonto;
-    if (!rawMonto) return 0;
-    const strMonto = String(rawMonto);
-    let numero = '';
-    for (let i = 0; i < strMonto.length; i++) {
-        const char = strMonto[i];
-        if ((char >= '0' && char <= '9') || char === '.' || char === '-') {
-            numero += char;
-        }
-    }
-    return parseFloat(numero) || 0;
-}
-
-/**
- * Formatea la fecha rápidamente (asume que existe y está correcta)
- */
-function formatearFechaRapido(rawFecha, timeZone) {
-    if (!rawFecha) return '';
-    if (rawFecha instanceof Date) {
-        return Utilities.formatDate(rawFecha, timeZone, 'dd/MM/yyyy');
-    }
-    // Para valores que no son objetos Date (ej. strings o números)
-    try {
-        const dateObj = new Date(rawFecha);
-        if (!isNaN(dateObj)) {
-             return Utilities.formatDate(dateObj, timeZone, 'dd/MM/yyyy');
-        }
-    } catch(e) {
-        return String(rawFecha).substring(0, 10);
-    }
-    return String(rawFecha).substring(0, 10);
-}
-
-/**
  * Obtiene el valor de una columna de forma segura (resiliente a índices fuera de límites).
  * @param {Array} fila El array de datos de la fila actual.
  * @param {Object} COL_MAP El mapa de encabezados.
@@ -1419,18 +1420,6 @@ function obtenerEmailSeguro() {
     } catch (error) {
         return 'Usuario Desconocido';
     }
-}
-
-/**
- * Normaliza el nombre del turno.
- */
-function normalizarTurno(turno) {
-    if (!turno || typeof turno !== 'string') return 'Diurno';
-    const turnoUpper = turno.toUpperCase().trim();
-    if (turnoUpper.includes('DIURNO')) return 'Diurno';
-    if (turnoUpper.includes('NOCTURNO')) return 'Nocturno';
-    if (turnoUpper.includes('DOBLE')) return 'Doble Turno';
-    return 'Diurno';
 }
 
 // ====================================================
@@ -2402,4 +2391,60 @@ function obtenerDatosCompletosParaActaCreacion(cotNumero, cotLineaIndex) {
     // Devolver el error para que el frontend lo muestre
     return { success: false, error: e.message }; 
   }
+}
+
+/**
+ * Guarda o actualiza los datos complementarios (notas) en la hoja HOJA_COMPLEMENTOS_COT.
+ * Esta función borra y re-escribe la nota para la COT dada.
+ */
+function guardarDatosComplementarios(codigoPedido, datos) {
+    try {
+        const sheetName = HOJA_COMPLEMENTOS_COT; // Constante de _Constants_Lists.gs
+        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+        let sheet = ss.getSheetByName(sheetName);
+
+        // Crear la hoja si no existe
+        if (!sheet) {
+            Logger.log(`Hoja ${sheetName} no encontrada, creando...`);
+            sheet = ss.insertSheet(sheetName);
+            sheet.appendRow(['COT', 'Plantilla', 'AclaracionesDelServicio']);
+        }
+
+        const COL_MAP = getColumnMap(sheetName);
+        const allData = sheet.getDataRange().getValues();
+        const COT_COL_INDEX = COL_MAP['COT'];
+
+        if (COT_COL_INDEX === undefined) {
+             Logger.log(`Error: No se encontró la columna 'COT' en ${sheetName}. No se guardarán las notas.`);
+             return; // Salir si la hoja no está bien configurada
+        }
+
+        let rowIndex = -1;
+        // Buscar si ya existe
+        for (let i = 1; i < allData.length; i++) {
+            if (String(allData[i][COT_COL_INDEX] || '').trim() === codigoPedido) {
+                rowIndex = i + 1; // Fila encontrada (índice 1-based)
+                break;
+            }
+        }
+
+        const nuevosValores = [
+            codigoPedido,
+            datos.plantillaNotas || '',
+            datos.aclaracionesServicio || ''
+        ];
+
+        if (rowIndex > 1) {
+            // Actualizar usando crudHoja
+            crudHoja('UPDATE', sheetName, { rowIndex: rowIndex, valores: nuevosValores });
+        } else {
+            // Crear usando crudHoja
+            crudHoja('CREATE', sheetName, nuevosValores);
+        }
+        Logger.log(`Datos complementarios guardados para ${codigoPedido}.`);
+
+    } catch (e) {
+        Logger.log(`ERROR al guardar datos complementarios para ${codigoPedido}: ${e.message}`);
+        // No lanzamos error para no detener el guardado principal
+    }
 }
