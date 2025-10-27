@@ -322,7 +322,7 @@ function guardarCotizacion(datos) {
                 'COT', 'NUM', 'FECHA COT', 'EMPRESA', 'EJECUTIVO', 'ID CLIENTE', 'CLIENTE', 'ESTADO COT', 
                 'COD', 'DESCRIPCION', 'UND', 'UND. PEDIDO', 'UND. DESPACHO', 'UND. PENDIENTE', 'PRECIO', 
                 'MONEDA', 'M. PEDIDO', 'M. DESPACHO', 'M. PENDIENTE', 'MOV. Y DES. MOV.', 'MYDM VALORIZADA', 
-                'MYDM x VALORIZAR', 'Total servicio', 'Total Valorizado', 'Total por valorizar', 'TURNO', 
+                'MYDM x VALORIZAR', 'TOTAL SERVICIO', 'TOTAL VALORIZADO', 'TOTAL POR VALORIZAR', 'TURNO', 
                 'FECHA INICIO', 'FECHA FIN', 'PLACA', 'UND. HORAS. MINIMAS', 'HORAS SEGÚN', 'HORAS MINIMAS', 
                 'TOTAL HORAS MINIMAS', 'TOTAL DIAS', 'ESTADO DE SERVICIO', 'ACTA', 'VALORIZADO', 'FACTURA', 
                 'F. PAGO', 'Link COT', 'Link Act', 'Link Val', 'Link Factura', 'Observaciones', 'UBICACIÓN', 
@@ -334,6 +334,11 @@ function guardarCotizacion(datos) {
         let codigoPedido;
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
         
+        // --- BORRAR O COMENTAR LOS LOGS DE PRUEBA ---
+        // Logger.log("MAPA DE COLUMNAS LEÍDO (COL_MAP): " + JSON.stringify(COL_MAP));
+        // Logger.log("Total recibido del frontend: " + datosSanitizados.Total);
+        // --- FIN DE BORRADO ---
+
         // --- FECHA DE REGISTRO SE DEFINE UNA SOLA VEZ AQUÍ ---
         const fechaRegistro = new Date(); 
         
@@ -396,7 +401,11 @@ function guardarCotizacion(datos) {
             }
             // ---
             
-            if (i === 0) filaCompleta[COL_MAP['Total servicio']] = parseFloat(datosSanitizados.Total) || 0;
+
+            // --- INICIO DE LA MODIFICACIÓN ---
+            
+            // 1. ELIMINAR esta línea (ya no queremos el gran total aquí)
+            // if (i === 0) filaCompleta[COL_MAP['TOTAL SERVICIO']] = parseFloat(datosSanitizados.Total) || 0;
             
             // ASIGNACIÓN DE DATOS DE LÍNEA USANDO MAPEO
             filaCompleta[COL_MAP['COD']] = linea.cod || '';
@@ -404,8 +413,22 @@ function guardarCotizacion(datos) {
             filaCompleta[COL_MAP['UND']] = linea.und_medida || 'HORAS';
             filaCompleta[COL_MAP['UND. PEDIDO']] = parseFloat(linea.cantidad) || 0;
             filaCompleta[COL_MAP['PRECIO']] = parseFloat(linea.precio) || 0;
-            filaCompleta[COL_MAP['M. PEDIDO']] = parseFloat(linea.subtotal) || 0;
-            filaCompleta[COL_MAP['MOV. Y DES. MOV.']] = parseFloat(linea.movilizacion) || 0;
+
+            // 2. Capturar los valores numéricos de la línea
+            const montoPedido = parseFloat(linea.subtotal) || 0; // (Qty * Price)
+            const montoMovilizacion = parseFloat(linea.movilizacion) || 0;
+
+            // 3. Asignarlos a sus columnas
+            filaCompleta[COL_MAP['M. PEDIDO']] = montoPedido;
+            filaCompleta[COL_MAP['MOV. Y DES. MOV.']] = montoMovilizacion;
+
+            // 4. Calcular y asignar el total de la línea a 'TOTAL SERVICIO' (Col W)
+            // Esto se hará EN CADA FILA
+            filaCompleta[COL_MAP['TOTAL SERVICIO']] = montoPedido + montoMovilizacion;
+
+            // --- FIN DE LA MODIFICACIÓN ---
+
+
             filaCompleta[COL_MAP['UND. HORAS. MINIMAS']] = linea.und_horas_minimas || '';
             filaCompleta[COL_MAP['HORAS SEGÚN']] = linea.hora_segun || '';
             filaCompleta[COL_MAP['HORAS MINIMAS']] = parseFloat(linea.horas_minimas_num) || 0;
@@ -425,47 +448,23 @@ function guardarCotizacion(datos) {
 }
 
 /**
- * Devuelve la representación de fecha segura (ISO string) o null si no es válida.
+ * Devuelve la representación de fecha segura (ISO string) o un valor por defecto.
  */
-function getSafeDateString(value, defaultValue = null) { // Cambiado defaultValue a null
-    let date = null;
-    if (value instanceof Date && !isNaN(value)) {
-        date = value;
-    } else if (value) {
+function getSafeDateString(value, defaultValue) {
+    if (value instanceof Date) {
+        return value.toISOString();
+    }
+    if (value) {
         try {
-            const parsedDate = new Date(value);
-            if (!isNaN(parsedDate)) {
-                date = parsedDate;
+            const date = new Date(value);
+            if (!isNaN(date)) {
+                return date.toISOString();
             }
         } catch (e) {
-            // Ignorar error de parseo, date sigue siendo null
+            // Ignorar error de parseo
         }
     }
-
-    if (date) {
-        // Devolver en formato YYYY-MM-DD para compatibilidad con input date
-         try {
-             // Asegurarse de usar UTC para evitar problemas de zona horaria al formatear solo la fecha
-             return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
-         } catch (formatError) {
-              Logger.log("Error formateando fecha en getSafeDateString: " + formatError);
-              return null; // Devolver null si falla el formateo
-         }
-    } else if (defaultValue !== null) {
-         // Si hay un valor por defecto Y la fecha es inválida, usar el valor por defecto
-         // (Aunque para fechaEjecucion, probablemente queramos null)
-         try {
-             const defaultDate = new Date(defaultValue);
-             if(!isNaN(defaultDate)){
-                 return Utilities.formatDate(defaultDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-             }
-         } catch(e){
-              Logger.log("Error procesando defaultValue en getSafeDateString: " + e);
-         }
-    }
-    
-    // Si no hay fecha válida y no hay valor por defecto válido (o es null), devolver null
-    return null; 
+    return new Date(defaultValue || new Date()).toISOString();
 }
 
 function obtenerPedidoParaEdicion(numPedido) {
@@ -1458,81 +1457,75 @@ function manejarError(contexto, error) {
 
 /**
  * REEMPLAZO FINAL v3 de 'generarYDevolverPDF'
- * Añade la lógica para mover archivos existentes a una subcarpeta "Versiones Anteriores".
+ * (Versión limpia sin marcadores de cita)
  */
 function generarYDevolverPDF(rowIndex) {
     let newSS; 
     try {
-        // 1. Obtener N° de Pedido (Sin cambios)
+        // 1. Obtener N° de Pedido
         const pedidoRow = crudHoja('READ_ROW', HOJA_COTIZACIONES, { rowIndex: rowIndex });
         if (!pedidoRow) throw new Error("No se encontró el pedido con el índice: " + rowIndex);
         
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
         const numPedido = pedidoRow[COL_MAP['COT'] || 0]; 
         if (!numPedido) throw new Error("No se pudo encontrar el N° de Pedido (COT).");
-        
-        // 2. Obtener TODOS los detalles (Sin cambios)
+
+        // 2. Obtener TODOS los detalles
         const cotizacionData = obtenerDetallesCompletosDePedido(numPedido);
         cotizacionData.numPedido = numPedido;
         
-        // 3. Obtener información de origen y destino (Sin cambios)
+        // 3. Obtener información de origen y destino
         const fechaObj = new Date(cotizacionData.fecha || new Date());
         const { id: sourceTemplateFileId, tab: sourceTemplateTabName } = getTemplateInfo(cotizacionData.empresa); 
-        const destinationFolder = getDestinationFolder(cotizacionData.ejecutivo, cotizacionData.empresa, fechaObj, cotizacionData); // Esta es la carpeta "cot" (Nivel 5)
+        const destinationFolder = getDestinationFolder(cotizacionData.ejecutivo, cotizacionData.empresa, fechaObj, cotizacionData);
 
-        // 4. Crear un NUEVO Google Sheet en blanco (Sin cambios)
+        // 4. Crear un NUEVO Google Sheet en blanco
         const nombreArchivo = `Cotizacion_${numPedido}`;
         newSS = SpreadsheetApp.create(nombreArchivo); 
         const newFileId = newSS.getId();
 
-        // 5. Copiar SÓLO la pestaña de la plantilla al nuevo archivo (Sin cambios)
-        const sourceSS = SpreadsheetApp.openById(sourceTemplateFileId); 
+        // 5. Copiar SÓLO la pestaña de la plantilla al nuevo archivo
+        const sourceSS = SpreadsheetApp.openById(sourceTemplateFileId);
         const sourceSheet = sourceSS.getSheetByName(sourceTemplateTabName);
         if (!sourceSheet) {
             DriveApp.getFileById(newFileId).setTrashed(true);
             throw new Error(`La plantilla de origen '${sourceTemplateTabName}' no se encontró.`);
         }
         const hojaTemporal = sourceSheet.copyTo(newSS);
-        
-        // 6. Limpiar y Mover el archivo nuevo Sheet (Sin cambios)
-        hojaTemporal.setName(numPedido); 
+
+        // 6. Limpiar y Mover el archivo nuevo Sheet
+        hojaTemporal.setName(numPedido);
         const defaultSheet = newSS.getSheetByName('Sheet1'); 
         if (defaultSheet) newSS.deleteSheet(defaultSheet);
         
         const newFile = DriveApp.getFileById(newFileId);
-        // Mueve el NUEVO archivo Sheet a la carpeta "cot"
         destinationFolder.addFile(newFile); 
         DriveApp.getRootFolder().removeFile(newFile);
 
-        // --- INICIO DE NUEVA LÓGICA DE ARCHIVADO ---
         // 7. Archivar Versiones Anteriores
         const nombreCarpetaArchivo = "Versiones Anteriores";
-        const carpetaArchivo = findOrCreateFolder(destinationFolder, nombreCarpetaArchivo); // Crea "Versiones Anteriores" dentro de "cot"
+        const carpetaArchivo = findOrCreateFolder(destinationFolder, nombreCarpetaArchivo);
         
         const archivosEnCot = destinationFolder.getFiles();
         while (archivosEnCot.hasNext()) {
             const archivo = archivosEnCot.next();
-            // Mover SÓLO si NO es el archivo que acabamos de crear Y NO es un PDF reciente con el mismo nombre base
             const esNuevoSheet = (archivo.getId() === newFileId);
             const esPDFPotencial = archivo.getName().startsWith(nombreArchivo) && archivo.getMimeType() === MimeType.PDF;
 
-            if (!esNuevoSheet && !esPDFPotencial) { // Mueve todos los archivos excepto el nuevo Sheet y PDFs con nombre similar
+            if (!esNuevoSheet && !esPDFPotencial) {
                  Logger.log(`Archivando archivo anterior: ${archivo.getName()}`);
-                 archivo.moveTo(carpetaArchivo); // Mover a "Versiones Anteriores"
+                 archivo.moveTo(carpetaArchivo);
             } else if (esPDFPotencial) {
-                 // Si es un PDF con nombre similar, podría ser el de la ejecución anterior, lo archivamos también
-                 // Podríamos añadir una comprobación de fecha si fuera necesario, pero por ahora lo movemos.
                  Logger.log(`Archivando PDF anterior: ${archivo.getName()}`);
                  archivo.moveTo(carpetaArchivo);
             }
         }
-        // --- FIN DE NUEVA LÓGICA DE ARCHIVADO ---
 
-        // 8. Rellenar la plantilla (Sin cambios)
+        // 8. Rellenar la plantilla
         rellenarPlantilla(hojaTemporal, cotizacionData);
         SpreadsheetApp.flush();
 
-        // 9. Crear el PDF (Sigue igual, se crea en la carpeta "cot")
+        // 9. Crear el PDF
         const newSS_Url = newSS.getUrl();
         const exportUrl = newSS_Url.replace('/edit', '/export?exportFormat=pdf&gid=' + hojaTemporal.getSheetId() + '&format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&sheetnames=false');
 
@@ -1540,22 +1533,238 @@ function generarYDevolverPDF(rowIndex) {
             headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
             muteHttpExceptions: true
         });
-        
         const pdfBlob = response.getBlob().setName(nombreArchivo + ".pdf"); 
-        const pdfFile = destinationFolder.createFile(pdfBlob); // Se guarda en "cot"
+        const pdfFile = destinationFolder.createFile(pdfBlob);
 
-        // 10. Devolver ambas URLs (Sin cambios)
+        // 10. Devolver ambas URLs
         return { 
             success: true, 
             pdfUrl: pdfFile.getUrl(), 
             sheetUrl: newFile.getUrl() 
         };
-        
+
     } catch (e) {
         Logger.log("Error CRÍTICO en generarYDevolverPDF: " + e.toString());
         if (newSS) DriveApp.getFileById(newSS.getId()).setTrashed(true);
         return { success: false, error: e.message };
     }
+}
+
+/**
+ * NUEVA FUNCIÓN DE AYUDA (Limpia)
+ */
+function getTemplateInfo(empresa) {
+    const empresaUpper = empresa.toUpperCase();
+    switch (empresaUpper) {
+        case 'ALPAMAYO':
+            return { id: ID_PLANTILLA_FILE_ALP, tab: HOJA_PLANTILLA_ALPAMAYO };
+        case 'GYM':
+            return { id: ID_PLANTILLA_FILE_GYM, tab: HOJA_PLANTILLA_GYM };
+        case 'SAN JOSE':
+            return { id: ID_PLANTILLA_FILE_SJ, tab: HOJA_PLANTILLA_SANJOSE };
+        default:
+            Logger.log(`Empresa no reconocida '${empresa}'. Usando Alpamayo como fallback.`);
+            return { id: ID_PLANTILLA_FILE_ALP, tab: HOJA_PLANTILLA_ALPAMAYO };
+    }
+}
+
+/**
+ * NUEVA FUNCIÓN DE AYUDA (Limpia)
+ */
+function findOrCreateFolder(parentFolder, childName) {
+  const carpetas = parentFolder.getFoldersByName(childName);
+  
+  if (carpetas.hasNext()) {
+    return carpetas.next();
+  } else {
+    return parentFolder.createFolder(childName);
+  }
+}
+
+/**
+ * REEMPLAZO de getDestinationFolder (Limpia, CON LÓGICA DE ANTHONY)
+ */
+function getDestinationFolder(ejecutivo, empresa, fechaObj, cotizacionData) {
+    let parentFolderId;
+    let skipLevel2 = false; // Flag para omitir la creación de la carpeta Nivel 2 (Nombre de Empresa)
+
+    const ejecutivoUpper = ejecutivo ? ejecutivo.toUpperCase().trim() : '';
+    const empresaUpper = empresa.toUpperCase();
+
+    // Nivel 1: Determinar la carpeta raíz
+    if (ejecutivoUpper === 'CARMEN') {
+        parentFolderId = FOLDER_ID_CARMEN;
+        
+    } else if (ejecutivoUpper === 'ANTHONY') {
+        
+        // --- INICIO DE LÓGICA DE ANTHONY ---
+        switch (empresaUpper) {
+            case 'GYM':
+                parentFolderId = FOLDER_ID_GYM_ANTHONY;
+                break;
+            case 'ALPAMAYO':
+                parentFolderId = FOLDER_ID_ALP_ANTHONY;
+                break;
+            case 'SAN JOSE':
+                parentFolderId = FOLDER_ID_SJ_ANTHONY;
+                break;
+            default:
+                parentFolderId = FOLDER_ID_ANTHONY;
+                skipLevel2 = false;
+                break;
+        }
+        
+        if (parentFolderId !== FOLDER_ID_ANTHONY) {
+            skipLevel2 = true;
+        }
+        // --- FIN DE LÓGICA DE ANTHONY ---
+        
+    } else {
+        // Lógica de fallback (para otros usuarios)
+        switch (empresaUpper) {
+            case 'GYM':
+                parentFolderId = FOLDER_ID_GYM;
+                break;
+            case 'SAN JOSE':
+                parentFolderId = FOLDER_ID_SJ;
+                break;
+            default:
+                parentFolderId = FOLDER_ID_ALP;
+                break;
+        }
+    }
+    
+    let currentFolder = DriveApp.getFolderById(parentFolderId);
+
+    // Nivel 2: Carpeta de la Empresa
+    if (!skipLevel2) {
+        const nombreCarpetaEmpresa = MAPA_NOMBRES_EMPRESAS[empresaUpper] || empresa;
+        currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaEmpresa);
+    }
+
+    // Nivel 3: Carpeta Mes/Año
+    const prefijos = {"ALPAMAYO": "COT.ALP", "SAN JOSE": "COT.SJ", "GYM": "COT.GYM"};
+    const meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SETIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+    
+    const prefijoEmpresa = prefijos[empresaUpper] || 'COT.GEN';
+    const anio = fechaObj.getFullYear();
+    const mesNum = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    const mesNombre = meses[fechaObj.getMonth()];
+    
+    const separador = (empresaUpper === 'ALPAMAYO') ? '_' : ' '; 
+    const nombreSubfolderMes = `${prefijoEmpresa}.${anio}.${mesNum} COT${separador}${mesNombre}`;
+
+    currentFolder = findOrCreateFolder(currentFolder, nombreSubfolderMes);
+
+    // Nivel 4: Carpeta de Cotización Específica
+    let servicioNombre = "VARIOS";
+    if (cotizacionData.servicios.length === 1) {
+        const servicioUnico = cotizacionData.servicios[0];
+        servicioNombre = servicioUnico.abreviatura || servicioUnico.cod || servicioUnico.descripcion.substring(0, 10);
+    }
+    
+    const nombreCarpetaCotizacion = `${cotizacionData.numPedido} ${cotizacionData.cliente} ${servicioNombre}`;
+    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaCotizacion);
+
+    // Nivel 5: Carpeta "cot"
+    currentFolder = findOrCreateFolder(currentFolder, "cot");
+
+    return currentFolder; // Devuelve la carpeta "cot" de Nivel 5
+}
+
+/**
+ * REEMPLAZO de rellenarPlantilla (Limpia)
+ */
+function rellenarPlantilla(hojaTemporal, cotizacionData) {
+    const SERVICIOS = cotizacionData.servicios || []; 
+    const START_ROW = 18;
+
+    // 3. Rellenar Cabecera
+    hojaTemporal.getRange('C3').setValue(cotizacionData.numPedido || ''); 
+    hojaTemporal.getRange('C5').setValue(cotizacionData.cliente || '');
+    hojaTemporal.getRange('C6').setValue(cotizacionData.ruc || '');      
+    hojaTemporal.getRange('C7').setValue(cotizacionData.contacto || ''); 
+    hojaTemporal.getRange('C8').setValue(cotizacionData.contactoInfo || ''); 
+    const fechaObj = new Date(cotizacionData.fecha || new Date());
+    hojaTemporal.getRange('G3').setValue(fechaObj).setNumberFormat('dd/MM/yyyy');
+    hojaTemporal.getRange('C12').setValue(cotizacionData.lugar || '');   
+    hojaTemporal.getRange('C13').setValue(cotizacionData.turno || '');   
+
+    // 4. Lógica para agregar líneas de servicio
+    let itemNum = 1;
+    let currentRow = START_ROW;
+
+    // 4.1 Contar filas necesarias
+    let filasNecesarias = 0;
+    SERVICIOS.forEach(s => {
+        filasNecesarias++; 
+        if (s.movilizacion && s.movilizacion > 0) filasNecesarias++; 
+    });
+    // 4.2 Insertar las filas
+    if (filasNecesarias > 1) {
+        hojaTemporal.insertRowsAfter(START_ROW, filasNecesarias - 1);
+    }
+
+    // 4.3 Llenar las filas
+    SERVICIOS.forEach(s => {
+        const movilizacion = s.movilizacion || 0;
+        const valorServicio = s.valor || 0; 
+        
+        let descripcionDetallada = "Alquiler de " + s.descripcion + "\n";
+      
+        if (s.precioUnitario > 0) {
+            const simboloMoneda = (s.moneda && s.moneda.toUpperCase() === 'SOLES') ? 'S/.' : 'USD$.';
+            descripcionDetallada += `Costo por hora de servicio: ${simboloMoneda} ${s.precioUnitario.toFixed(2)} por hora.\n`;
+        }
+        
+        if (s.horasMinimasNum > 0 && s.undHorasMinimas) {
+             descripcionDetallada += `Horas mínimas de servicio: ${s.horasMinimasNum} horas mínimas (${s.undHorasMinimas}).\n`;
+        }
+        
+        descripcionDetallada += "Almuerzo: 1 hora diaria.\n";
+        
+        if (s.totalDias > 0) {
+             descripcionDetallada += `Duración: ${Math.ceil(s.totalDias)} día(s) de servicio.\n`;
+        }
+        
+        if (cotizacionData.turno) {
+            descripcionDetallada += `Turno: ${cotizacionData.turno}.\n`;
+        }
+        
+        if (movilizacion > 0) {
+             descripcionDetallada += "Mov. y desmo. Del equipo: Considerado aparte.\n";
+        }
+
+        // A. LÍNEA DE SERVICIO PRINCIPAL
+        hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue(descripcionDetallada.trim())
+            .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
+            
+        hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+        hojaTemporal.getRange(`A${currentRow}`).setValue(itemNum);
+        hojaTemporal.getRange(`F${currentRow}`).setValue(valorServicio); 
+        currentRow++;
+        
+        // B. LÍNEA DE MOVILIZACIÓN (SI APLICA)
+        if (movilizacion > 0) {
+            const itemMovNum = `${itemNum}.1`;
+            hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue("Movilización y Desmovilización")
+                .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
+                
+            hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+            hojaTemporal.getRange(`A${currentRow}`).setValue(itemMovNum);
+            hojaTemporal.getRange(`F${currentRow}`).setValue(movilizacion);
+            currentRow++; 
+        }
+        itemNum++; 
+    });
+    
+    // 5. Agregar la línea de total
+    const filaTotal = currentRow;
+    const ultimaFilaItems = filaTotal - 1; 
+    hojaTemporal.getRange(`A${filaTotal}:E${filaTotal}`).merge();
+    hojaTemporal.getRange(`A${filaTotal}`).setValue("SUBTOTAL");
+    hojaTemporal.getRange(`F${filaTotal}:G${filaTotal}`).merge();
+    hojaTemporal.getRange(`F${filaTotal}`).setFormula(`=SUM(F${START_ROW}:G${ultimaFilaItems})`);
 }
 
 /**
@@ -1733,170 +1942,6 @@ function findOrCreateFolder(parentFolder, childName) {
   } else {
     return parentFolder.createFolder(childName); // La carpeta no existe, la crea
   }
-}
-
-/**
- * REEMPLAZO de getDestinationFolder
- * Ahora navega los 4 NIVELES de carpetas.
- */
-function getDestinationFolder(ejecutivo, empresa, fechaObj, cotizacionData) {
-    let parentFolderId;
-
-    const empresaUpper = empresa.toUpperCase();
-    
-    // Nivel 1: Carpeta del Ejecutivo
-    if (ejecutivo && ejecutivo.toUpperCase() === 'CARMEN') {
-        parentFolderId = FOLDER_ID_CARMEN;
-    } else {
-        const empresaUpper = empresa.toUpperCase();
-        if (empresaUpper === 'GYM') parentFolderId = FOLDER_ID_GYM;
-        else if (empresaUpper === 'SAN JOSE') parentFolderId = FOLDER_ID_SJ;
-        else parentFolderId = FOLDER_ID_ALP;
-    }
-    
-    let currentFolder = DriveApp.getFolderById(parentFolderId);
-
-    // Nivel 2: Carpeta de la Empresa (Ej. "GRUAS SAN JOSE PERU SAC")
-    const nombreCarpetaEmpresa = MAPA_NOMBRES_EMPRESAS[empresa.toUpperCase()] || empresa;
-    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaEmpresa);
-
-    // Nivel 3: Carpeta Mes/Año (Ej. "COT.SJ.2025.09 COT_SETIEMBRE")
-    const prefijos = {"ALPAMAYO": "COT.ALP", "SAN JOSE": "COT.SJ", "GYM": "COT.GYM"};
-    const meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SETIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
-    
-    const prefijoEmpresa = prefijos[empresa.toUpperCase()] || 'COT.GEN';
-    const anio = fechaObj.getFullYear();
-    const mesNum = String(fechaObj.getMonth() + 1).padStart(2, '0');
-    const mesNombre = meses[fechaObj.getMonth()];
-    const separador = (empresaUpper === 'ALPAMAYO') ? '_' : ' ';
-    
-    const nombreSubfolderMes = `${prefijoEmpresa}.${anio}.${mesNum} COT_${mesNombre}`;
-    currentFolder = findOrCreateFolder(currentFolder, nombreSubfolderMes);
-
-    // Nivel 4: Carpeta de Cotización Específica (Ej. "COT.SJ.2025.09.2006 STRACON GT100TN")
-    let servicioNombre = "VARIOS";
-    if (cotizacionData.servicios.length === 1) {
-        const servicioUnico = cotizacionData.servicios[0];
-        servicioNombre = servicioUnico.abreviatura || servicioUnico.cod || servicioUnico.descripcion.substring(0, 10);
-    }
-    
-    const nombreCarpetaCotizacion = `${cotizacionData.numPedido} ${cotizacionData.cliente} ${servicioNombre}`;
-    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaCotizacion); // <-- Crea o encuentra la carpeta de cotización (Nivel 4)
-
-    // --- AÑADIDO: Nivel 5 ---
-    // Crear la subcarpeta "cot" DENTRO de la carpeta de cotización
-    currentFolder = findOrCreateFolder(currentFolder, "cot"); 
-    // --- FIN DE AÑADIDO ---
-
-    return currentFolder; // Devuelve la carpeta "cot" de Nivel 5
-}
-
-/**
- * REEMPLAZO de rellenarPlantilla
- * Construye la descripción detallada en la celda B.
- */
-function rellenarPlantilla(hojaTemporal, cotizacionData) {
-    const SERVICIOS = cotizacionData.servicios || []; 
-    const START_ROW = 18;
-
-    // 3. Rellenar Cabecera (Sin cambios)
-    hojaTemporal.getRange('C3').setValue(cotizacionData.numPedido || ''); 
-    hojaTemporal.getRange('C5').setValue(cotizacionData.cliente || '');   
-    hojaTemporal.getRange('C6').setValue(cotizacionData.ruc || '');      
-    hojaTemporal.getRange('C7').setValue(cotizacionData.contacto || ''); 
-    hojaTemporal.getRange('C8').setValue(cotizacionData.contactoInfo || ''); 
-    const fechaObj = new Date(cotizacionData.fecha || new Date());
-    hojaTemporal.getRange('G3').setValue(fechaObj).setNumberFormat('dd/MM/yyyy'); 
-    hojaTemporal.getRange('C12').setValue(cotizacionData.lugar || '');   
-    hojaTemporal.getRange('C13').setValue(cotizacionData.turno || '');   
-
-    // 4. Lógica para agregar líneas de servicio
-    let itemNum = 1;
-    let currentRow = START_ROW;
-
-    // 4.1 Contar filas necesarias (Sin cambios)
-    let filasNecesarias = 0;
-    SERVICIOS.forEach(s => {
-        filasNecesarias++; 
-        if (s.movilizacion && s.movilizacion > 0) filasNecesarias++; 
-    });
-
-    // 4.2 Insertar las filas (Sin cambios)
-    if (filasNecesarias > 1) {
-        hojaTemporal.insertRowsAfter(START_ROW, filasNecesarias - 1);
-    }
-
-    // 4.3 Llenar las filas (CON CAMBIOS EN LA DESCRIPCIÓN)
-    SERVICIOS.forEach(s => {
-        const movilizacion = s.movilizacion || 0;
-        const valorServicio = s.valor || 0; 
-        
-        // --- INICIO DE CONSTRUCCIÓN DE DESCRIPCIÓN DETALLADA ---
-        let descripcionDetallada = "Alquiler de " + s.descripcion + "\n"; // Nombre base + salto de línea
-        
-        // Añadir costo por hora si hay precio unitario
-        if (s.precioUnitario > 0) {
-            const simboloMoneda = (s.moneda && s.moneda.toUpperCase() === 'SOLES') ? 'S/.' : 'USD$.';
-            descripcionDetallada += `Costo por hora de servicio: ${simboloMoneda} ${s.precioUnitario.toFixed(2)} por hora.\n`;
-        }
-        
-        // Añadir horas mínimas si existen
-        if (s.horasMinimasNum > 0 && s.undHorasMinimas) {
-             descripcionDetallada += `Horas mínimas de servicio: ${s.horasMinimasNum} horas mínimas (${s.undHorasMinimas}).\n`;
-        }
-        
-        // Añadir Almuerzo (Texto fijo, puedes cambiarlo o hacerlo dinámico si añades el dato)
-        descripcionDetallada += "Almuerzo: 1 hora diaria.\n"; 
-        
-        // Añadir Duración (usando Total Días)
-        if (s.totalDias > 0) {
-             descripcionDetallada += `Duración: ${Math.ceil(s.totalDias)} día(s) de servicio.\n`;
-        }
-        
-        // Añadir Turno (usando el turno general de la cotización)
-        if (cotizacionData.turno) {
-            descripcionDetallada += `Turno: ${cotizacionData.turno}.\n`;
-        }
-        
-        // Añadir detalle de Movilización (Texto fijo si hay monto > 0)
-        if (movilizacion > 0) {
-             // Puedes ajustar este texto si necesitas algo más específico
-             descripcionDetallada += "Mov. y desmo. Del equipo: Considerado aparte.\n"; 
-        }
-        // --- FIN DE CONSTRUCCIÓN DE DESCRIPCIÓN ---
-
-        // A. LÍNEA DE SERVICIO PRINCIPAL
-        hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue(descripcionDetallada.trim()) // <-- Poner descripción detallada
-            .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true); // <-- Forzar alineación y ajuste
-            
-        hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
-        hojaTemporal.getRange(`A${currentRow}`).setValue(itemNum);
-        // hojaTemporal.getRange(`B${currentRow}`).setValue(s.descripcion); // <-- Ya no se usa
-        hojaTemporal.getRange(`F${currentRow}`).setValue(valorServicio); 
-        currentRow++; 
-
-        // B. LÍNEA DE MOVILIZACIÓN (SI APLICA)
-        if (movilizacion > 0) {
-            const itemMovNum = `${itemNum}.1`; 
-            hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue("Movilización y Desmovilización")
-                .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true); // <-- Formato
-                
-            hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
-            hojaTemporal.getRange(`A${currentRow}`).setValue(itemMovNum);
-            // hojaTemporal.getRange(`B${currentRow}`).setValue("Movilización y Desmovilización"); // <-- Ya no se usa
-            hojaTemporal.getRange(`F${currentRow}`).setValue(movilizacion);
-            currentRow++; 
-        }
-        itemNum++; 
-    });
-
-    // 5. Agregar la línea de total (Sin cambios)
-    const filaTotal = currentRow;
-    const ultimaFilaItems = filaTotal - 1; 
-    hojaTemporal.getRange(`A${filaTotal}:E${filaTotal}`).merge();
-    hojaTemporal.getRange(`A${filaTotal}`).setValue("SUBTOTAL");
-    hojaTemporal.getRange(`F${filaTotal}:G${filaTotal}`).merge();
-    hojaTemporal.getRange(`F${filaTotal}`).setFormula(`=SUM(F${START_ROW}:G${ultimaFilaItems})`);
 }
 
 /**
@@ -2447,4 +2492,32 @@ function guardarDatosComplementarios(codigoPedido, datos) {
         Logger.log(`ERROR al guardar datos complementarios para ${codigoPedido}: ${e.message}`);
         // No lanzamos error para no detener el guardado principal
     }
+}
+
+/**
+ * FUNCIÓN UTILITARIA (v3): Ejecutar manualmente para limpiar la caché del script.
+ * Esta versión no usa msgBox y limpia las claves de caché conocidas.
+ */
+function forzarLimpiezaDeCache() {
+  try {
+    const cache = CacheService.getScriptCache();
+    
+    // Lista de claves de caché que "getColumnMap" probablemente usa
+    const clavesARemover = [
+      "column_map_DataCot",
+      "column_map_Servicios",
+      "column_map_Contactos",
+      "column_map_ComplementosCot",
+      "column_map_Actas"
+    ];
+
+    // Llamar a removeAll CON la lista de claves
+    cache.removeAll(clavesARemover); 
+
+    // Usar Logger.log en lugar de msgBox
+    Logger.log(`ÉXITO: Se han intentado limpiar las siguientes claves de caché: ${clavesARemover.join(', ')}`);
+    
+  } catch (e) {
+    Logger.log("Error al limpiar caché: " + e.message);
+  }
 }
