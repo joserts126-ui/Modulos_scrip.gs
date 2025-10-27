@@ -29,6 +29,11 @@ const FOLDER_ID_GYM     = "1ODozAGz2AeDmFGk_rT_axt7bhG6SdLv2"; // Gruas y Montac
 const FOLDER_ID_SJ      = "1bO8-_ZWM2nFfc1jl4PDYrf6aTnKqp7s4"; // Gruas San Jose Peru SAC
 const FOLDER_ID_ALP     = "1ZrPgv6mfTZk5r4GE49tAlc9C559b_M93"; // Alpamayo
 const HOJA_ACTAS = "Actas";
+const FOLDER_ID_ANTHONY = "12zmN-UyNF_SKoss_Arxe2oKpnL3NpLdR";
+const FOLDER_ID_GYM_ANTHONY = "1Tft-Di_mFvLuUZssmIctqjzqb9lTSgal"
+const FOLDER_ID_ALP_ANTHONY = "155Qb3Pgx4d16IgSuebUjjOvwLAVHJH3c"
+const FOLDER_ID_SJ_ANTHONY = "1sSBXw-1lzVnniHGfwEoGkp9AIysMMbNf"
+
 // --- IDs DE ARCHIVOS DE PLANTILLA (¡DEBES RELLENAR ESTOS!) ---
 // Ve a tu Google Drive, haz clic derecho en el archivo plantilla y "Obtener enlace"
 // Copia el ID desde el enlace (ej. .../d/AQUI_VA_EL_ID/edit)
