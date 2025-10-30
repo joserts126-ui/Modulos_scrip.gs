@@ -10,7 +10,7 @@
     <div class="barraTopComercial">
         <div class="topBarra-izquierda">
             <? var url = getScriptUrl(); ?>
-            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a>
+            <a href='<?= url ?>?page=Modulos' onclick="sessionStorage.removeItem('pedidoAEditar')" class="retornarModulos iconoTopBarra">Módulos</a>
 
             <div style="display: flex; align-items: center; gap: 20px;">
                 <h3 id="tituloPrincipalContenido" class="titulo-contenido" style="margin-bottom: 0; border-bottom: none;">Nueva Cotización</h3>
@@ -197,6 +197,7 @@
 <script>
 
   function navegarAResumen() {
+        sessionStorage.removeItem('pedidoAEditar');
         const urlBase = '<?!= getScriptUrl() ?>';
         window.top.location.href = urlBase + '?page=ResumenComercial';
     }
@@ -465,8 +466,7 @@ document.addEventListener("DOMContentLoaded", function() {
         editId = sessionStorage.getItem('pedidoAEditar');
         if (editId) {
             console.log("📦 EditId obtenido de sessionStorage:", editId);
-            sessionStorage.removeItem('pedidoAEditar');
-        }
+           }
     }
     console.log("🎯 ID final para edición:", editId);
     
@@ -1276,6 +1276,7 @@ function procesarDatosInicialesComercial(data) {
         }
 
         function handleExitoGuardado(respuesta) {
+            sessionStorage.removeItem('pedidoAEditar');
             mostrarLoading(false);
             mostrarExito(respuesta);
         }
