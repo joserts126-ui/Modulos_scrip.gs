@@ -470,7 +470,7 @@ function getSafeDateString(value, defaultValue) {
 function obtenerPedidoParaEdicion(numPedido) {
     try {
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 15); 
+        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 15, true);
         const pedidoBuscado = String(numPedido).trim().toUpperCase();
         const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0;
         
@@ -489,7 +489,6 @@ function obtenerPedidoParaEdicion(numPedido) {
             Empresa: String(getGenValue('EMPRESA') || ''), 
             RUC: String(getGenValue('ID CLIENTE') || ''),
             Cliente: String(getGenValue('CLIENTE') || ''), 
-            // Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'), // <-- SE ELIMINA ESTA REPETICIÓN
             Moneda: String(getGenValue('MONEDA') || 'SOLES'), 
             Forma_Pago: String(getGenValue('F. PAGO') || ''),
             Direccion: String(getGenValue('UBICACIÓN') || ''), 
