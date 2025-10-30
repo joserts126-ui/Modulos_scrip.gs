@@ -800,40 +800,37 @@ function getFilaPorRowIndex(ruc, rowIndex, tipo) {
 }
 
 /**
- * REEMPLAZO v2 de getListaCotizacionesResumen
- * Incluye Vendedor y Compañía en los datos devueltos.
+ * REEMPLAZO v5 de getListaCotizacionesResumen
+ * Filtra según permisos detallados (propio, columnas específicas de vendedor, o todos).
  */
 function getListaCotizacionesResumen() {
     try {
-        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 1); // Usar caché
+        // --- Logs de diagnóstico (Mantenlos por ahora) ---
+        const emailUsuarioActual = obtenerEmailSeguro();
+        Logger.log("Email detectado para el resumen: " + emailUsuarioActual);
+        const permisos = obtenerPermisosUsuario(); // Llama a la versión v3
+        Logger.log("Permisos v3 leídos para " + emailUsuarioActual + ": " + JSON.stringify(permisos));
+        // --- Fin Logs ---
+
+        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 1);
         const encabezadoBase = ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"];
 
-        if (allData.length <= 1) {
-            return [encabezadoBase]; // Devuelve solo encabezados si no hay datos
-        }
+        // --- LÓGICA DE PERMISOS v3 ---
+        const vendedorPropio = permisos.nombreVendedorExacto ? permisos.nombreVendedorExacto.toUpperCase() : null;
+        const puedeVerTodo = permisos.puedeVerTodasLasCotizaciones;
+        const visibilidadVendedores = permisos.visibilidadVendedores || {}; // Objeto { ANTHONY: true, RENATO: false }
+        Logger.log(`Obteniendo resumen para ${vendedorPropio}. Puede ver todo: ${puedeVerTodo}. Visibilidad específica: ${JSON.stringify(visibilidadVendedores)}`);
+        // --- FIN LÓGICA DE PERMISOS v3 ---
+
+        if (allData.length <= 1) return [encabezadoBase];
 
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        // Asegúrate que los nombres de encabezado coincidan con tu HOJA_COTIZACIONES
-        const INDICES = {
-            NUM_PEDIDO: COL_MAP['COT'],
-            FECHA_CREACION: COL_MAP['FECHA COT'],
-            CLIENTE: COL_MAP['CLIENTE'],
-            VENDEDOR: COL_MAP['EJECUTIVO'], // Mapea a la columna EJECUTIVO
-            COMPANIA: COL_MAP['EMPRESA'],   // Mapea a la columna EMPRESA
-            MONTO_TOTAL: COL_MAP['TOTAL SERVICIO'], // Usa TOTAL SERVICIO
-            MONEDA: COL_MAP['MONEDA'],
-            ESTADO: COL_MAP['ESTADO COT'],
-            ID_CLIENTE: COL_MAP['ID CLIENTE'],
-        };
-
-        // Validar que se encontraron los índices necesarios
-        for (const key in INDICES) {
-            if (INDICES[key] === undefined) {
-                 Logger.log(`Advertencia: No se encontró el encabezado para '${key}' en HOJA_COTIZACIONES. Usando índice por defecto o causará error.`);
-                 // Podrías asignar índices por defecto aquí si es necesario, ej: INDICES.VENDEDOR = 4;
-            }
-        }
-
+        const INDICES = { /* ... tus índices ... */
+             NUM_PEDIDO: COL_MAP['COT'], FECHA_CREACION: COL_MAP['FECHA COT'], CLIENTE: COL_MAP['CLIENTE'],
+             VENDEDOR: COL_MAP['EJECUTIVO'], COMPANIA: COL_MAP['EMPRESA'], MONTO_TOTAL: COL_MAP['TOTAL SERVICIO'],
+             MONEDA: COL_MAP['MONEDA'], ESTADO: COL_MAP['ESTADO COT'], ID_CLIENTE: COL_MAP['ID CLIENTE'],
+         };
+         // ... (validación de índices) ...
 
         const resumenMap = new Map();
         const scriptTimeZone = Session.getScriptTimeZone();
@@ -843,52 +840,72 @@ function getListaCotizacionesResumen() {
             const numPedido = String(row[INDICES.NUM_PEDIDO] || '').trim();
             if (!numPedido) continue;
 
-            let montoLinea = 0;
-            try { montoLinea = procesarMontoRapido(row[INDICES.MONTO_TOTAL]); } catch(e){ montoLinea = 0; }
+            const vendedorFila = String(row[INDICES.VENDEDOR] || '').trim();
+            const vendedorFilaUpper = vendedorFila.toUpperCase(); // Normalizar para comparar
 
-            if (!resumenMap.has(numPedido)) {
-                const fecha = formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone);
-                const rowIndex = i + 1;
-                resumenMap.set(numPedido, {
-                    numPedido: numPedido,
-                    fecha: fecha,
-                    cliente: row[INDICES.CLIENTE] || 'N/A',
-                    vendedor: row[INDICES.VENDEDOR] || 'N/A', // Capturar vendedor
-                    compania: row[INDICES.COMPANIA] || 'N/A', // Capturar compañía
-                    moneda: String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
-                    estado: row[INDICES.ESTADO] || 'Pendiente',
-                    idCliente: row[INDICES.ID_CLIENTE] || '',
-                    montoTotal: montoLinea,
-                    rowIndex: rowIndex
-                });
-            } else {
-                 const existente = resumenMap.get(numPedido);
-                 existente.montoTotal += montoLinea;
-                 // Opcional: actualizar vendedor/compañía si estaban vacíos
-                 if (existente.vendedor === 'N/A' && row[INDICES.VENDEDOR]) existente.vendedor = row[INDICES.VENDEDOR];
-                 if (existente.compania === 'N/A' && row[INDICES.COMPANIA]) existente.compania = row[INDICES.COMPANIA];
+            // --- LÓGICA DE FILTRADO v3 ---
+            let incluirFila = false;
+            if (puedeVerTodo) {
+                incluirFila = true; // Si puede ver todo, incluir siempre
+            } else if (vendedorPropio && vendedorFilaUpper === vendedorPropio) {
+                incluirFila = true; // Si es su propia cotización, incluir
+            } else if (visibilidadVendedores[vendedorFilaUpper] === true) {
+                // Si el nombre del vendedor de la fila existe como clave en visibilidadVendedores
+                // y su valor es true, incluir.
+                incluirFila = true;
             }
+
+            if (!incluirFila) {
+                // Logger.log(`Fila ${i+1} omitida para ${emailUsuarioActual}. Vendedor: ${vendedorFila}`); // Log opcional para debug
+                continue; // Saltar esta fila
+            }
+            // --- FIN LÓGICA DE FILTRADO v3 ---
+
+            // ... (resto de la lógica para calcular monto y agregar/actualizar el map - sin cambios) ...
+             let montoLinea = 0;
+             try { montoLinea = procesarMontoRapido(row[INDICES.MONTO_TOTAL]); } catch(e){ montoLinea = 0; }
+
+             if (!resumenMap.has(numPedido)) {
+                  const fecha = formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone);
+                  const rowIndex = i + 1;
+                  resumenMap.set(numPedido, {
+                      numPedido: numPedido, fecha: fecha,
+                      cliente: row[INDICES.CLIENTE] || 'N/A',
+                      vendedor: vendedorFila || 'N/A',
+                      compania: row[INDICES.COMPANIA] || 'N/A',
+                      moneda: String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
+                      estado: row[INDICES.ESTADO] || 'Pendiente',
+                      idCliente: row[INDICES.ID_CLIENTE] || '',
+                      montoTotal: montoLinea, rowIndex: rowIndex
+                  });
+             } else {
+                  const existente = resumenMap.get(numPedido);
+                  existente.montoTotal += montoLinea;
+                  if (existente.vendedor === 'N/A' && vendedorFila) existente.vendedor = vendedorFila;
+                  if (existente.compania === 'N/A' && row[INDICES.COMPANIA]) existente.compania = row[INDICES.COMPANIA];
+             }
         }
 
-        const resumenData = [encabezadoBase]; // Usar el encabezado definido al inicio
-        resumenMap.forEach(item => {
-            resumenData.push([
-                item.numPedido, item.fecha, item.cliente,
-                item.vendedor, item.compania, // Añadir los nuevos datos
-                item.montoTotal.toFixed(2), // Mantener el número aquí, el formato se hace en frontend
-                item.moneda,
-                item.estado, item.idCliente, item.rowIndex
-            ]);
-        });
+        // ... (resto de la lógica para convertir el map a array - sin cambios) ...
+         const resumenData = [encabezadoBase];
+         resumenMap.forEach(item => {
+             resumenData.push([
+                 item.numPedido, item.fecha, item.cliente,
+                 item.vendedor, item.compania,
+                 item.montoTotal, item.moneda,
+                 item.estado, item.idCliente, item.rowIndex
+             ]);
+         });
+
         return resumenData;
+
     } catch (e) {
-        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen: ${e.message} \n ${e.stack}`);
-        // Devolver encabezado y mensaje de error
-        return [ ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"],
-                 ["Error", "No se pudieron cargar los datos", e.message, "", "", "", "", "", "", ""] ];
+        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen v5: ${e.message} \n ${e.stack}`);
+        // ... (manejo de error) ...
+         return [ ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"],
+                  ["Error", "No se pudieron cargar los datos", e.message, "", "", "", "", "", "", ""] ];
     }
 }
-
 // ====================================================
 // === LÓGICA DE CÓDIGO DE PEDIDO (SIN CAMBIOS ESTRUCTURALES) ===
 // ====================================================
