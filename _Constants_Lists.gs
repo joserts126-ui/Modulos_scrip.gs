@@ -9,6 +9,7 @@ const HOJA_DIRECCIONES = "Direcciones";
 const HOJA_SERVICIOS = "Servicios";
 const HOJA_COTIZACIONES = "DataCot";
 const HOJA_COMPLEMENTOS_COT = "ComplementosDataCot";
+const HOJA_PERMISOS = "Permisos";
 
 // Constantes para las pestañas de plantillas
 const HOJA_PLANTILLA_ALPAMAYO = 'COT_ALP';
