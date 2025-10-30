@@ -607,7 +607,7 @@ table.servicios-tabla td button:hover {
 /* La columna de Nombre del Servicio debe tener un ancho flexible, pero le damos un min-width con CSS */
 .col-nombre-servicio { width: 25%; min-width: 200px; } /* 3. Nombre del Servicio */
 .col-und-medida { width: 80px; } /* 4. UND. MEDIDA */
-.col-cant { width: 45px; } /* 5. Cant. */
+.col-cant { width: 60px; } /* 5. Cant. */
 .col-und-h-min { width: 80px; } /* 6. UND. H. MIN. */
 .col-dias-cotizados { width: 70px; } /* 7. Días Cotizados */
 .col-h-minimas { width: 70px; } /* 8. H. Mínimas */
@@ -2138,5 +2138,7 @@ input:not([readonly]) {
 .formulario-compacto .formulario-campos.dos-columnas select {
     height: 30px !important;
 }
+
+
 
 </style>
