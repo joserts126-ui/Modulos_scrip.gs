@@ -154,7 +154,7 @@ function crudHoja(operacion, sheetName, datos = null, filtro = null) {
 /**
  * Función unificada para obtener datos con cache OPTIMIZADA
  */
-function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10) {
+function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10, leerTodasLasFilas = false) {
     const cacheKey = `hoja_${sheetName}`;
     const startTime = new Date().getTime();
     
@@ -176,7 +176,7 @@ function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10) {
         }
         
         // Limitar cantidad de filas si es muy grande (máximo 1000 filas)
-        const lastRow = Math.min(sheet.getLastRow(), 1000);
+        const lastRow = leerTodasLasFilas ? sheet.getLastRow() : Math.min(sheet.getLastRow(), 1000);
         const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
         if (useCache && data.length > 0) {
             cache.put(cacheKey, JSON.stringify(data), cacheMinutes * 60);
