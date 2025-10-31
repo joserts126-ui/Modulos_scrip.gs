@@ -10,11 +10,11 @@
     <div class="barraTopComercial">
         <div class="topBarra-izquierda">
             <? var url = getScriptUrl(); ?>
-            <a href='<?= url ?>?page=Servicios' class="retornarModulos iconoTopBarra">← Volver a Servicios</a>
-            <h1>Órdenes de Trabajo</h1>
+            <a href='<?= url ?>?page=Servicios' class="retornarModulos iconoTopBarra" id="retornarLink">← Volver a Servicios</a>
+            <h1 id="tituloPrincipal">Órdenes de Trabajo</h1>
         </div>
         <div class="topBarra-derecha">
-            <button onclick="navegarARegistrarOT()" class="boton-nuevo-pedido">
+            <button onclick="navegarARegistrarOT(null)" class="boton-nuevo-pedido" id="btnRegistrarGlobal">
                 📋 Registrar OT
             </button>
             <button onclick="recargarDatos()" class="btn-info" style="background-color: #17a2b8; color: white; margin-left: 10px;">
@@ -25,7 +25,8 @@
 
     <div class="contenedorModulos">
         <div class="card">
-            <h2>Lista de Órdenes de Trabajo</h2>
+            <h2 id="subtituloCard">Lista de Órdenes de Trabajo</h2>
+            <h3 id="subtituloCliente" style="color: #555; margin-top: -10px; display: none;"></h3>
             
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
                 <input type="text" id="filtroOT" placeholder="Buscar por número OT, cliente o servicio..." 
@@ -37,7 +38,7 @@
 
             <div style="overflow-x: auto;">
                 <table id="tablaOT" class="tabla-resumen">
-                    <thead>
+                    <thead id="aotHeaders">
                         <tr>
                             <th style="width: 120px;">N° OT</th>
                             <th style="width: 150px;">Fecha</th>
@@ -63,7 +64,6 @@
         </div>
     </div>
 
-    <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay" style="display: none;">
         <div class="loading-spinner">
             <p id="loadingText">Cargando...</p>
@@ -72,80 +72,161 @@
     </div>
 
     <script>
-        let datosOT = [];
+        let datosOTGlobal = []; // Para el modo global
+        let modoPedido = false;
+        let numPedidoFiltrado = null;
+        let scriptUrlBase = '<?!= getScriptUrl() ?>';
 
         document.addEventListener("DOMContentLoaded", function() {
             console.log("🔄 OT.html CARGADO");
-            cargarDatosOT();
+
+            // 1. Revisar si venimos de un pedido específico
+            const urlParams = new URLSearchParams(window.location.search);
+            numPedidoFiltrado = urlParams.get('pedido');
+
+            if (numPedidoFiltrado) {
+                modoPedido = true;
+                configurarModoPedido(numPedidoFiltrado);
+                cargarDatosOTPorPedido(numPedidoFiltrado);
+            } else {
+                modoPedido = false;
+                configurarModoGlobal();
+                cargarDatosOTGlobal();
+            }
             
             document.getElementById("filtroOT").addEventListener("input", filtrarOT);
-            
-            // Agregar evento para recargar con F5
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
-                    e.preventDefault();
-                    recargarDatos();
-                }
-            });
         });
 
-function cargarDatosOT() {
-    mostrarLoading(true, "Cargando órdenes de trabajo...");
-    
-    google.script.run
-        .withSuccessHandler(function(datos) {
-            mostrarLoading(false);
-            // ⚠️ La función getListaOT devuelve todos los datos (incluyendo encabezados)
-            if (datos && datos.success === false) {
-                 mostrarError("Error al cargar OT: " + datos.message);
-                 return;
-            }
-            datosOT = datos; // Asume que datos es el array 2D de la hoja OT
-            renderizarTablaOT(datos);
-            actualizarContador();
-        })
-        .withFailureHandler(function(error) {
-            mostrarLoading(false);
-            console.error("Error cargando OT:", error);
-            mostrarError("Error al cargar las órdenes de trabajo: " + error.message);
-        })
-        .getListaOT(); // <--- Usa la función robusta
-}
+        // --- LÓGICA DE MODO PEDIDO ---
 
-        function renderizarTablaOT(datos) {
+        function configurarModoPedido(numPedido) {
+            document.title = `OTs del Pedido ${numPedido}`;
+            
+            const retornarLink = document.getElementById("retornarLink");
+            retornarLink.textContent = "← Volver al Pedido";
+            retornarLink.href = `${scriptUrlBase}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+            
+            document.getElementById("tituloPrincipal").textContent = `OTs del Pedido: ${numPedido}`;
+            document.getElementById("subtituloCard").textContent = `Líneas de Servicio del Pedido`;
+            document.getElementById("subtituloCliente").style.display = 'block';
+            
+            // Ocultar filtro global y botón de registrar global
+            document.getElementById("filtroOT").style.display = 'none';
+            document.getElementById("btnRegistrarGlobal").style.display = 'none';
+            
+            // Cambiar encabezados de la tabla
+            document.getElementById("aotHeaders").innerHTML = `
+                <tr>
+                    <th>Línea</th>
+                    <th>Servicio (Descripción)</th>
+                    <th>Horas Pedidas</th>
+                    <th>Horas Despachadas</th>
+                    <th>Saldo Horas</th>
+                    <th>Acción</th>
+                </tr>
+            `;
+        }
+
+        function cargarDatosOTPorPedido(numPedido) {
+            mostrarLoading(true, `Cargando líneas del pedido ${numPedido}...`);
+            
+            google.script.run
+                .withSuccessHandler(function(resultado) {
+                    mostrarLoading(false);
+                    if (resultado.success) {
+                        document.getElementById("subtituloCliente").textContent = `Cliente: ${resultado.cliente}`;
+                        renderizarTablaModoPedido(resultado.lineas);
+                    } else {
+                        mostrarError(resultado.message);
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    mostrarError(error.message);
+                })
+                .getResumenOTPorPedido(numPedido); // <- Llama a la función del backend
+        }
+        
+        function renderizarTablaModoPedido(lineas) {
+            const tbody = document.getElementById("cuerpoTablaOT");
+            tbody.innerHTML = "";
+
+            if (!lineas || lineas.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6">No se encontraron líneas de servicio.</td></tr>`;
+                return;
+            }
+
+            lineas.forEach(linea => {
+                const saldo = linea.horasPedidas - linea.horasDespachadas;
+                const saldoClase = saldo <= 0 ? 'saldo-negativo' : 'saldo-positivo';
+                
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td><strong>${escapeHTML(linea.lineaID.split('-L')[1] || 'N/A')}</strong></td>
+                    <td>${escapeHTML(linea.descripcion)} (${escapeHTML(linea.cod)})</td>
+                    <td class="monto-col">${linea.horasPedidas.toFixed(2)}</td>
+                    <td class="monto-col">${linea.horasDespachadas.toFixed(2)}</td>
+                    <td class="monto-col ${saldoClase}"><strong>${saldo.toFixed(2)}</strong></td>
+                    <td>
+                        <button onclick="navegarARegistrarOT('${escapeHTML(linea.lineaID)}')" class="boton-nuevo-pedido btn-success">
+                            ➕ Nueva OT
+                        </button>
+                        </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            actualizarContador(lineas.length);
+        }
+
+        // --- LÓGICA DE MODO GLOBAL (TU CÓDIGO ORIGINAL) ---
+
+        function configurarModoGlobal() {
+            // Ya está configurado por defecto en el HTML
+        }
+
+        function cargarDatosOTGlobal() {
+            mostrarLoading(true, "Cargando órdenes de trabajo...");
+            
+            google.script.run
+                .withSuccessHandler(function(datos) {
+                    mostrarLoading(false);
+                    if (datos && datos.success === false) {
+                         mostrarError("Error al cargar OT: " + datos.message);
+                         return;
+                    }
+                    datosOTGlobal = datos; 
+                    renderizarTablaGlobal(datos);
+                    actualizarContador(datos.length - 1);
+                })
+                .withFailureHandler(function(error) {
+                    mostrarLoading(false);
+                    mostrarError("Error al cargar las órdenes de trabajo: " + error.message);
+                })
+                .getListaOT(); // <- Llama a la función global
+        }
+        
+        function renderizarTablaGlobal(datos) {
             const tbody = document.getElementById("cuerpoTablaOT");
             tbody.innerHTML = "";
 
             if (!datos || datos.length <= 1) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="7" style="text-align: center; padding: 30px; color: #666;">
-                            <div style="text-align: center;">
-                                <p style="font-size: 16px; margin-bottom: 10px;">📭 No hay órdenes de trabajo registradas</p>
-                                <button onclick="navegarARegistrarOT()" class="boton-nuevo-pedido" style="margin-top: 10px;">
-                                    📋 Registrar primera OT
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
+                tbody.innerHTML = `<tr><td colspan="7">No hay órdenes de trabajo registradas.</td></tr>`;
                 return;
             }
-
-            // Ordenar por fecha más reciente primero
+            
             const datosOrdenados = [datos[0], ...datos.slice(1).sort((a, b) => {
-                const fechaA = new Date(a[1] || 0);
+                const fechaA = new Date(a[1] || 0); // Asume Col 1 es Fecha
                 const fechaB = new Date(b[1] || 0);
-                return fechaB - fechaA;
+                return fechaB - fechaA; // Más reciente primero
             })];
 
             datosOrdenados.slice(1).forEach((fila, index) => {
-                const numOT = fila[0];
-                const fecha = formatearFecha(fila[1]);
-                const cliente = fila[2];
-                const servicio = fila[3];
-                const pedido = fila[4];
-                const horasTrabajo = fila[5];
+                const numOT = fila[0]; // Asume Col 0 es N° OT
+                const fecha = formatearFecha(fila[1]); // Asume Col 1 es Fecha
+                const cliente = fila[2]; // Asume Col 2 es Cliente
+                const servicio = fila[3]; // Asume Col 3 es Servicio
+                const pedido = fila[4]; // Asume Col 4 es Pedido
+                const horasTrabajo = fila[5]; // Asume Col 5 es Horas
 
                 if (!numOT) return;
 
@@ -161,145 +242,24 @@ function cargarDatosOT() {
                         <button onclick="editarOT('${escapeHTML(numOT)}')" class="btn-editar" title="Editar OT">
                             ✏️ Editar
                         </button>
-                        <button onclick="verDetalleOT('${escapeHTML(numOT)}')" class="btn-ver-detalle" title="Ver detalles">
-                            👁️ Ver
-                        </button>
-                    </td>
+                        </td>
                 `;
                 tbody.appendChild(tr);
             });
-
-            console.log("✅ Tabla OT renderizada con " + (datos.length - 1) + " registros");
-        }
-
-        function formatearFecha(fechaStr) {
-            if (!fechaStr) return '-';
-            try {
-                const fecha = new Date(fechaStr);
-                if (isNaN(fecha.getTime())) return fechaStr;
-                
-                return fecha.toLocaleDateString('es-PE', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric'
-                });
-            } catch (e) {
-                return fechaStr;
-            }
-        }
-
-        function escapeHTML(str) {
-            if (!str) return '';
-            return str.toString()
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
-        function editarOT(numOT) {
-            console.log("✏️ Editando OT: " + numOT);
-            
-            // Validar que el número OT no esté vacío
-            if (!numOT || numOT === 'null' || numOT === 'undefined') {
-                console.error("❌ Número OT inválido:", numOT);
-                mostrarError("Error: Número de OT inválido");
-                return;
-            }
-            
-            const urlBase = '<?!= getScriptUrl() ?>';
-            const urlEditarOT = urlBase + '?page=RegistrarOT&editar=' + encodeURIComponent(numOT);
-            
-            console.log("🔗 URL de edición:", urlEditarOT);
-            window.open(urlEditarOT, '_blank');
-        }
-
-        function verDetalleOT(numOT) {
-            console.log("👁️ Viendo detalle de OT: " + numOT);
-            
-            // Por ahora mostramos un alert, pero puedes implementar un modal de detalle
-            mostrarLoading(true, "Cargando detalles...");
-            
-            google.script.run
-                .withSuccessHandler(function(detalles) {
-                    mostrarLoading(false);
-                    if (detalles.success) {
-                        mostrarModalDetalle(detalles.data);
-                    } else {
-                        mostrarError("Error al cargar detalles: " + detalles.message);
-                    }
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    // Fallback: mostrar información básica
-                    mostrarModalDetalleBasico(numOT);
-                })
-                .obtenerOTPorNumero(numOT);
-        }
-
-        function mostrarModalDetalle(datos) {
-            const horasTrabajo = parseFloat(datos.tiempoTotal || 0).toFixed(2);
-            const horometroTrabajado = parseFloat(datos.horometroTrabajado || 0).toFixed(2);
-            
-            const mensaje = `
-📋 ORDEN DE TRABAJO: ${datos.numeroOT}
-
-📅 Fecha: ${datos.fecha || 'No especificada'}
-👤 Cliente: ${datos.cliente || 'No especificado'}
-🔧 Servicio: ${datos.servicio || 'No especificado'}
-📦 Pedido: ${datos.pedido || 'No especificado'}
-
-⏰ Horario:
-   • Inicio: ${datos.horaInicio || 'No especificado'}
-   • Fin: ${datos.horaFin || 'No especificado'}
-   • Refrigerio: ${datos.tiempoRefrigerio || 0} minutos
-   • Total: ${horasTrabajo} horas
-
-📊 Horómetros:
-   • Trabajado: ${horometroTrabajado} horas
-   • ${datos.esCamionGrua === 'SI' ? 'Es Camión Grúa' : 'No es Camión Grúa'}
-
-👤 Registrado por: ${datos.usuario || 'No disponible'}
-🗓️ Fecha registro: ${datos.fechaRegistro || 'No disponible'}
-            `.trim();
-
-            alert(mensaje);
-        }
-
-        function mostrarModalDetalleBasico(numOT) {
-            // Buscar en los datos locales
-            const otEncontrada = datosOT.find(fila => fila[0] === numOT);
-            if (otEncontrada) {
-                const mensaje = `
-📋 ORDEN DE TRABAJO: ${otEncontrada[0]}
-
-📅 Fecha: ${otEncontrada[1] || 'No especificada'}
-👤 Cliente: ${otEncontrada[2] || 'No especificado'}
-🔧 Servicio: ${otEncontrada[3] || 'No especificado'}
-📦 Pedido: ${otEncontrada[4] || 'No especificado'}
-⏰ Horas trabajadas: ${parseFloat(otEncontrada[5] || 0).toFixed(2)}
-
-ℹ️ Información detallada disponible en modo edición.
-                `.trim();
-                alert(mensaje);
-            } else {
-                alert("OT no encontrada en los datos locales.");
-            }
         }
 
         function filtrarOT() {
-            const filtro = document.getElementById("filtroOT").value.toLowerCase().trim();
+            if (modoPedido) return; // No filtrar en modo pedido
             
+            const filtro = document.getElementById("filtroOT").value.toLowerCase().trim();
             if (!filtro) {
-                renderizarTablaOT(datosOT);
-                actualizarContador(datosOT.length - 1);
+                renderizarTablaGlobal(datosOTGlobal);
+                actualizarContador(datosOTGlobal.length - 1);
                 return;
             }
 
-            const datosFiltrados = [datosOT[0]]; // Mantener encabezados
-            
-            datosOT.slice(1).forEach(fila => {
+            const datosFiltrados = [datosOTGlobal[0]]; // Mantener encabezados
+            datosOTGlobal.slice(1).forEach(fila => {
                 const numOT = String(fila[0] || '').toLowerCase();
                 const cliente = String(fila[2] || '').toLowerCase();
                 const servicio = String(fila[3] || '').toLowerCase();
@@ -310,56 +270,84 @@ function cargarDatosOT() {
                     datosFiltrados.push(fila);
                 }
             });
-            
-            renderizarTablaOT(datosFiltrados);
+            renderizarTablaGlobal(datosFiltrados);
             actualizarContador(datosFiltrados.length - 1, true);
         }
 
-        function actualizarContador(total = null, esFiltrado = false) {
+        function actualizarContador(total = 0, esFiltrado = false) {
             const contador = document.getElementById("contadorOT");
-            const totalRegistros = total !== null ? total : (datosOT.length - 1);
-            
+            if (modoPedido) {
+                contador.textContent = `${total} líneas de servicio`;
+                contador.style.color = '#3498db';
+                return;
+            }
+
+            const totalGlobal = datosOTGlobal.length - 1;
             if (esFiltrado) {
-                contador.textContent = `${totalRegistros} de ${datosOT.length - 1} registros`;
+                contador.textContent = `${total} de ${totalGlobal} registros`;
                 contador.style.color = '#e67e22';
             } else {
-                contador.textContent = `${totalRegistros} registros encontrados`;
-                contador.style.color = totalRegistros > 0 ? '#27ae60' : '#666';
+                contador.textContent = `${total} registros encontrados`;
+                contador.style.color = total > 0 ? '#27ae60' : '#666';
             }
         }
 
-        function navegarARegistrarOT() {
-            const urlBase = '<?!= getScriptUrl() ?>';
-            const urlRegistrarOT = urlBase + '?page=RegistrarOT';
-            console.log("🔗 Navegando a Registrar OT");
-            window.open(urlRegistrarOT, '_blank');
+        // --- FUNCIONES COMUNES ---
+        
+        function navegarARegistrarOT(lineaID = null) {
+            let urlDestino = '';
+            if (lineaID) {
+                // Modo Aislado
+                console.log(`🔗 Navegando a Registrar OT para Línea: ${lineaID}`);
+                urlDestino = `${scriptUrlBase}?page=RegistrarOT&linea=${encodeURIComponent(lineaID)}`;
+            } else {
+                // Modo Global
+                console.log("🔗 Navegando a Registrar OT (Global)");
+                urlDestino = `${scriptUrlBase}?page=RegistrarOT`;
+            }
+            window.open(urlDestino, '_blank');
+        }
+
+        function editarOT(numOT) {
+            console.log("✏️ Editando OT (Global): " + numOT);
+            const urlEditarOT = scriptUrlBase + '?page=RegistrarOT&editar=' + encodeURIComponent(numOT);
+            window.open(urlEditarOT, '_blank');
         }
 
         function recargarDatos() {
             console.log("🔄 Recargando datos...");
-            cargarDatosOT();
+            if (modoPedido) {
+                cargarDatosOTPorPedido(numPedidoFiltrado);
+            } else {
+                cargarDatosOTGlobal();
+            }
+        }
+
+        // ... (resto de tus funciones auxiliares: formatearFecha, escapeHTML, mostrarLoading, mostrarError) ...
+        function formatearFecha(fechaStr) {
+            if (!fechaStr) return '-';
+            try {
+                const fecha = new Date(fechaStr);
+                if (isNaN(fecha.getTime())) return fechaStr;
+                return fecha.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch (e) { return fechaStr; }
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         function mostrarLoading(mostrar, mensaje = "Cargando...") {
             const overlay = document.getElementById("loadingOverlay");
+            if (overlay) overlay.style.display = mostrar ? "flex" : "none";
             const texto = document.getElementById("loadingText");
-            
-            if (overlay && texto) {
-                overlay.style.display = mostrar ? "flex" : "none";
-                texto.textContent = mensaje;
-            }
+            if (texto) texto.textContent = mensaje;
         }
 
         function mostrarError(mensaje) {
             console.error("❌ Error:", mensaje);
             alert("❌ " + mensaje);
-        }
-
-        // Función para exportar datos (opcional)
-        function exportarDatos() {
-            console.log("📤 Exportando datos...");
-            // Aquí puedes implementar exportación a Excel/PDF si es necesario
-            alert("Función de exportación en desarrollo...");
         }
     </script>
 </body>
