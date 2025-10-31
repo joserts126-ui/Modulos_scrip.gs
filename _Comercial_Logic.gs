@@ -39,6 +39,41 @@ function formatearFechaRapido(rawFecha, timeZone) {
 }
 
 /**
+ * Formatea un valor de fecha para un input HTML type="date" (yyyy-MM-dd).
+ * Devuelve string vacío si la fecha es inválida o nula.
+ */
+function formatearParaInputDate(rawFecha) {
+    if (!rawFecha) return '';
+    let dateObj;
+    if (rawFecha instanceof Date) {
+        dateObj = rawFecha;
+    } else {
+        try {
+            // Intentar parsear la fecha (string o número)
+            dateObj = new Date(rawFecha);
+        } catch (e) {
+            return ''; // Inválido
+        }
+    }
+    
+    // Validar que el objeto de fecha sea válido
+    if (dateObj && !isNaN(dateObj)) {
+        try {
+            // Usar Utilities.formatDate para obtener yyyy-MM-dd en la zona horaria del script
+            // Esto evita errores de "un día antes/después" por UTC
+            return Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        } catch (e) {
+             // Fallback si Utilities.formatDate falla
+             const y = dateObj.getFullYear();
+             const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+             const d = String(dateObj.getDate()).padStart(2, '0');
+             return `${y}-${m}-${d}`;
+        }
+    }
+    return ''; // Fecha inválida
+}
+
+/**
  * Función unificada para obtener datos filtrados (usa crudHoja en _Core.gs)
  */
 function obtenerDatosFiltrados(sheetName, filtro = {}) {
@@ -322,7 +357,7 @@ function guardarCotizacion(datos) {
                 'COT', 'NUM', 'FECHA COT', 'EMPRESA', 'EJECUTIVO', 'ID CLIENTE', 'CLIENTE', 'ESTADO COT', 
                 'COD', 'DESCRIPCION', 'UND', 'UND. PEDIDO', 'UND. DESPACHO', 'UND. PENDIENTE', 'PRECIO', 
                 'MONEDA', 'M. PEDIDO', 'M. DESPACHO', 'M. PENDIENTE', 'MOV. Y DES. MOV.', 'MYDM VALORIZADA', 
-                'MYDM x VALORIZAR', 'TOTAL SERVICIO', 'TOTAL VALORIZADO', 'TOTAL POR VALORIZAR', 'TURNO', 
+                'MYDM x VALORIZAR', 'Total servicio', 'Total Valorizado', 'Total por valorizar', 'TURNO', 
                 'FECHA INICIO', 'FECHA FIN', 'PLACA', 'UND. HORAS. MINIMAS', 'HORAS SEGÚN', 'HORAS MINIMAS', 
                 'TOTAL HORAS MINIMAS', 'TOTAL DIAS', 'ESTADO DE SERVICIO', 'ACTA', 'VALORIZADO', 'FACTURA', 
                 'F. PAGO', 'Link COT', 'Link Act', 'Link Val', 'Link Factura', 'Observaciones', 'UBICACIÓN', 
@@ -334,11 +369,6 @@ function guardarCotizacion(datos) {
         let codigoPedido;
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
         
-        // --- BORRAR O COMENTAR LOS LOGS DE PRUEBA ---
-        // Logger.log("MAPA DE COLUMNAS LEÍDO (COL_MAP): " + JSON.stringify(COL_MAP));
-        // Logger.log("Total recibido del frontend: " + datosSanitizados.Total);
-        // --- FIN DE BORRADO ---
-
         // --- FECHA DE REGISTRO SE DEFINE UNA SOLA VEZ AQUÍ ---
         const fechaRegistro = new Date(); 
         
@@ -373,9 +403,15 @@ function guardarCotizacion(datos) {
         for (let i = 0; i < lineas.length; i++) {
             const linea = lineas[i];
             const filaCompleta = new Array(TOTAL_COLS).fill('');
-            
+            const lineaIDUnico = `${codigoPedido}-L${i + 1}`;
+
             // ASIGNACIÓN DE DATOS GENERALES USANDO MAPEO (CRÍTICO)
             filaCompleta[COL_MAP['COT']] = codigoPedido;
+            if (COL_MAP['NUM'] !== undefined) {
+            filaCompleta[COL_MAP['NUM']] = lineaIDUnico;
+        } else {
+            Logger.log("ADVERTENCIA: No se encontró la columna 'NUM' para guardar el LineaID.");
+        }
             filaCompleta[COL_MAP['FECHA COT']] = fechaRegistro; // Usa la fecha definida al inicio
             filaCompleta[COL_MAP['EMPRESA']] = datosSanitizados.Empresa || '';
             filaCompleta[COL_MAP['EJECUTIVO']] = datosSanitizados.Ejecutivo || '';
@@ -401,11 +437,7 @@ function guardarCotizacion(datos) {
             }
             // ---
             
-
-            // --- INICIO DE LA MODIFICACIÓN ---
-            
-            // 1. ELIMINAR esta línea (ya no queremos el gran total aquí)
-            // if (i === 0) filaCompleta[COL_MAP['TOTAL SERVICIO']] = parseFloat(datosSanitizados.Total) || 0;
+            //if (i === 0) filaCompleta[COL_MAP['Total servicio']] = parseFloat(datosSanitizados.Total) || 0;
             
             // ASIGNACIÓN DE DATOS DE LÍNEA USANDO MAPEO
             filaCompleta[COL_MAP['COD']] = linea.cod || '';
@@ -413,22 +445,20 @@ function guardarCotizacion(datos) {
             filaCompleta[COL_MAP['UND']] = linea.und_medida || 'HORAS';
             filaCompleta[COL_MAP['UND. PEDIDO']] = parseFloat(linea.cantidad) || 0;
             filaCompleta[COL_MAP['PRECIO']] = parseFloat(linea.precio) || 0;
+            // --- CORRECCIÓN LÓGICA DE TOTALES (Problema 2) ---
+            // El frontend envía 'linea.subtotal' como (Precio*Cant) + Movilizacion
+            // Y 'linea.movilizacion' como Movilizacion.
+            // El objetivo es: W = Q + T
 
-            // 2. Capturar los valores numéricos de la línea
-            const montoPedido = parseFloat(linea.subtotal) || 0; // (Qty * Price)
-            const montoMovilizacion = parseFloat(linea.movilizacion) || 0;
+            const movilizacion = parseFloat(linea.movilizacion) || 0;
+            const subtotalCompleto = parseFloat(linea.subtotal) || 0; // Este es (P*Q) + Mov
+            
+            // Calculamos Q (M. PEDIDO) como el subtotal MENOS la movilización
+            const subtotalSinMov = subtotalCompleto - movilizacion;
 
-            // 3. Asignarlos a sus columnas
-            filaCompleta[COL_MAP['M. PEDIDO']] = montoPedido;
-            filaCompleta[COL_MAP['MOV. Y DES. MOV.']] = montoMovilizacion;
-
-            // 4. Calcular y asignar el total de la línea a 'TOTAL SERVICIO' (Col W)
-            // Esto se hará EN CADA FILA
-            filaCompleta[COL_MAP['TOTAL SERVICIO']] = montoPedido + montoMovilizacion;
-
-            // --- FIN DE LA MODIFICACIÓN ---
-
-
+            filaCompleta[COL_MAP['M. PEDIDO']] = subtotalSinMov;
+            filaCompleta[COL_MAP['MOV. Y DES. MOV.']] = movilizacion;
+            filaCompleta[COL_MAP['TOTAL SERVICIO']] = subtotalCompleto;
             filaCompleta[COL_MAP['UND. HORAS. MINIMAS']] = linea.und_horas_minimas || '';
             filaCompleta[COL_MAP['HORAS SEGÚN']] = linea.hora_segun || '';
             filaCompleta[COL_MAP['HORAS MINIMAS']] = parseFloat(linea.horas_minimas_num) || 0;
@@ -467,25 +497,29 @@ function getSafeDateString(value, defaultValue) {
     return new Date(defaultValue || new Date()).toISOString();
 }
 
+/**
+ * REEMPLAZO DE LA FUNCIÓN COMPLETA
+ * Obtiene los datos de un pedido para la vista de edición.
+ * CORREGIDO: Lee 'TOTAL SERVICIO' (mayúscula) para el subtotal de la línea y el total general.
+ */
 function obtenerPedidoParaEdicion(numPedido) {
     try {
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 15, true);
+        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, false); // Leer sin caché para esta carga
         const pedidoBuscado = String(numPedido).trim().toUpperCase();
         const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0;
-        
+
         const filasCoincidentes = allData.slice(1)
             .filter(fila => String(fila[CODIGO_PEDIDO_COL] || '').trim().toUpperCase() === pedidoBuscado);
+        
         if (filasCoincidentes.length === 0) throw new Error(`Pedido ${numPedido} no encontrado. Verifique el código.`);
         
         const primeraFila = filasCoincidentes[0];
         const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP, colName);
         
         const datosGenerales = {
-            //fechaRegistro: getSafeDateString(getGenValue('FECHA COT')), // Ya no se necesita mostrar
-            
-            fechaEjecucion: getSafeDateString(getGenValue('FECHA EJECUCION'), null), // Asume columna existe
-            Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'), // <-- SE QUEDA ESTA DEFINICIÓN
+            fechaEjecucion: formatearParaInputDate(getGenValue('FECHA EJECUCION')), 
+            Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'),
             Empresa: String(getGenValue('EMPRESA') || ''), 
             RUC: String(getGenValue('ID CLIENTE') || ''),
             Cliente: String(getGenValue('CLIENTE') || ''), 
@@ -496,7 +530,7 @@ function obtenerPedidoParaEdicion(numPedido) {
             Ejecutivo: String(getGenValue('EJECUTIVO') || ''), 
             Contacto: String(getGenValue('CONTACTO') || '') 
         };
-        
+
         const lineas = filasCoincidentes.map((fila) => {
             const getValue = (colName) => getFilaValue(fila, COL_MAP, colName); 
             return {
@@ -510,10 +544,14 @@ function obtenerPedidoParaEdicion(numPedido) {
                 hora_segun: String(getValue('HORAS SEGÚN') || ''),
                 movilizacion: parseFloat(getValue('MOV. Y DES. MOV.') || 0) || 0, 
                 precio: parseFloat(getValue('PRECIO') || 0) || 0,
-                subtotal: parseFloat(getValue('M. PEDIDO') || 0) || 0
+                
+                // --- CORRECCIÓN AQUÍ ---
+                // Leemos 'TOTAL SERVICIO' (W), que es el subtotal CON movilización,
+                // que es lo que el frontend espera en la propiedad 'SUB'.
+                subtotal: parseFloat(getValue('TOTAL SERVICIO') || 0) || 0
             };
         });
-        
+
         // --- Obtener notas complementarias ---
         let notas = { plantillaNotas: '', aclaracionesServicio: '' };
         try {
@@ -540,9 +578,14 @@ function obtenerPedidoParaEdicion(numPedido) {
         const resultado = { 
             success: true, 
             ...datosGenerales, 
-            ...notas, // Fusiona las notas aquí
+            ...notas, 
             Lineas: lineas, 
-            Total: parseFloat(getGenValue('Total servicio') || 0) || 0, 
+            
+            // --- CORRECCIÓN AQUÍ ---
+            // Leemos 'TOTAL SERVICIO' (con S mayúscula) de la primera fila
+            // para obtener el total general guardado.
+            Total: parseFloat(getGenValue('TOTAL SERVICIO') || 0) || 0, 
+
             totalLineas: lineas.length, 
             numPedido: numPedido, 
             usuario: obtenerEmailSeguro(), 
@@ -552,7 +595,7 @@ function obtenerPedidoParaEdicion(numPedido) {
         return resultado;
         
     } catch (error) {
-        Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}`);
+        Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}\nStack: ${error.stack}`);
         return manejarError('obtenerPedidoParaEdicion', error);
     }
 }
@@ -799,37 +842,40 @@ function getFilaPorRowIndex(ruc, rowIndex, tipo) {
 }
 
 /**
- * REEMPLAZO v5 de getListaCotizacionesResumen
- * Filtra según permisos detallados (propio, columnas específicas de vendedor, o todos).
+ * REEMPLAZO v2 de getListaCotizacionesResumen
+ * Incluye Vendedor y Compañía en los datos devueltos.
  */
 function getListaCotizacionesResumen() {
     try {
-        // --- Logs de diagnóstico (Mantenlos por ahora) ---
-        const emailUsuarioActual = obtenerEmailSeguro();
-        Logger.log("Email detectado para el resumen: " + emailUsuarioActual);
-        const permisos = obtenerPermisosUsuario(); // Llama a la versión v3
-        Logger.log("Permisos v3 leídos para " + emailUsuarioActual + ": " + JSON.stringify(permisos));
-        // --- Fin Logs ---
-
-        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, true, 1);
+        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, false); // Usar caché
         const encabezadoBase = ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"];
 
-        // --- LÓGICA DE PERMISOS v3 ---
-        const vendedorPropio = permisos.nombreVendedorExacto ? permisos.nombreVendedorExacto.toUpperCase() : null;
-        const puedeVerTodo = permisos.puedeVerTodasLasCotizaciones;
-        const visibilidadVendedores = permisos.visibilidadVendedores || {}; // Objeto { ANTHONY: true, RENATO: false }
-        Logger.log(`Obteniendo resumen para ${vendedorPropio}. Puede ver todo: ${puedeVerTodo}. Visibilidad específica: ${JSON.stringify(visibilidadVendedores)}`);
-        // --- FIN LÓGICA DE PERMISOS v3 ---
-
-        if (allData.length <= 1) return [encabezadoBase];
+        if (allData.length <= 1) {
+            return [encabezadoBase]; // Devuelve solo encabezados si no hay datos
+        }
 
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        const INDICES = { /* ... tus índices ... */
-             NUM_PEDIDO: COL_MAP['COT'], FECHA_CREACION: COL_MAP['FECHA COT'], CLIENTE: COL_MAP['CLIENTE'],
-             VENDEDOR: COL_MAP['EJECUTIVO'], COMPANIA: COL_MAP['EMPRESA'], MONTO_TOTAL: COL_MAP['TOTAL SERVICIO'],
-             MONEDA: COL_MAP['MONEDA'], ESTADO: COL_MAP['ESTADO COT'], ID_CLIENTE: COL_MAP['ID CLIENTE'],
-         };
-         // ... (validación de índices) ...
+        // Asegúrate que los nombres de encabezado coincidan con tu HOJA_COTIZACIONES
+        const INDICES = {
+            NUM_PEDIDO: COL_MAP['COT'],
+            FECHA_CREACION: COL_MAP['FECHA COT'],
+            CLIENTE: COL_MAP['CLIENTE'],
+            VENDEDOR: COL_MAP['EJECUTIVO'], // Mapea a la columna EJECUTIVO
+            COMPANIA: COL_MAP['EMPRESA'],   // Mapea a la columna EMPRESA
+            MONTO_TOTAL: COL_MAP['TOTAL SERVICIO'], // Usa TOTAL SERVICIO
+            MONEDA: COL_MAP['MONEDA'],
+            ESTADO: COL_MAP['ESTADO COT'],
+            ID_CLIENTE: COL_MAP['ID CLIENTE'],
+        };
+
+        // Validar que se encontraron los índices necesarios
+        for (const key in INDICES) {
+            if (INDICES[key] === undefined) {
+                 Logger.log(`Advertencia: No se encontró el encabezado para '${key}' en HOJA_COTIZACIONES. Usando índice por defecto o causará error.`);
+                 // Podrías asignar índices por defecto aquí si es necesario, ej: INDICES.VENDEDOR = 4;
+            }
+        }
+
 
         const resumenMap = new Map();
         const scriptTimeZone = Session.getScriptTimeZone();
@@ -839,72 +885,52 @@ function getListaCotizacionesResumen() {
             const numPedido = String(row[INDICES.NUM_PEDIDO] || '').trim();
             if (!numPedido) continue;
 
-            const vendedorFila = String(row[INDICES.VENDEDOR] || '').trim();
-            const vendedorFilaUpper = vendedorFila.toUpperCase(); // Normalizar para comparar
+            let montoLinea = 0;
+            try { montoLinea = procesarMontoRapido(row[INDICES.MONTO_TOTAL]); } catch(e){ montoLinea = 0; }
 
-            // --- LÓGICA DE FILTRADO v3 ---
-            let incluirFila = false;
-            if (puedeVerTodo) {
-                incluirFila = true; // Si puede ver todo, incluir siempre
-            } else if (vendedorPropio && vendedorFilaUpper === vendedorPropio) {
-                incluirFila = true; // Si es su propia cotización, incluir
-            } else if (visibilidadVendedores[vendedorFilaUpper] === true) {
-                // Si el nombre del vendedor de la fila existe como clave en visibilidadVendedores
-                // y su valor es true, incluir.
-                incluirFila = true;
+            if (!resumenMap.has(numPedido)) {
+                const fecha = formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone);
+                const rowIndex = i + 1;
+                resumenMap.set(numPedido, {
+                    numPedido: numPedido,
+                    fecha: fecha,
+                    cliente: row[INDICES.CLIENTE] || 'N/A',
+                    vendedor: row[INDICES.VENDEDOR] || 'N/A', // Capturar vendedor
+                    compania: row[INDICES.COMPANIA] || 'N/A', // Capturar compañía
+                    moneda: String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
+                    estado: row[INDICES.ESTADO] || 'Pendiente',
+                    idCliente: row[INDICES.ID_CLIENTE] || '',
+                    montoTotal: montoLinea,
+                    rowIndex: rowIndex
+                });
+            } else {
+                 const existente = resumenMap.get(numPedido);
+                 existente.montoTotal += montoLinea;
+                 // Opcional: actualizar vendedor/compañía si estaban vacíos
+                 if (existente.vendedor === 'N/A' && row[INDICES.VENDEDOR]) existente.vendedor = row[INDICES.VENDEDOR];
+                 if (existente.compania === 'N/A' && row[INDICES.COMPANIA]) existente.compania = row[INDICES.COMPANIA];
             }
-
-            if (!incluirFila) {
-                // Logger.log(`Fila ${i+1} omitida para ${emailUsuarioActual}. Vendedor: ${vendedorFila}`); // Log opcional para debug
-                continue; // Saltar esta fila
-            }
-            // --- FIN LÓGICA DE FILTRADO v3 ---
-
-            // ... (resto de la lógica para calcular monto y agregar/actualizar el map - sin cambios) ...
-             let montoLinea = 0;
-             try { montoLinea = procesarMontoRapido(row[INDICES.MONTO_TOTAL]); } catch(e){ montoLinea = 0; }
-
-             if (!resumenMap.has(numPedido)) {
-                  const fecha = formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone);
-                  const rowIndex = i + 1;
-                  resumenMap.set(numPedido, {
-                      numPedido: numPedido, fecha: fecha,
-                      cliente: row[INDICES.CLIENTE] || 'N/A',
-                      vendedor: vendedorFila || 'N/A',
-                      compania: row[INDICES.COMPANIA] || 'N/A',
-                      moneda: String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
-                      estado: row[INDICES.ESTADO] || 'Pendiente',
-                      idCliente: row[INDICES.ID_CLIENTE] || '',
-                      montoTotal: montoLinea, rowIndex: rowIndex
-                  });
-             } else {
-                  const existente = resumenMap.get(numPedido);
-                  existente.montoTotal += montoLinea;
-                  if (existente.vendedor === 'N/A' && vendedorFila) existente.vendedor = vendedorFila;
-                  if (existente.compania === 'N/A' && row[INDICES.COMPANIA]) existente.compania = row[INDICES.COMPANIA];
-             }
         }
 
-        // ... (resto de la lógica para convertir el map a array - sin cambios) ...
-         const resumenData = [encabezadoBase];
-         resumenMap.forEach(item => {
-             resumenData.push([
-                 item.numPedido, item.fecha, item.cliente,
-                 item.vendedor, item.compania,
-                 item.montoTotal, item.moneda,
-                 item.estado, item.idCliente, item.rowIndex
-             ]);
-         });
-
+        const resumenData = [encabezadoBase]; // Usar el encabezado definido al inicio
+        resumenMap.forEach(item => {
+            resumenData.push([
+                item.numPedido, item.fecha, item.cliente,
+                item.vendedor, item.compania, // Añadir los nuevos datos
+                item.montoTotal.toFixed(2), // Mantener el número aquí, el formato se hace en frontend
+                item.moneda,
+                item.estado, item.idCliente, item.rowIndex
+            ]);
+        });
         return resumenData;
-
     } catch (e) {
-        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen v5: ${e.message} \n ${e.stack}`);
-        // ... (manejo de error) ...
-         return [ ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"],
-                  ["Error", "No se pudieron cargar los datos", e.message, "", "", "", "", "", "", ""] ];
+        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen: ${e.message} \n ${e.stack}`);
+        // Devolver encabezado y mensaje de error
+        return [ ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"],
+                 ["Error", "No se pudieron cargar los datos", e.message, "", "", "", "", "", "", ""] ];
     }
 }
+
 // ====================================================
 // === LÓGICA DE CÓDIGO DE PEDIDO (SIN CAMBIOS ESTRUCTURALES) ===
 // ====================================================
@@ -1200,68 +1226,100 @@ function filtrarPedidosPorClienteYServicio(rucCliente, idServicio) {
 }
 
 /**
+ * REEMPLAZO 1:
  * Guarda o actualiza una Orden de Trabajo.
- * Implementa mapeo para escritura robusta.
+ * Simplificado para usar LineaID.
  */
 function guardarOT(data) {
-    // --- NUEVA VERIFICACIÓN DE PERMISO ---
+    // --- VERIFICACIÓN DE PERMISO ---
     const permisos = obtenerPermisosUsuario();
-    if (!permisos.puedeEditarServicios) {
-        // Devolver un error manejable
-        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
+    if (!permisos.puedeEditarServicios) { 
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." }; 
     }
     // --- FIN DE VERIFICACIÓN ---
     try {
         const OT_SHEET = HOJA_OT;
-        const COL_MAP = getColumnMap(OT_SHEET);
-        const datos = sanitizarDatos(data);
+        const COL_MAP = getColumnMap(OT_SHEET); 
+        const datos = sanitizarDatos(data); 
         
         const modo = datos.modo;
-        const numOT = datos.numeroOT;
+        const numOT = datos.numeroOT; 
         
-        // --- LÓGICA DE VALIDACIÓN Y BUSQUEDA (Omitida por ser extensa) ---
-
         let rowIndex = 0;
-        if (modo === 'editar') {
+        if (modo === 'editar' || modo === 'editarGlobal') { 
             const resultado = buscarRegistro(OT_SHEET, datos.otIDExistente, COL_MAP['N° OT'] || 0);
-            if (!resultado) throw new Error(`OT a editar ${datos.otIDExistente} no encontrada.`);
-            rowIndex = resultado.indiceFila;
+            if (!resultado) throw new Error(`OT a editar ${datos.otIDExistente} no encontrada.`); 
+            rowIndex = resultado.indiceFila; 
         }
 
-        // 2. Crear un array de valores (Asumo 30 columnas como ejemplo, ajústalo si es necesario)
-        const filaCompleta = new Array(30).fill('');
-
-        // 3. Mapear datos al array de forma robusta
+        const filaCompleta = new Array(COL_MAP.length || 30).fill(''); 
+        
         const mapAndSet = (colName, value) => {
             const index = COL_MAP[colName];
-            if (index !== undefined) filaCompleta[index] = value;
+            if (index !== undefined) filaCompleta[index] = value; 
+            // else Logger.log(`Advertencia: Columna '${colName}' no encontrada en ${OT_SHEET}`);
         };
         
-        // --- ESCRITURA DE DATOS PRINCIPALES ---
-        mapAndSet('N° OT', datos.numeroOT);
-        mapAndSet('Fecha', datos.fecha);
-        mapAndSet('Cliente', datos.cliente);
-        mapAndSet('Servicio/Máquina', datos.servicio);
-        mapAndSet('Pedido', datos.pedido);
-        mapAndSet('Hora Inicio', datos.horaInicio);
-        mapAndSet('Hora Fin', datos.horaFin);
-        mapAndSet('Tiempo Refrigerio (min)', parseFloat(datos.tiempoRefrigerio || 0));
-        mapAndSet('Horómetro Inicio', parseFloat(datos.horometroInicio || 0));
-        mapAndSet('Horómetro Fin', parseFloat(datos.horometroFin || 0));
-        mapAndSet('Es Camión Grúa', datos.esCamionGrua ? 'SI' : 'NO');
-        // --- Fin Escritura ---
+        // --- ESCRITURA DE DATOS ---
+        mapAndSet('N° OT', datos.numeroOT); 
+        mapAndSet('Fecha', datos.fecha); 
+        mapAndSet('Cliente RUC', datos.clienteRUC); // <- Guardamos RUC 
+        mapAndSet('N°COTIZACION', datos.pedido); 
+        
+        // --- LÓGICA DE ID CORREGIDA ---
+        mapAndSet('LineaID', datos.lineaID); // <- ID Único de Línea (ej. COT.ALP...-L1) 
+        mapAndSet('Servicio ID', datos.servicio); // <- ID de Servicio (ej. MC-04) 
+        // (Dejamos ambos para trazabilidad)
 
-        // 4. Ejecutar CRUD
-        if (modo === 'editar') {
-            crudHoja('UPDATE', OT_SHEET, { rowIndex: rowIndex, valores: filaCompleta });
-            return { success: true, message: `OT ${numOT} actualizada.` };
+        mapAndSet('Hora Inicio', datos.horaInicio); 
+        mapAndSet('Hora Fin', datos.horaFin); 
+        mapAndSet('Tiempo Refrigerio', parseFloat(datos.tiempoRefrigerio || 0));
+        mapAndSet('Horometro Inicio', parseFloat(datos.horometroInicio || 0)); 
+        mapAndSet('Horometro Fin', parseFloat(datos.horometroFin || 0)); 
+        mapAndSet('Horometro Trabajado', parseFloat(datos.horometroTrabajado || 0));
+        mapAndSet('Es Camion Grua', datos.esCamionGrua ? 'SI' : 'NO'); 
+
+        const montoDespachoOT = parseFloat(datos.montoDespacho || 0);
+        const montoMovilizacionOT = parseFloat(datos.montoMovilizacion || 0);
+        
+        mapAndSet('Monto Despacho', montoDespachoOT); 
+        mapAndSet('Monto Movilizacion', montoMovilizacionOT); 
+        
+        // --- FIN ESCRITURA ---
+
+        let resultadoCRUD;
+        if (modo === 'editar' || modo === 'editarGlobal') { 
+            resultadoCRUD = crudHoja('UPDATE', OT_SHEET, { rowIndex: rowIndex, valores: filaCompleta }); 
+            // (La lógica de revertir/actualizar DataCot al *editar* una OT es compleja y se omite por ahora)
+            return { success: true, message: `OT ${numOT} actualizada.` }; 
+        
         } else {
-            crudHoja('CREATE', OT_SHEET, filaCompleta);
-            return { success: true, message: `OT ${numOT} registrada.` };
+            // MODO CREAR (Global o Aislado)
+            resultadoCRUD = crudHoja('CREATE', OT_SHEET, filaCompleta); 
+            
+            // --- INICIO DE ACTUALIZACIÓN A DATACOT ---
+            if (resultadoCRUD.success && datos.lineaID) { // Solo actualiza si venía de un LineaID
+                const actualizacionExitosa = actualizarDataCotDesdeOT(
+                    datos.lineaID, // <- PARÁMETRO ÚNICO
+                    parseFloat(datos.horometroTrabajado || 0),
+                    montoDespachoOT,
+                    montoMovilizacionOT
+                ); 
+                
+                if (!actualizacionExitosa) {
+                    Logger.log(`ADVERTENCIA: OT ${numOT} registrada, pero HUBO UN ERROR al actualizar DataCot (LineaID: ${datos.lineaID}).`); 
+                    return { 
+                        success: true, 
+                        message: `OT ${numOT} registrada, pero ¡Advertencia! No se pudo actualizar el resumen del pedido.` 
+                    };
+                }
+            }
+            // --- FIN DE ACTUALIZACIÓN A DATACOT ---
+            return { success: true, message: `OT ${numOT} registrada.` }; 
         }
 
     } catch (e) {
-        return manejarError('guardarOT', e);
+        return manejarError('guardarOT', e); 
     }
 }
 
@@ -1473,75 +1531,81 @@ function manejarError(contexto, error) {
 
 /**
  * REEMPLAZO FINAL v3 de 'generarYDevolverPDF'
- * (Versión limpia sin marcadores de cita)
+ * Añade la lógica para mover archivos existentes a una subcarpeta "Versiones Anteriores".
  */
 function generarYDevolverPDF(rowIndex) {
     let newSS; 
     try {
-        // 1. Obtener N° de Pedido
+        // 1. Obtener N° de Pedido (Sin cambios)
         const pedidoRow = crudHoja('READ_ROW', HOJA_COTIZACIONES, { rowIndex: rowIndex });
         if (!pedidoRow) throw new Error("No se encontró el pedido con el índice: " + rowIndex);
         
         const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
         const numPedido = pedidoRow[COL_MAP['COT'] || 0]; 
         if (!numPedido) throw new Error("No se pudo encontrar el N° de Pedido (COT).");
-
-        // 2. Obtener TODOS los detalles
+        
+        // 2. Obtener TODOS los detalles (Sin cambios)
         const cotizacionData = obtenerDetallesCompletosDePedido(numPedido);
         cotizacionData.numPedido = numPedido;
         
-        // 3. Obtener información de origen y destino
+        // 3. Obtener información de origen y destino (Sin cambios)
         const fechaObj = new Date(cotizacionData.fecha || new Date());
         const { id: sourceTemplateFileId, tab: sourceTemplateTabName } = getTemplateInfo(cotizacionData.empresa); 
-        const destinationFolder = getDestinationFolder(cotizacionData.ejecutivo, cotizacionData.empresa, fechaObj, cotizacionData);
+        const destinationFolder = getDestinationFolder(cotizacionData.ejecutivo, cotizacionData.empresa, fechaObj, cotizacionData); // Esta es la carpeta "cot" (Nivel 5)
 
-        // 4. Crear un NUEVO Google Sheet en blanco
+        // 4. Crear un NUEVO Google Sheet en blanco (Sin cambios)
         const nombreArchivo = `Cotizacion_${numPedido}`;
         newSS = SpreadsheetApp.create(nombreArchivo); 
         const newFileId = newSS.getId();
 
-        // 5. Copiar SÓLO la pestaña de la plantilla al nuevo archivo
-        const sourceSS = SpreadsheetApp.openById(sourceTemplateFileId);
+        // 5. Copiar SÓLO la pestaña de la plantilla al nuevo archivo (Sin cambios)
+        const sourceSS = SpreadsheetApp.openById(sourceTemplateFileId); 
         const sourceSheet = sourceSS.getSheetByName(sourceTemplateTabName);
         if (!sourceSheet) {
             DriveApp.getFileById(newFileId).setTrashed(true);
             throw new Error(`La plantilla de origen '${sourceTemplateTabName}' no se encontró.`);
         }
         const hojaTemporal = sourceSheet.copyTo(newSS);
-
-        // 6. Limpiar y Mover el archivo nuevo Sheet
-        hojaTemporal.setName(numPedido);
+        
+        // 6. Limpiar y Mover el archivo nuevo Sheet (Sin cambios)
+        hojaTemporal.setName(numPedido); 
         const defaultSheet = newSS.getSheetByName('Sheet1'); 
         if (defaultSheet) newSS.deleteSheet(defaultSheet);
         
         const newFile = DriveApp.getFileById(newFileId);
+        // Mueve el NUEVO archivo Sheet a la carpeta "cot"
         destinationFolder.addFile(newFile); 
         DriveApp.getRootFolder().removeFile(newFile);
 
+        // --- INICIO DE NUEVA LÓGICA DE ARCHIVADO ---
         // 7. Archivar Versiones Anteriores
         const nombreCarpetaArchivo = "Versiones Anteriores";
-        const carpetaArchivo = findOrCreateFolder(destinationFolder, nombreCarpetaArchivo);
+        const carpetaArchivo = findOrCreateFolder(destinationFolder, nombreCarpetaArchivo); // Crea "Versiones Anteriores" dentro de "cot"
         
         const archivosEnCot = destinationFolder.getFiles();
         while (archivosEnCot.hasNext()) {
             const archivo = archivosEnCot.next();
+            // Mover SÓLO si NO es el archivo que acabamos de crear Y NO es un PDF reciente con el mismo nombre base
             const esNuevoSheet = (archivo.getId() === newFileId);
             const esPDFPotencial = archivo.getName().startsWith(nombreArchivo) && archivo.getMimeType() === MimeType.PDF;
 
-            if (!esNuevoSheet && !esPDFPotencial) {
+            if (!esNuevoSheet && !esPDFPotencial) { // Mueve todos los archivos excepto el nuevo Sheet y PDFs con nombre similar
                  Logger.log(`Archivando archivo anterior: ${archivo.getName()}`);
-                 archivo.moveTo(carpetaArchivo);
+                 archivo.moveTo(carpetaArchivo); // Mover a "Versiones Anteriores"
             } else if (esPDFPotencial) {
+                 // Si es un PDF con nombre similar, podría ser el de la ejecución anterior, lo archivamos también
+                 // Podríamos añadir una comprobación de fecha si fuera necesario, pero por ahora lo movemos.
                  Logger.log(`Archivando PDF anterior: ${archivo.getName()}`);
                  archivo.moveTo(carpetaArchivo);
             }
         }
+        // --- FIN DE NUEVA LÓGICA DE ARCHIVADO ---
 
-        // 8. Rellenar la plantilla
+        // 8. Rellenar la plantilla (Sin cambios)
         rellenarPlantilla(hojaTemporal, cotizacionData);
         SpreadsheetApp.flush();
 
-        // 9. Crear el PDF
+        // 9. Crear el PDF (Sigue igual, se crea en la carpeta "cot")
         const newSS_Url = newSS.getUrl();
         const exportUrl = newSS_Url.replace('/edit', '/export?exportFormat=pdf&gid=' + hojaTemporal.getSheetId() + '&format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&sheetnames=false');
 
@@ -1549,238 +1613,22 @@ function generarYDevolverPDF(rowIndex) {
             headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
             muteHttpExceptions: true
         });
+        
         const pdfBlob = response.getBlob().setName(nombreArchivo + ".pdf"); 
-        const pdfFile = destinationFolder.createFile(pdfBlob);
+        const pdfFile = destinationFolder.createFile(pdfBlob); // Se guarda en "cot"
 
-        // 10. Devolver ambas URLs
+        // 10. Devolver ambas URLs (Sin cambios)
         return { 
             success: true, 
             pdfUrl: pdfFile.getUrl(), 
             sheetUrl: newFile.getUrl() 
         };
-
+        
     } catch (e) {
         Logger.log("Error CRÍTICO en generarYDevolverPDF: " + e.toString());
         if (newSS) DriveApp.getFileById(newSS.getId()).setTrashed(true);
         return { success: false, error: e.message };
     }
-}
-
-/**
- * NUEVA FUNCIÓN DE AYUDA (Limpia)
- */
-function getTemplateInfo(empresa) {
-    const empresaUpper = empresa.toUpperCase();
-    switch (empresaUpper) {
-        case 'ALPAMAYO':
-            return { id: ID_PLANTILLA_FILE_ALP, tab: HOJA_PLANTILLA_ALPAMAYO };
-        case 'GYM':
-            return { id: ID_PLANTILLA_FILE_GYM, tab: HOJA_PLANTILLA_GYM };
-        case 'SAN JOSE':
-            return { id: ID_PLANTILLA_FILE_SJ, tab: HOJA_PLANTILLA_SANJOSE };
-        default:
-            Logger.log(`Empresa no reconocida '${empresa}'. Usando Alpamayo como fallback.`);
-            return { id: ID_PLANTILLA_FILE_ALP, tab: HOJA_PLANTILLA_ALPAMAYO };
-    }
-}
-
-/**
- * NUEVA FUNCIÓN DE AYUDA (Limpia)
- */
-function findOrCreateFolder(parentFolder, childName) {
-  const carpetas = parentFolder.getFoldersByName(childName);
-  
-  if (carpetas.hasNext()) {
-    return carpetas.next();
-  } else {
-    return parentFolder.createFolder(childName);
-  }
-}
-
-/**
- * REEMPLAZO de getDestinationFolder (Limpia, CON LÓGICA DE ANTHONY)
- */
-function getDestinationFolder(ejecutivo, empresa, fechaObj, cotizacionData) {
-    let parentFolderId;
-    let skipLevel2 = false; // Flag para omitir la creación de la carpeta Nivel 2 (Nombre de Empresa)
-
-    const ejecutivoUpper = ejecutivo ? ejecutivo.toUpperCase().trim() : '';
-    const empresaUpper = empresa.toUpperCase();
-
-    // Nivel 1: Determinar la carpeta raíz
-    if (ejecutivoUpper === 'CARMEN') {
-        parentFolderId = FOLDER_ID_CARMEN;
-        
-    } else if (ejecutivoUpper === 'ANTHONY') {
-        
-        // --- INICIO DE LÓGICA DE ANTHONY ---
-        switch (empresaUpper) {
-            case 'GYM':
-                parentFolderId = FOLDER_ID_GYM_ANTHONY;
-                break;
-            case 'ALPAMAYO':
-                parentFolderId = FOLDER_ID_ALP_ANTHONY;
-                break;
-            case 'SAN JOSE':
-                parentFolderId = FOLDER_ID_SJ_ANTHONY;
-                break;
-            default:
-                parentFolderId = FOLDER_ID_ANTHONY;
-                skipLevel2 = false;
-                break;
-        }
-        
-        if (parentFolderId !== FOLDER_ID_ANTHONY) {
-            skipLevel2 = true;
-        }
-        // --- FIN DE LÓGICA DE ANTHONY ---
-        
-    } else {
-        // Lógica de fallback (para otros usuarios)
-        switch (empresaUpper) {
-            case 'GYM':
-                parentFolderId = FOLDER_ID_GYM;
-                break;
-            case 'SAN JOSE':
-                parentFolderId = FOLDER_ID_SJ;
-                break;
-            default:
-                parentFolderId = FOLDER_ID_ALP;
-                break;
-        }
-    }
-    
-    let currentFolder = DriveApp.getFolderById(parentFolderId);
-
-    // Nivel 2: Carpeta de la Empresa
-    if (!skipLevel2) {
-        const nombreCarpetaEmpresa = MAPA_NOMBRES_EMPRESAS[empresaUpper] || empresa;
-        currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaEmpresa);
-    }
-
-    // Nivel 3: Carpeta Mes/Año
-    const prefijos = {"ALPAMAYO": "COT.ALP", "SAN JOSE": "COT.SJ", "GYM": "COT.GYM"};
-    const meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SETIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
-    
-    const prefijoEmpresa = prefijos[empresaUpper] || 'COT.GEN';
-    const anio = fechaObj.getFullYear();
-    const mesNum = String(fechaObj.getMonth() + 1).padStart(2, '0');
-    const mesNombre = meses[fechaObj.getMonth()];
-    
-    const separador = (empresaUpper === 'ALPAMAYO') ? '_' : ' '; 
-    const nombreSubfolderMes = `${prefijoEmpresa}.${anio}.${mesNum} COT${separador}${mesNombre}`;
-
-    currentFolder = findOrCreateFolder(currentFolder, nombreSubfolderMes);
-
-    // Nivel 4: Carpeta de Cotización Específica
-    let servicioNombre = "VARIOS";
-    if (cotizacionData.servicios.length === 1) {
-        const servicioUnico = cotizacionData.servicios[0];
-        servicioNombre = servicioUnico.abreviatura || servicioUnico.cod || servicioUnico.descripcion.substring(0, 10);
-    }
-    
-    const nombreCarpetaCotizacion = `${cotizacionData.numPedido} ${cotizacionData.cliente} ${servicioNombre}`;
-    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaCotizacion);
-
-    // Nivel 5: Carpeta "cot"
-    currentFolder = findOrCreateFolder(currentFolder, "cot");
-
-    return currentFolder; // Devuelve la carpeta "cot" de Nivel 5
-}
-
-/**
- * REEMPLAZO de rellenarPlantilla (Limpia)
- */
-function rellenarPlantilla(hojaTemporal, cotizacionData) {
-    const SERVICIOS = cotizacionData.servicios || []; 
-    const START_ROW = 18;
-
-    // 3. Rellenar Cabecera
-    hojaTemporal.getRange('C3').setValue(cotizacionData.numPedido || ''); 
-    hojaTemporal.getRange('C5').setValue(cotizacionData.cliente || '');
-    hojaTemporal.getRange('C6').setValue(cotizacionData.ruc || '');      
-    hojaTemporal.getRange('C7').setValue(cotizacionData.contacto || ''); 
-    hojaTemporal.getRange('C8').setValue(cotizacionData.contactoInfo || ''); 
-    const fechaObj = new Date(cotizacionData.fecha || new Date());
-    hojaTemporal.getRange('G3').setValue(fechaObj).setNumberFormat('dd/MM/yyyy');
-    hojaTemporal.getRange('C12').setValue(cotizacionData.lugar || '');   
-    hojaTemporal.getRange('C13').setValue(cotizacionData.turno || '');   
-
-    // 4. Lógica para agregar líneas de servicio
-    let itemNum = 1;
-    let currentRow = START_ROW;
-
-    // 4.1 Contar filas necesarias
-    let filasNecesarias = 0;
-    SERVICIOS.forEach(s => {
-        filasNecesarias++; 
-        if (s.movilizacion && s.movilizacion > 0) filasNecesarias++; 
-    });
-    // 4.2 Insertar las filas
-    if (filasNecesarias > 1) {
-        hojaTemporal.insertRowsAfter(START_ROW, filasNecesarias - 1);
-    }
-
-    // 4.3 Llenar las filas
-    SERVICIOS.forEach(s => {
-        const movilizacion = s.movilizacion || 0;
-        const valorServicio = s.valor || 0; 
-        
-        let descripcionDetallada = "Alquiler de " + s.descripcion + "\n";
-      
-        if (s.precioUnitario > 0) {
-            const simboloMoneda = (s.moneda && s.moneda.toUpperCase() === 'SOLES') ? 'S/.' : 'USD$.';
-            descripcionDetallada += `Costo por hora de servicio: ${simboloMoneda} ${s.precioUnitario.toFixed(2)} por hora.\n`;
-        }
-        
-        if (s.horasMinimasNum > 0 && s.undHorasMinimas) {
-             descripcionDetallada += `Horas mínimas de servicio: ${s.horasMinimasNum} horas mínimas (${s.undHorasMinimas}).\n`;
-        }
-        
-        descripcionDetallada += "Almuerzo: 1 hora diaria.\n";
-        
-        if (s.totalDias > 0) {
-             descripcionDetallada += `Duración: ${Math.ceil(s.totalDias)} día(s) de servicio.\n`;
-        }
-        
-        if (cotizacionData.turno) {
-            descripcionDetallada += `Turno: ${cotizacionData.turno}.\n`;
-        }
-        
-        if (movilizacion > 0) {
-             descripcionDetallada += "Mov. y desmo. Del equipo: Considerado aparte.\n";
-        }
-
-        // A. LÍNEA DE SERVICIO PRINCIPAL
-        hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue(descripcionDetallada.trim())
-            .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
-            
-        hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
-        hojaTemporal.getRange(`A${currentRow}`).setValue(itemNum);
-        hojaTemporal.getRange(`F${currentRow}`).setValue(valorServicio); 
-        currentRow++;
-        
-        // B. LÍNEA DE MOVILIZACIÓN (SI APLICA)
-        if (movilizacion > 0) {
-            const itemMovNum = `${itemNum}.1`;
-            hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue("Movilización y Desmovilización")
-                .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
-                
-            hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
-            hojaTemporal.getRange(`A${currentRow}`).setValue(itemMovNum);
-            hojaTemporal.getRange(`F${currentRow}`).setValue(movilizacion);
-            currentRow++; 
-        }
-        itemNum++; 
-    });
-    
-    // 5. Agregar la línea de total
-    const filaTotal = currentRow;
-    const ultimaFilaItems = filaTotal - 1; 
-    hojaTemporal.getRange(`A${filaTotal}:E${filaTotal}`).merge();
-    hojaTemporal.getRange(`A${filaTotal}`).setValue("SUBTOTAL");
-    hojaTemporal.getRange(`F${filaTotal}:G${filaTotal}`).merge();
-    hojaTemporal.getRange(`F${filaTotal}`).setFormula(`=SUM(F${START_ROW}:G${ultimaFilaItems})`);
 }
 
 /**
@@ -1958,6 +1806,170 @@ function findOrCreateFolder(parentFolder, childName) {
   } else {
     return parentFolder.createFolder(childName); // La carpeta no existe, la crea
   }
+}
+
+/**
+ * REEMPLAZO de getDestinationFolder
+ * Ahora navega los 4 NIVELES de carpetas.
+ */
+function getDestinationFolder(ejecutivo, empresa, fechaObj, cotizacionData) {
+    let parentFolderId;
+
+    const empresaUpper = empresa.toUpperCase();
+    
+    // Nivel 1: Carpeta del Ejecutivo
+    if (ejecutivo && ejecutivo.toUpperCase() === 'CARMEN') {
+        parentFolderId = FOLDER_ID_CARMEN;
+    } else {
+        const empresaUpper = empresa.toUpperCase();
+        if (empresaUpper === 'GYM') parentFolderId = FOLDER_ID_GYM;
+        else if (empresaUpper === 'SAN JOSE') parentFolderId = FOLDER_ID_SJ;
+        else parentFolderId = FOLDER_ID_ALP;
+    }
+    
+    let currentFolder = DriveApp.getFolderById(parentFolderId);
+
+    // Nivel 2: Carpeta de la Empresa (Ej. "GRUAS SAN JOSE PERU SAC")
+    const nombreCarpetaEmpresa = MAPA_NOMBRES_EMPRESAS[empresa.toUpperCase()] || empresa;
+    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaEmpresa);
+
+    // Nivel 3: Carpeta Mes/Año (Ej. "COT.SJ.2025.09 COT_SETIEMBRE")
+    const prefijos = {"ALPAMAYO": "COT.ALP", "SAN JOSE": "COT.SJ", "GYM": "COT.GYM"};
+    const meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SETIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+    
+    const prefijoEmpresa = prefijos[empresa.toUpperCase()] || 'COT.GEN';
+    const anio = fechaObj.getFullYear();
+    const mesNum = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    const mesNombre = meses[fechaObj.getMonth()];
+    const separador = (empresaUpper === 'ALPAMAYO') ? '_' : ' ';
+    
+    const nombreSubfolderMes = `${prefijoEmpresa}.${anio}.${mesNum} COT_${mesNombre}`;
+    currentFolder = findOrCreateFolder(currentFolder, nombreSubfolderMes);
+
+    // Nivel 4: Carpeta de Cotización Específica (Ej. "COT.SJ.2025.09.2006 STRACON GT100TN")
+    let servicioNombre = "VARIOS";
+    if (cotizacionData.servicios.length === 1) {
+        const servicioUnico = cotizacionData.servicios[0];
+        servicioNombre = servicioUnico.abreviatura || servicioUnico.cod || servicioUnico.descripcion.substring(0, 10);
+    }
+    
+    const nombreCarpetaCotizacion = `${cotizacionData.numPedido} ${cotizacionData.cliente} ${servicioNombre}`;
+    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaCotizacion); // <-- Crea o encuentra la carpeta de cotización (Nivel 4)
+
+    // --- AÑADIDO: Nivel 5 ---
+    // Crear la subcarpeta "cot" DENTRO de la carpeta de cotización
+    currentFolder = findOrCreateFolder(currentFolder, "cot"); 
+    // --- FIN DE AÑADIDO ---
+
+    return currentFolder; // Devuelve la carpeta "cot" de Nivel 5
+}
+
+/**
+ * REEMPLAZO de rellenarPlantilla
+ * Construye la descripción detallada en la celda B.
+ */
+function rellenarPlantilla(hojaTemporal, cotizacionData) {
+    const SERVICIOS = cotizacionData.servicios || []; 
+    const START_ROW = 18;
+
+    // 3. Rellenar Cabecera (Sin cambios)
+    hojaTemporal.getRange('C3').setValue(cotizacionData.numPedido || ''); 
+    hojaTemporal.getRange('C5').setValue(cotizacionData.cliente || '');   
+    hojaTemporal.getRange('C6').setValue(cotizacionData.ruc || '');      
+    hojaTemporal.getRange('C7').setValue(cotizacionData.contacto || ''); 
+    hojaTemporal.getRange('C8').setValue(cotizacionData.contactoInfo || ''); 
+    const fechaObj = new Date(cotizacionData.fecha || new Date());
+    hojaTemporal.getRange('G3').setValue(fechaObj).setNumberFormat('dd/MM/yyyy'); 
+    hojaTemporal.getRange('C12').setValue(cotizacionData.lugar || '');   
+    hojaTemporal.getRange('C13').setValue(cotizacionData.turno || '');   
+
+    // 4. Lógica para agregar líneas de servicio
+    let itemNum = 1;
+    let currentRow = START_ROW;
+
+    // 4.1 Contar filas necesarias (Sin cambios)
+    let filasNecesarias = 0;
+    SERVICIOS.forEach(s => {
+        filasNecesarias++; 
+        if (s.movilizacion && s.movilizacion > 0) filasNecesarias++; 
+    });
+
+    // 4.2 Insertar las filas (Sin cambios)
+    if (filasNecesarias > 1) {
+        hojaTemporal.insertRowsAfter(START_ROW, filasNecesarias - 1);
+    }
+
+    // 4.3 Llenar las filas (CON CAMBIOS EN LA DESCRIPCIÓN)
+    SERVICIOS.forEach(s => {
+        const movilizacion = s.movilizacion || 0;
+        const valorServicio = s.valor || 0; 
+        
+        // --- INICIO DE CONSTRUCCIÓN DE DESCRIPCIÓN DETALLADA ---
+        let descripcionDetallada = "Alquiler de " + s.descripcion + "\n"; // Nombre base + salto de línea
+        
+        // Añadir costo por hora si hay precio unitario
+        if (s.precioUnitario > 0) {
+            const simboloMoneda = (s.moneda && s.moneda.toUpperCase() === 'SOLES') ? 'S/.' : 'USD$.';
+            descripcionDetallada += `Costo por hora de servicio: ${simboloMoneda} ${s.precioUnitario.toFixed(2)} por hora.\n`;
+        }
+        
+        // Añadir horas mínimas si existen
+        if (s.horasMinimasNum > 0 && s.undHorasMinimas) {
+             descripcionDetallada += `Horas mínimas de servicio: ${s.horasMinimasNum} horas mínimas (${s.undHorasMinimas}).\n`;
+        }
+        
+        // Añadir Almuerzo (Texto fijo, puedes cambiarlo o hacerlo dinámico si añades el dato)
+        descripcionDetallada += "Almuerzo: 1 hora diaria.\n"; 
+        
+        // Añadir Duración (usando Total Días)
+        if (s.totalDias > 0) {
+             descripcionDetallada += `Duración: ${Math.ceil(s.totalDias)} día(s) de servicio.\n`;
+        }
+        
+        // Añadir Turno (usando el turno general de la cotización)
+        if (cotizacionData.turno) {
+            descripcionDetallada += `Turno: ${cotizacionData.turno}.\n`;
+        }
+        
+        // Añadir detalle de Movilización (Texto fijo si hay monto > 0)
+        if (movilizacion > 0) {
+             // Puedes ajustar este texto si necesitas algo más específico
+             descripcionDetallada += "Mov. y desmo. Del equipo: Considerado aparte.\n"; 
+        }
+        // --- FIN DE CONSTRUCCIÓN DE DESCRIPCIÓN ---
+
+        // A. LÍNEA DE SERVICIO PRINCIPAL
+        hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue(descripcionDetallada.trim()) // <-- Poner descripción detallada
+            .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true); // <-- Forzar alineación y ajuste
+            
+        hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+        hojaTemporal.getRange(`A${currentRow}`).setValue(itemNum);
+        // hojaTemporal.getRange(`B${currentRow}`).setValue(s.descripcion); // <-- Ya no se usa
+        hojaTemporal.getRange(`F${currentRow}`).setValue(valorServicio); 
+        currentRow++; 
+
+        // B. LÍNEA DE MOVILIZACIÓN (SI APLICA)
+        if (movilizacion > 0) {
+            const itemMovNum = `${itemNum}.1`; 
+            hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue("Movilización y Desmovilización")
+                .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true); // <-- Formato
+                
+            hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+            hojaTemporal.getRange(`A${currentRow}`).setValue(itemMovNum);
+            // hojaTemporal.getRange(`B${currentRow}`).setValue("Movilización y Desmovilización"); // <-- Ya no se usa
+            hojaTemporal.getRange(`F${currentRow}`).setValue(movilizacion);
+            currentRow++; 
+        }
+        itemNum++; 
+    });
+
+    // 5. Agregar la línea de total (Sin cambios)
+    const filaTotal = currentRow;
+    const ultimaFilaItems = filaTotal - 1; 
+    hojaTemporal.getRange(`A${filaTotal}:E${filaTotal}`).merge();
+    hojaTemporal.getRange(`A${filaTotal}`).setValue("SUBTOTAL");
+    hojaTemporal.getRange(`F${filaTotal}:G${filaTotal}`).merge();
+    hojaTemporal.getRange(`F${filaTotal}`).setFormula(`=SUM(F${START_ROW}:G${ultimaFilaItems})`);
 }
 
 /**
@@ -2511,29 +2523,195 @@ function guardarDatosComplementarios(codigoPedido, datos) {
 }
 
 /**
- * FUNCIÓN UTILITARIA (v3): Ejecutar manualmente para limpiar la caché del script.
- * Esta versión no usa msgBox y limpia las claves de caché conocidas.
+ * REEMPLAZO 1 (Backend)
+ * Actualiza (acumula) los valores de despacho en la hoja DataCot.
+ * ¡CORREGIDO! Ahora busca usando 'lineaID' (columna 'NUM')
  */
-function forzarLimpiezaDeCache() {
+function actualizarDataCotDesdeOT(lineaID, horasDespachadas, montoDespachado, montoMovilizacion) {
+    Logger.log(`Actualizando DataCot: LineaID=${lineaID}, Horas=${horasDespachadas}, Monto=${montoDespachado}, Mov=${montoMovilizacion}`);
+    
+    if (!lineaID) {
+        Logger.log("Error: Faltó lineaID para actualizar DataCot.");
+        return false;
+    }
+
+    if (horasDespachadas === 0 && montoDespachado === 0 && montoMovilizacion === 0) {
+        Logger.log("Advertencia: No hay valores (horas o montos) para actualizar en DataCot.");
+        return true; 
+    }
+
+    try {
+        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+        const sheet = ss.getSheetByName(HOJA_COTIZACIONES);
+        if (!sheet) {
+            Logger.log(`Error: No se encontró la hoja ${HOJA_COTIZACIONES}`);
+            return false;
+        }
+
+        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
+        // LEEMOS LOS DATOS SIN CACHÉ PARA ASEGURARNOS DE TENER LA ÚLTIMA VERSIÓN
+        const allData = sheet.getDataRange().getValues(); 
+
+        // --- ¡LÓGICA CORREGIDA! ---
+        const LINEAID_COL = COL_MAP['NUM']; // <- Buscamos por la columna 'NUM'
+        const UND_DESPACHO_COL = COL_MAP['UND. DESPACHO'];
+        const M_DESPACHO_COL = COL_MAP['M. DESPACHO'];
+        const MYDM_VALORIZADA_COL = COL_MAP['MYDM VALORIZADA'];
+
+        if ([LINEAID_COL, UND_DESPACHO_COL, M_DESPACHO_COL, MYDM_VALORIZADA_COL].includes(undefined)) {
+            Logger.log("Error: Faltan columnas clave (NUM, UND. DESPACHO, M. DESPACHO, MYDM VALORIZADA) en DataCot.");
+            return false;
+        }
+
+        let rowIndexToUpdate = -1;
+        for (let i = 1; i < allData.length; i++) { // Empezar en 1 para saltar encabezados
+            const idEnFila = String(allData[i][LINEAID_COL] || '').trim();
+            
+            // --- ¡BÚSQUEDA POR ID ÚNICO! ---
+            if (idEnFila === lineaID) {
+                rowIndexToUpdate = i + 1; // i es 0-based para el array, +1 para el índice de fila real
+                break;
+            }
+        }
+        // --- FIN LÓGICA CORREGIDA ---
+
+        if (rowIndexToUpdate === -1) {
+            Logger.log(`No se encontró la fila en DataCot para LineaID=${lineaID}.`);
+            return false;
+        }
+
+        // Leer valores actuales
+        const undDespachoActual = parseFloat(sheet.getRange(rowIndexToUpdate, UND_DESPACHO_COL + 1).getValue() || 0);
+        const mDespachoActual = parseFloat(sheet.getRange(rowIndexToUpdate, M_DESPACHO_COL + 1).getValue() || 0);
+        const mydmValorizadaActual = parseFloat(sheet.getRange(rowIndexToUpdate, MYDM_VALORIZADA_COL + 1).getValue() || 0);
+
+        // Calcular los nuevos valores ACUMULADOS
+        const nuevasUndDespacho = undDespachoActual + horasDespachadas;
+        const nuevoMDespacho = mDespachoActual + montoDespachado;
+        const nuevaMydmValorizada = mydmValorizadaActual + montoMovilizacion;
+
+        // Actualizar las celdas específicas en la hoja
+        sheet.getRange(rowIndexToUpdate, UND_DESPACHO_COL + 1).setValue(nuevasUndDespacho);
+        sheet.getRange(rowIndexToUpdate, M_DESPACHO_COL + 1).setValue(nuevoMDespacho);
+        sheet.getRange(rowIndexToUpdate, MYDM_VALORIZADA_COL + 1).setValue(nuevaMydmValorizada);
+        
+        Logger.log(`DataCot actualizada exitosamente para Fila ${rowIndexToUpdate}.`);
+        return true;
+    } catch (e) {
+        Logger.log(`Error CRÍTICO en actualizarDataCotDesdeOT: ${e.message}\nStack: ${e.stack}`);
+        enviarNotificacionError(`Error en actualizarDataCotDesdeOT: ${e.message}`);
+        return false;
+    }
+}
+
+/**
+ * Obtiene las líneas de una cotización y suma las OTs existentes para CADA LÍNEA.
+ */
+function getResumenOTPorPedido(numPedido) {
   try {
-    const cache = CacheService.getScriptCache();
-    
-    // Lista de claves de caché que "getColumnMap" probablemente usa
-    const clavesARemover = [
-      "column_map_DataCot",
-      "column_map_Servicios",
-      "column_map_Contactos",
-      "column_map_ComplementosCot",
-      "column_map_Actas"
-    ];
+    if (!numPedido) throw new Error("Número de pedido no proporcionado.");
 
-    // Llamar a removeAll CON la lista de claves
-    cache.removeAll(clavesARemover); 
+    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+    const sheetCot = ss.getSheetByName(HOJA_COTIZACIONES);
+    const sheetOT = ss.getSheetByName(HOJA_OT);
 
-    // Usar Logger.log en lugar de msgBox
-    Logger.log(`ÉXITO: Se han intentado limpiar las siguientes claves de caché: ${clavesARemover.join(', ')}`);
+    const mapCot = getColumnMap(HOJA_COTIZACIONES);
+    const mapOT = getColumnMap(HOJA_OT);
+
+    const allDataCot = sheetCot.getDataRange().getValues();
+    const allDataOT = sheetOT.getDataRange().getValues();
+
+    // Columnas que necesitamos
+    const COT_COL_COT = mapCot['COT'];
+    const LINEAID_COL_COT = mapCot['NUM']; // ID Único
+    const COD_COL_COT = mapCot['COD'];
+    const DESC_COL_COT = mapCot['DESCRIPCION'];
+    const UND_PEDIDO_COL_COT = mapCot['UND. PEDIDO']; // Total Horas Pedidas
+    const UND_DESPACHO_COL_COT = mapCot['UND. DESPACHO']; // Total Horas Despachadas
     
+    const COT_COL_OT = mapOT['N°COTIZACION'];
+    const LINEAID_COL_OT = mapOT['LineaID']; // ID Único en OTs
+    const HORAS_COL_OT = mapOT['Horometro Trabajado']; // Horas de la OT
+
+    const lineasDelPedido = [];
+    let clienteNombre = '';
+
+    // 1. Encontrar todas las líneas de la cotización
+    for (let i = 1; i < allDataCot.length; i++) {
+      const row = allDataCot[i];
+      if (String(row[COT_COL_COT] || '').trim() === numPedido) {
+        if (!clienteNombre) clienteNombre = String(row[mapCot['CLIENTE']] || '');
+        
+        lineasDelPedido.push({
+          lineaID: String(row[LINEAID_COL_COT] || ''),
+          cod: String(row[COD_COL_COT] || ''),
+          descripcion: String(row[DESC_COL_COT] || ''),
+          horasPedidas: parseFloat(row[UND_PEDIDO_COL_COT] || 0),
+          horasDespachadas: parseFloat(row[UND_DESPACHO_COL_COT] || 0) // Leemos el total ya acumulado
+        });
+      }
+    }
+
+    if (lineasDelPedido.length === 0) {
+      throw new Error("No se encontraron líneas para el pedido: " + numPedido);
+    }
+    
+    // 2. Opcional: Podríamos re-calcular las horas despachadas sumando las OTs
+    // por si la data de DataCot está desactualizada, pero por ahora confiaremos
+    // en el valor de UND. DESPACHO.
+
+    return { 
+      success: true, 
+      pedido: numPedido,
+      cliente: clienteNombre,
+      lineas: lineasDelPedido 
+    };
+
   } catch (e) {
-    Logger.log("Error al limpiar caché: " + e.message);
+    Logger.log(`Error en getResumenOTPorPedido: ${e.message}`);
+    return manejarError('getResumenOTPorPedido', e);
+  }
+}
+
+/**
+ * Obtiene los datos de una LÍNEA específica de DataCot para pre-llenar una OT.
+ */
+function getDatosDeLineaParaOT(lineaID) {
+  try {
+    if (!lineaID) throw new Error("ID de Línea no proporcionado.");
+    
+    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+    const sheet = ss.getSheetByName(HOJA_COTIZACIONES);
+    const mapCot = getColumnMap(HOJA_COTIZACIONES);
+    const allData = sheet.getDataRange().getValues();
+
+    const LINEAID_COL = mapCot['NUM'];
+    if (LINEAID_COL === undefined) throw new Error("No se encontró la columna 'NUM' en DataCot.");
+
+    let filaEncontrada = null;
+    for (let i = 1; i < allData.length; i++) {
+      if (String(allData[i][LINEAID_COL] || '').trim() === lineaID) {
+        filaEncontrada = allData[i];
+        break;
+      }
+    }
+
+    if (!filaEncontrada) throw new Error("No se encontró la línea con ID: " + lineaID);
+
+    // Extraer los datos que el formulario de OT necesita
+    const datosLinea = {
+      lineaID: lineaID,
+      numPedido: String(filaEncontrada[mapCot['COT']] || ''),
+      clienteRUC: String(filaEncontrada[mapCot['ID CLIENTE']] || ''),
+      clienteNombre: String(filaEncontrada[mapCot['CLIENTE']] || ''),
+      codServicio: String(filaEncontrada[mapCot['COD']] || ''),
+      descServicio: String(filaEncontrada[mapCot['DESCRIPCION']] || '')
+    };
+
+    return { success: true, data: datosLinea };
+
+  } catch (e) {
+    Logger.log(`Error en getDatosDeLineaParaOT: ${e.message}`);
+    return manejarError('getDatosDeLineaParaOT', e);
   }
 }
