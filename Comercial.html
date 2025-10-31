@@ -10,7 +10,7 @@
     <div class="barraTopComercial">
         <div class="topBarra-izquierda">
             <? var url = getScriptUrl(); ?>
-            <a href='<?= url ?>?page=Modulos' onclick="sessionStorage.removeItem('pedidoAEditar')" class="retornarModulos iconoTopBarra">Módulos</a>
+            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a>
 
             <div style="display: flex; align-items: center; gap: 20px;">
                 <h3 id="tituloPrincipalContenido" class="titulo-contenido" style="margin-bottom: 0; border-bottom: none;">Nueva Cotización</h3>
@@ -28,7 +28,9 @@
             <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen </button>
             <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF" style="display: none;"> 📄 PDF </button> 
             <button type="button" onclick="gestionarActaGlobal()" class="btn-guardar-top btn-info" id="btnGestionarActa" style="display: none; background-color: #17a2b8;"> 📋 Acta </button> 
-        </div>
+            
+            <button type="button" onclick="gestionarOTsParaPedido()" class="btn-guardar-top btn-warning" id="btnGestionarOT" style="display: none; background-color: #f0ad4e;"> ⚙️ OTs </button>
+            </div>
         </div>
         <div class="contenedor-principal contenedor-compacto">
         
@@ -197,7 +199,6 @@
 <script>
 
   function navegarAResumen() {
-        sessionStorage.removeItem('pedidoAEditar');
         const urlBase = '<?!= getScriptUrl() ?>';
         window.top.location.href = urlBase + '?page=ResumenComercial';
     }
@@ -231,6 +232,32 @@
             // Si no, usa la que te di: generarPDFPorNumeroPedido
             .generarYDevolverPDF(numPedido); 
     }
+
+/**
+ * NUEVA FUNCIÓN
+ * Abre la página de resumen de OTs, pasando el número de pedido
+ * actual para que esa página se filtre sola.
+ */
+function gestionarOTsParaPedido() {
+    // 1. Verifica que estemos en modo edición y tengamos un número de pedido
+    if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) {
+        alert('Debe estar en modo de edición de un pedido existente para gestionar sus OTs.');
+        return;
+    }
+
+    // 2. Obtiene la URL base
+    const urlBase = '<?!= getScriptUrl() ?>';
+    const numPedido = estadoApp.numPedidoEdicion;
+
+    // 3. Construye la URL de destino
+    // Asumimos que tu página de resumen de OTs se llama 'OT'
+    // Le pasamos el número de pedido como un parámetro URL
+    const urlDestino = `${urlBase}?page=OT&pedido=${encodeURIComponent(numPedido)}`;
+
+    // 4. Abre en una nueva pestaña
+    console.log(`Navegando a la gestión de OTs para el pedido: ${numPedido}`);
+    window.open(urlDestino, '_blank');
+}
 
 // Función para generar PDF
 function generarPDF() {
@@ -267,8 +294,6 @@ function generarPDF() {
         // VARIABLES GLOBALES Y CONFIGURACIÓN
         // =============================================================================
 const estadoApp = {
-            permisos: { puedeEditarCotizacion: false }, // Valor inicial por defecto
-    configuracion: {
             lineaCounter: 0,
             datosCargados: false,
             guardando: false,
@@ -345,8 +370,7 @@ const estadoApp = {
 
         function mostrarExito(respuesta) {
             alert(respuesta.message || "Cotización guardada exitosamente");
-            const urlRedireccion = '<?!= getScriptUrl() ?>?page=ResumenComercial';
-            window.open(urlRedireccion, '_top'); 
+            window.top.location.href = '<?!= getScriptUrl() ?>?page=ResumenComercial'; 
         }
 
         function puedeRealizarAccion(accion) {
@@ -466,12 +490,14 @@ document.addEventListener("DOMContentLoaded", function() {
         editId = sessionStorage.getItem('pedidoAEditar');
         if (editId) {
             console.log("📦 EditId obtenido de sessionStorage:", editId);
-           }
+            sessionStorage.removeItem('pedidoAEditar');
+        }
     }
     console.log("🎯 ID final para edición:", editId);
     
     const tituloContenido = document.getElementById('tituloPrincipalContenido'); 
 
+    // --- Lógica de Edición (Botones Visibles) ---
     if (editId) {
         estadoApp.esEdicion = true;
         estadoApp.numPedidoEdicion = editId;
@@ -479,17 +505,35 @@ document.addEventListener("DOMContentLoaded", function() {
              tituloContenido.textContent = `Pedido: ${editId}`;
              tituloContenido.style.color = '#e74c3c';
         }
+        
+        // Mostrar botones de Edición
         const btnPDF = document.getElementById('btnGenerarPDF');
         if (btnPDF) btnPDF.style.display = 'inline-block';
         
+        const btnActa = document.getElementById('btnGestionarActa');
+        if (btnActa) btnActa.style.display = 'inline-block';
+        
+        const btnOT = document.getElementById('btnGestionarOT');
+        if (btnOT) btnOT.style.display = 'inline-block';
+        
+    // --- Lógica de Creación (Botones Ocultos) ---
     } else {
          if (tituloContenido) {
              tituloContenido.textContent = 'Nueva Cotización';
          }
+         
+         // Ocultar botones de Edición
          const btnPDF = document.getElementById('btnGenerarPDF');
          if (btnPDF) btnPDF.style.display = 'none';
+         
+         const btnActa = document.getElementById('btnGestionarActa');
+         if (btnActa) btnActa.style.display = 'none';
+
+         const btnOT = document.getElementById('btnGestionarOT');
+         if (btnOT) btnOT.style.display = 'none';
     }
 
+    // --- Resto de tu función (Llamadas al servidor) ---
     mostrarLoading(true, "Cargando datos iniciales...");
     // 1. PRIMERA LLAMADA (Ligera)
     google.script.run
@@ -557,7 +601,6 @@ document.addEventListener("DOMContentLoaded", function() {
         .withFailureHandler(function(error) { mostrarLoading(false); console.error("❌ Error cargando datos iniciales:", error); mostrarError(error, 'cargar datos iniciales'); })
         .getDatosInicialesComercial();
 });
-
 
 
 function procesarDatosInicialesComercial(data) {
@@ -1239,33 +1282,19 @@ function procesarDatosInicialesComercial(data) {
                     return;
                 }
                 
-                // --- INICIO DE LA MODIFICACIÓN ---
-                
-                // 1. Obtener los valores numéricos de forma segura
-                const precioValor = isNaN(precio) ? 0 : precio;
-                const movilizacionValor = movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0;
-                
-                // 2. Calcular el subtotal (M. PEDIDO) SIN movilización
-                const subtotalSinMov = cantidad * precioValor;
-
                 const linea = {
                     cod: cod,
                     descripcion: descInput ? descInput.value.trim() : '',
                     cantidad: cantidad,
                     und_medida: undMedidaSelect ? undMedidaSelect.value : 'HORAS',
-                    precio: precioValor, // <-- Usar el valor seguro
-                    movilizacion: movilizacionValor, // <-- Usar el valor seguro (para la columna MOV. Y DES. MOV.)
+                    precio: isNaN(precio) ? 0 : precio,
+                    movilizacion: movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0,
                     und_horas_minimas: row.querySelector(`select[name="und_horas_minimas_${rowId}"]`)?.value || '',
                     horas_minimas_num: row.querySelector(`input[name="horas_minimas_num_${rowId}"]`) ? parseFloat(row.querySelector(`input[name="horas_minimas_num_${rowId}"]`).value) || 0 : 0,
                     hora_segun: row.querySelector(`select[name="hora_segun_${rowId}"]`)?.value || '',
                     dias_cotizados: row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`) ? parseFloat(row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`).value) || 0 : 0,
-                    
-                    // 3. Asignar el subtotal SIN movilización aquí
-                    // Esto se guardará en la columna "M. PEDIDO" 
-                    subtotal: subtotalSinMov 
+                    subtotal: (cantidad * (isNaN(precio) ? 0 : precio)) + (movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0)
                 };
-                
-                // --- FIN DE LA MODIFICACIÓN ---
                 
                 console.log(`✅ Línea ${index + 1} procesada:`, linea);
                 lineas.push(linea);
@@ -1276,7 +1305,6 @@ function procesarDatosInicialesComercial(data) {
         }
 
         function handleExitoGuardado(respuesta) {
-            sessionStorage.removeItem('pedidoAEditar');
             mostrarLoading(false);
             mostrarExito(respuesta);
         }
