@@ -41,17 +41,19 @@
 
                     <div class="form-group">
                         <h2>CLIENTE *</h2>
-                        <select id="clienteOT" name="cliente" class="form-control-base" required>
-                            <option value="">-- Seleccionar Cliente --</option>
-                        </select>
+                        <input type="text" id="clienteOT" name="cliente" class="form-control-base" 
+                               placeholder="Escriba el nombre o RUC del cliente..."
+                               list="lista-clientes-ot" required>
                     </div>
 
                     <div class="form-group">
                         <h2>SERVICIO/MÁQUINA *</h2>
-                        <select id="servicioOT" name="servicio" class="form-control-base" required>
-                            <option value="">-- Seleccionar Servicio --</option>
-                        </select>
+                        <input type="text" id="servicioOT" name="servicio" class="form-control-base" 
+                               placeholder="Escriba el código o nombre del servicio..."
+                               list="lista-servicios-ot" required>
                     </div>
+<datalist id="lista-clientes-ot"></datalist>
+<datalist id="lista-servicios-ot"></datalist>
 
                     <div class="form-group">
                         <h2>N° PEDIDO</h2>
@@ -147,426 +149,561 @@
     </div>
 
     <script>
-        let clientes = [];
-        let servicios = [];
-        let pedidos = [];
-        
-        // Modos: 'crearGlobal', 'editarGlobal', 'crearAislado'
-        let modoFormulario = 'crearGlobal';
-        let otExistente = null;
+    // --- VARIABLE GLOBAL CON LA URL DEL SCRIPT ---
+    const SCRIPT_URL = '<?!= getScriptUrl() ?>';
 
-        document.addEventListener("DOMContentLoaded", function() {
-            console.log("🔄 RegistrarOT.html CARGADO");
+    let clientes = [];
+    let servicios = [];
+    let pedidos = [];
+    
+    let modoFormulario = 'crearGlobal';
+    let otExistente = null;
+
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("✅ RegistrarOT.html CARGADO (v3.3 - Arreglo JSON Parse)");
+        
+        try {
+            // --- LÓGICA CORREGIDA PARA LEER PARÁMETROS ---
+            // 1. Inyectamos el objeto de parámetros directamente.
+            const parametrosServidor = <?!= JSON.stringify(parametros) ?>; 
             
-            const urlParams = new URLSearchParams(window.location.search);
-            const otAEditar = urlParams.get('editar');
-            const lineaIDParaCrear = urlParams.get('linea');
+            // 2. ¡YA NO NECESITAMOS JSON.parse!
+            
+            const otAEditar = parametrosServidor.editar || null;
+            const lineaIDParaCrear = parametrosServidor.linea || null;
+            // --- FIN DE LA CORRECCIÓN ---
             
             if (otAEditar) {
                 modoFormulario = 'editarGlobal';
+                console.log("Modo detectado: editarGlobal", otAEditar);
                 configurarModoEdicion(otAEditar);
-                cargarDatosInicialesGlobales(cargarDatosOTExistente); // Carga globales y luego la OT
+                cargarDatosInicialesGlobales(cargarDatosOTExistente); 
                 
             } else if (lineaIDParaCrear) {
                 modoFormulario = 'crearAislado';
+                console.log("Modo detectado: crearAislado", lineaIDParaCrear); 
                 document.getElementById('lineaIDAsociada').value = lineaIDParaCrear;
                 configurarModoAislado(lineaIDParaCrear);
-                cargarDatosDesdeLinea(lineaIDParaCrear); // Carga solo datos de la línea
+                cargarDatosDesdeLinea(lineaIDParaCrear); 
                 
             } else {
                 modoFormulario = 'crearGlobal';
+                console.log("Modo detectado: crearGlobal");
                 configurarModoCreacion();
-                cargarDatosInicialesGlobales(); // Carga globales
+                cargarDatosInicialesGlobales(); 
             }
             
             configurarEventos();
-        });
 
-        // --- CONFIGURACIÓN DE MODOS ---
-
-        function configurarModoEdicion(numeroOT) {
-            console.log("✏️ MODO EDICIÓN para OT: " + numeroOT);
-            
-            document.getElementById('modoFormulario').value = 'editarGlobal';
-            document.getElementById('otIDExistente').value = numeroOT;
-            document.getElementById('tituloPagina').textContent = 'Editar Orden de Trabajo';
-            document.getElementById('tituloPrincipal').textContent = 'Editar OT - ' + numeroOT;
-            document.getElementById('btnGuardar').textContent = '💾 Actualizar OT';
-            document.getElementById('btnEliminar').style.display = 'inline-block';
-            
-            // Deshabilitar campos clave en edición
-            document.getElementById('numeroOT').disabled = true;
-            document.getElementById('clienteOT').disabled = true;
-            document.getElementById('servicioOT').disabled = true;
-            document.getElementById('pedidoOT').disabled = true;
-            document.getElementById('ayudaFiltroPedido').style.display = 'none';
+        } catch (e) {
+            mostrarError("Error crítico al iniciar la página: " + e.message);
+            console.error("Error en DOMContentLoaded:", e);
         }
+    });
 
-        function configurarModoCreacion() {
-            console.log("🆕 MODO CREACIÓN GLOBAL");
-            document.getElementById('modoFormulario').value = 'crearGlobal';
-            // (El resto de títulos ya son correctos por defecto)
-            setFechaHoy();
-        }
+    // --- CONFIGURACIÓN DE MODOS ---
+
+    function configurarModoEdicion(numeroOT) {
+        console.log("✏️ Configurando MODO EDICIÓN para OT: " + numeroOT);
         
-        function configurarModoAislado(lineaID) {
-            console.log("🆕 MODO CREACIÓN AISLADO para Línea: " + lineaID);
-            document.getElementById('modoFormulario').value = 'crearAislado';
-            document.getElementById('tituloPagina').textContent = 'Registrar OT para Línea';
-            document.getElementById('tituloPrincipal').textContent = 'Registrar OT (Aislado)';
-            document.getElementById('subtituloFormulario').textContent = `Nueva OT para Línea: ${lineaID}`;
-            
-            // Deshabilitar campos que se llenarán automáticamente
-            document.getElementById('clienteOT').disabled = true;
-            document.getElementById('servicioOT').disabled = true;
-            document.getElementById('pedidoOT').disabled = true;
-            
-            document.getElementById('ayudaFiltroPedido').style.display = 'none';
-            setFechaHoy();
-        }
-
-        function setFechaHoy() {
-            const today = new Date();
-            const offset = today.getTimezoneOffset();
-            const fechaLocal = new Date(today.getTime() - (offset * 60 * 1000));
-            document.getElementById('fechaOT').value = fechaLocal.toISOString().split('T')[0];
-        }
-
-        // --- CARGA DE DATOS ---
-
-        function cargarDatosInicialesGlobales(callback = null) {
-            mostrarLoading(true, "Cargando datos...");
-            google.script.run
-                .withSuccessHandler(function(datos) {
-                    mostrarLoading(false);
-                    clientes = datos.clientes || [];
-                    servicios = datos.servicios || [];
-                    pedidos = datos.pedidos || [];
-                    
-                    llenarSelectsGlobales(); // Llenar todos los selects
-                    
-                    if (callback) callback(); // Ejecutar callback (ej. cargarDatosOTExistente)
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    alert("Error al cargar datos iniciales: " + error.message);
-                })
-                .getDatosInicialesOT();
-        }
+        document.getElementById('modoFormulario').value = 'editarGlobal';
+        document.getElementById('otIDExistente').value = numeroOT;
+        document.getElementById('tituloPagina').textContent = 'Editar Orden de Trabajo';
+        document.getElementById('tituloPrincipal').textContent = 'Editar OT - ' + numeroOT;
+        document.getElementById('btnGuardar').textContent = '💾 Actualizar OT';
+        document.getElementById('btnEliminar').style.display = 'inline-block';
         
-        function cargarDatosDesdeLinea(lineaID) {
-            mostrarLoading(true, "Cargando datos de la línea...");
-            google.script.run
-                .withSuccessHandler(function(resultado) {
-                    mostrarLoading(false);
-                    if (resultado.success) {
-                        llenarFormularioAislado(resultado.data);
-                    } else {
-                        alert("Error: " + resultado.message);
-                        // Si falla, volver al resumen global de OT
-                        window.open('<?!= getScriptUrl() ?>?page=OT', '_self');
-                    }
-                })
-                .withFailureHandler(function(error) {
-                     mostrarLoading(false);
-                     alert("Error al cargar datos: " + error.message);
-                     window.open('<?!= getScriptUrl() ?>?page=OT', '_self');
-                })
-                .getDatosDeLineaParaOT(lineaID); // <- Llama a la nueva función del backend
-        }
-        
-        function cargarDatosOTExistente() {
-            const numeroOT = document.getElementById('otIDExistente').value;
-            mostrarLoading(true, "Cargando datos de la OT...");
-            
-            google.script.run
-                .withSuccessHandler(function(resultado) {
-                    mostrarLoading(false);
-                    if (resultado && resultado.success) {
-                        otExistente = resultado.data;
-                        llenarFormularioConDatos(otExistente);
-                    } else {
-                        alert("Error al cargar la OT: " + (resultado.message || 'Error desconocido'));
-                    }
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    alert("Error al cargar la OT: " + error.message);
-                })
-                .obtenerOTPorNumero(numeroOT);
-        }
+        document.getElementById('numeroOT').disabled = true;
+        document.getElementById('clienteOT').disabled = true;
+        document.getElementById('servicioOT').disabled = true;
+        document.getElementById('pedidoOT').disabled = true;
+        document.getElementById('ayudaFiltroPedido').style.display = 'none';
+    }
 
-        // --- LLENADO DE FORMULARIO ---
+    function configurarModoCreacion() {
+        console.log("🆕 Configurando MODO CREACIÓN GLOBAL");
+        document.getElementById('modoFormulario').value = 'crearGlobal';
+        setFechaHoy();
+    }
+    
+    function configurarModoAislado(lineaID) {
+    console.log("🆕 Configurando MODO CREACIÓN AISLADO para Línea: " + lineaID);
+    document.getElementById('modoFormulario').value = 'crearAislado';
+    document.getElementById('tituloPagina').textContent = 'Registrar OT para Línea';
+    document.getElementById('tituloPrincipal').textContent = 'Registrar OT (Aislado)';
+    document.getElementById('subtituloFormulario').textContent = `Nueva OT para Pedido: ${lineaID.split('-L')[0]}`;
+    
+    // --- LÓGICA DE BLOQUEO CORREGIDA ---
+    document.getElementById('clienteOT').disabled = true; // Cliente BLOQUEADO
+    document.getElementById('servicioOT').disabled = false; // Servicio HABILITADO
+    document.getElementById('pedidoOT').disabled = true; // Pedido BLOQUEADO
+    
+    document.getElementById('ayudaFiltroPedido').style.display = 'none';
+    setFechaHoy();
+}
 
-        function llenarSelectsGlobales() {
-            // Llenar clientes (Valor = RUC, Texto = Nombre (RUC))
-            const selectCliente = document.getElementById('clienteOT');
-            selectCliente.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
-            if (clientes && clientes.length > 1) {
-                clientes.slice(1).forEach(cliente => {
-                    if (cliente[0] && cliente[1]) { // [0] = RUC, [1] = Nombre
-                        const option = document.createElement('option');
-                        option.value = cliente[0]; // Guardar RUC
-                        option.textContent = `${cliente[1]} (${cliente[0]})`;
-                        selectCliente.appendChild(option);
-                    }
-                });
-            }
+    function setFechaHoy() {
+        const today = new Date();
+        const offset = today.getTimezoneOffset();
+        const fechaLocal = new Date(today.getTime() - (offset * 60 * 1000));
+        document.getElementById('fechaOT').value = fechaLocal.toISOString().split('T')[0];
+    }
 
-            // Llenar servicios (Valor = ID, Texto = ID - Descripción)
-            const selectServicio = document.getElementById('servicioOT');
-            selectServicio.innerHTML = '<option value="">-- Seleccionar Servicio --</option>';
-            if (servicios && servicios.length > 1) {
-                servicios.slice(1).forEach(servicio => {
-                    if (servicio[0] && servicio[1]) { // [0] = ID, [1] = Descripción
-                        const option = document.createElement('option');
-                        option.value = servicio[0]; // Guardar ID
-                        option.textContent = `${servicio[0]} - ${servicio[1]}`;
-                        selectServicio.appendChild(option);
-                    }
-                });
-            }
+    // --- CARGA DE DATOS (CON LOGS DE DIAGNÓSTICO) ---
 
-            // Llenar pedidos (se llena con filtro)
-            document.getElementById('pedidoOT').innerHTML = '<option value="">-- Seleccione Cliente y Servicio --</option>';
-        }
-        
-        function llenarFormularioAislado(datos) {
-            // Llenar y bloquear los campos del pedido
-            
-            // Llenar Cliente
-            const selCliente = document.getElementById('clienteOT');
-            selCliente.innerHTML = `<option value="${datos.clienteRUC}" selected>${datos.clienteNombre} (${datos.clienteRUC})</option>`;
-            
-            // Llenar Servicio
-            const selServicio = document.getElementById('servicioOT');
-            selServicio.innerHTML = `<option value="${datos.codServicio}" selected>${datos.descServicio} (${datos.codServicio})</option>`;
-            
-            // Llenar Pedido
-            const selPedido = document.getElementById('pedidoOT');
-            selPedido.innerHTML = `<option value="${datos.numPedido}" selected>${datos.numPedido}</option>`;
-
-            // Ajustar link de "Volver"
-            document.getElementById('retornarLink').href = `<?!= getScriptUrl() ?>?page=OT&pedido=${encodeURIComponent(datos.numPedido)}`;
-        }
-
-        function llenarFormularioConDatos(datos) {
-            // Llenar campos básicos
-            document.getElementById('numeroOT').value = datos.numeroOT || '';
-            document.getElementById('fechaOT').value = datos.fecha || '';
-            
-            // Llenar Selects (requiere que los selects globales ya estén cargados)
-            document.getElementById('clienteOT').value = datos.clienteRUC || ''; // Asumiendo que 'cliente' en OT es RUC
-            document.getElementById('servicioOT').value = datos.servicio || '';
-            document.getElementById('pedidoOT').value = datos.pedido || '';
-            
-            document.getElementById('horaInicio').value = datos.horaInicio || '';
-            document.getElementById('horaFin').value = datos.horaFin || '';
-            document.getElementById('tiempoRefrigerio').value = datos.tiempoRefrigerio || 0;
-            
-            document.getElementById('horometroInicio').value = datos.horometroInicio || '';
-            document.getElementById('horometroFin').value = datos.horometroFin || '';
-            
-            // Llenar montos (si existen en la hoja OT)
-            document.getElementById('montoDespacho').value = datos.montoDespacho || 0;
-            document.getElementById('montoMovilizacion').value = datos.montoMovilizacion || 0;
-            
-            // (Tu lógica de Camión Grúa va aquí)
-            
-            // Actualizar resumen
-            setTimeout(() => {
-                calcularTiempos();
-                calcularHorometro();
-            }, 200);
-            
-            // (Tu lógica de infoRegistro va aquí)
-        }
-
-        // --- EVENTOS Y CÁLCULOS ---
-        
-        function configurarEventos() {
-            document.getElementById('horaInicio').addEventListener('change', calcularTiempos);
-            document.getElementById('horaFin').addEventListener('change', calcularTiempos);
-            document.getElementById('tiempoRefrigerio').addEventListener('input', calcularTiempos);
-            
-            document.getElementById('horometroInicio').addEventListener('input', calcularHorometro);
-            document.getElementById('horometroFin').addEventListener('input', calcularHorometro);
-            
-            // Solo activar filtro en modo global
-            if (modoFormulario === 'crearGlobal') {
-                 document.getElementById('clienteOT').addEventListener('change', filtrarPedidos);
-                 document.getElementById('servicioOT').addEventListener('change', filtrarPedidos);
-            }
-        }
-        
-        function calcularTiempos() {
-            // ... (Tu función calcularTiempos se mantiene igual) ...
-            const horaInicio = document.getElementById('horaInicio').value;
-            const horaFin = document.getElementById('horaFin').value;
-            const tiempoRefrigerio = parseInt(document.getElementById('tiempoRefrigerio').value) || 0;
-
-            if (horaInicio && horaFin) {
-                const inicio = new Date(`2000-01-01T${horaInicio}`);
-                const fin = new Date(`2000-01-01T${horaFin}`);
+    function cargarDatosInicialesGlobales(callback = null) {
+        mostrarLoading(true, "Cargando datos...");
+        console.log("Llamando a getDatosInicialesOT()...");
+        google.script.run
+            .withSuccessHandler(function(datos) {
+                mostrarLoading(false);
+                console.log("🚀 ÉXITO en getDatosInicialesOT. Datos recibidos:", datos);
                 
-                let diffMs = fin - inicio;
-                if (diffMs < 0) { // Asume día siguiente
-                    fin.setDate(fin.getDate() + 1);
-                    diffMs = fin - inicio;
-                }
+                clientes = datos.clientes || [];
+                servicios = datos.servicios || [];
+                pedidos = datos.pedidos || [];
                 
-                const diffMinutos = (diffMs / (1000 * 60)) - tiempoRefrigerio;
-                const horasTrabajo = (diffMinutos / 60).toFixed(2);
-                document.getElementById('tiempoTotal').textContent = horasTrabajo;
-            }
-        }
+                console.log(`Clientes: ${clientes.length}, Servicios: ${servicios.length}, Pedidos: ${pedidos.length}`);
 
-        function calcularHorometro() {
-             // ... (Tu función calcularHorometro se mantiene igual) ...
-            const horometroInicio = parseFloat(document.getElementById('horometroInicio').value) || 0;
-            const horometroFin = parseFloat(document.getElementById('horometroFin').value) || 0;
-            
-            if (horometroFin > horometroInicio) {
-                const horometroTrabajado = (horometroFin - horometroInicio).toFixed(2);
-                document.getElementById('horometroTrabajado').textContent = horometroTrabajado;
+                llenarSelectsGlobales(); 
+                
+                if (callback) callback(); 
+            })
+            .withFailureHandler(function(error) {
+                mostrarLoading(false);
+                console.error("❌ ERROR CRÍTICO en getDatosInicialesOT:", error);
+                alert("Error CRÍTICO al cargar datos: " + error.message);
+            })
+            .getDatosInicialesOT();
+    }
+    
+    function cargarDatosDesdeLinea(lineaID) {
+    mostrarLoading(true, "Cargando datos de la línea y pedido...");
+    console.log(`Llamando a getDatosDePedidoParaOT(${lineaID})...`); // Nueva función
+    google.script.run
+        .withSuccessHandler(function(resultado) {
+            mostrarLoading(false);
+            console.log("🚀 ÉXITO en getDatosDePedidoParaOT. Resultado:", resultado);
+
+            if (resultado.success) {
+                // Ahora pasamos AMBOS datos a la función de llenado
+                llenarFormularioAislado(resultado.dataLinea, resultado.serviciosDelPedido);
             } else {
-                document.getElementById('horometroTrabajado').textContent = '0';
+                console.error("Error reportado por el servidor:", resultado.message);
+                alert("Error: " + resultado.message);
+                window.open(SCRIPT_URL + '?page=OT', '_self'); 
             }
+        })
+        .withFailureHandler(function(error) {
+             mostrarLoading(false);
+             console.error("❌ ERROR CRÍTICO en getDatosDePedidoParaOT:", error);
+             alert("Error CRÍTICO al cargar datos de línea: " + error.message);
+             window.open(SCRIPT_URL + '?page=OT', '_self'); 
+        })
+        .getDatosDePedidoParaOT(lineaID); // <-- LLAMA A LA NUEVA FUNCIÓN DEL BACKEND
+}
+    
+    function cargarDatosOTExistente() {
+        const numeroOT = document.getElementById('otIDExistente').value;
+        mostrarLoading(true, "Cargando datos de la OT...");
+        console.log(`Llamando a obtenerOTPorNumero(${numeroOT})...`);
+        
+        google.script.run
+            .withSuccessHandler(function(resultado) {
+                mostrarLoading(false);
+                console.log("🚀 ÉXITO en obtenerOTPorNumero. Resultado:", resultado);
+                if (resultado && resultado.success) {
+                    otExistente = resultado.data;
+                    llenarFormularioConDatos(otExistente);
+                } else {
+                    console.error("Error reportado por el servidor:", resultado.message);
+                    alert("Error al cargar la OT: " + (resultado.message || 'Error desconocido'));
+                }
+            })
+            .withFailureHandler(function(error) {
+                mostrarLoading(false);
+                console.error("❌ ERROR CRÍTICO en obtenerOTPorNumero:", error);
+                alert("Error al cargar la OT: " + error.message);
+            })
+            .obtenerOTPorNumero(numeroOT);
+    }
+
+    // --- LLENADO DE FORMULARIO (CON LOGS) ---
+
+    function llenarSelectsGlobales() {
+    console.log("Iniciando llenado de datalists globales...");
+    
+    // Llenar clientes
+    const datalistCliente = document.getElementById('lista-clientes-ot');
+    datalistCliente.innerHTML = ''; // Limpiar opciones
+    if (clientes && clientes.length > 1) { // > 1 para saltar encabezado
+        console.log(`Llenando ${clientes.length - 1} clientes...`);
+        clientes.slice(1).forEach(cliente => {
+            const ruc = cliente[0];
+            const nombre = cliente[1];
+            if (ruc && nombre) { 
+                const option = document.createElement('option');
+                // El 'value' es lo que el usuario ve y selecciona
+                option.value = `${nombre} (${ruc})`;
+                // 'label' (opcional) puede mostrar info extra en algunos navegadores
+                option.label = ruc; 
+                datalistCliente.appendChild(option);
+            }
+        });
+    } else {
+        console.warn("No hay datos de clientes (o solo encabezado) para llenar.");
+    }
+
+    // Llenar servicios
+    const datalistServicio = document.getElementById('lista-servicios-ot');
+    datalistServicio.innerHTML = ''; // Limpiar opciones
+    if (servicios && servicios.length > 1) { // > 1 para saltar encabezado
+        console.log(`Llenando ${servicios.length - 1} servicios...`);
+        servicios.slice(1).forEach(servicio => {
+            const id = servicio[0];
+            const desc = servicio[1];
+            if (id && desc) { 
+                const option = document.createElement('option');
+                // El 'value' es lo que el usuario ve y selecciona
+                option.value = `${id} - ${desc}`;
+                // 'label' (opcional)
+                option.label = desc; 
+                datalistServicio.appendChild(option);
+            }
+        });
+    } else {
+        console.warn("No hay datos de servicios (o solo encabezado) para llenar.");
+    }
+
+    console.log("Llenado de datalists globales completado.");
+    document.getElementById('pedidoOT').innerHTML = '<option value="">-- Seleccione Cliente y Servicio --</option>';
+}
+    
+    function llenarFormularioAislado(datosLinea, serviciosDelPedido) {
+    console.log("Llenando formulario aislado con datos de línea:", datosLinea);
+    console.log(`...y con ${serviciosDelPedido.length} servicios del pedido.`);
+    
+    // 1. Llenar Cliente (input bloqueado)
+    const inputCliente = document.getElementById('clienteOT');
+    inputCliente.value = `${datosLinea.clienteNombre} (${datosLinea.clienteRUC})`;
+    
+    // 2. Llenar Pedido (select bloqueado)
+    const selPedido = document.getElementById('pedidoOT');
+    selPedido.innerHTML = `<option value="${datosLinea.numPedido}" selected>${datosLinea.numPedido}</option>`;
+    
+    // 3. Llenar la DATALIST de Servicios (solo con servicios del pedido)
+    const datalistServicio = document.getElementById('lista-servicios-ot');
+    datalistServicio.innerHTML = ''; // Limpiar opciones
+    
+    if (serviciosDelPedido && serviciosDelPedido.length > 0) {
+        serviciosDelPedido.forEach(servicio => {
+            const id = servicio.cod;
+            const desc = servicio.desc;
+            if (id) { 
+                const option = document.createElement('option');
+                option.value = `${id} - ${desc}`;
+                datalistServicio.appendChild(option);
+            }
+        });
+    } else {
+         console.warn("No se recibieron servicios para la datalist del pedido.");
+    }
+
+    // 4. Pre-seleccionar el Servicio (input habilitado)
+    // Se pre-selecciona el servicio de la línea específica en la que se hizo clic
+    const inputServicio = document.getElementById('servicioOT');
+    inputServicio.value = `${datosLinea.codServicio} - ${datosLinea.descServicio}`;
+
+    // 5. Ajustar link de retorno
+    document.getElementById('retornarLink').href = `${SCRIPT_URL}?page=OT&pedido=${encodeURIComponent(datosLinea.numPedido)}`;
+}
+
+    function llenarFormularioConDatos(datos) {
+        console.log("Llenando formulario con datos de OT existente:", datos);
+        document.getElementById('numeroOT').value = datos.numeroOT || '';
+        document.getElementById('fechaOT').value = datos.fecha ? datos.fecha.split('T')[0] : '';
+        
+        // Revisa `obtenerOTPorNumero` en _Comercial_Logic.gs
+        // Se mapea 'Cliente RUC' a 'cliente' en el objeto de datos
+        document.getElementById('clienteOT').value = datos.cliente || ''; 
+        document.getElementById('servicioOT').value = datos.servicio || '';
+        document.getElementById('pedidoOT').value = datos.pedido || '';
+        
+        document.getElementById('horaInicio').value = datos.horaInicio || '';
+        document.getElementById('horaFin').value = datos.horaFin || '';
+        document.getElementById('tiempoRefrigerio').value = datos.tiempoRefrigerio || 0;
+        
+        document.getElementById('horometroInicio').value = datos.horometroInicio || 0;
+        document.getElementById('horometroFin').value = datos.horometroFin || 0;
+        
+        document.getElementById('montoDespacho').value = datos.montoDespacho || 0;
+        document.getElementById('montoMovilizacion').value = datos.montoMovilizacion || 0;
+                
+        setTimeout(() => {
+            calcularTiempos();
+            calcularHorometro();
+        }, 200);
+        
+        const infoRegistro = document.getElementById('infoRegistro');
+        if (infoRegistro && datos.usuario) {
+            document.getElementById('usuarioRegistro').textContent = datos.usuario;
+            document.getElementById('fechaRegistro').textContent = datos.fechaRegistro ? new Date(datos.fechaRegistro).toLocaleString() : 'N/A';
+            infoRegistro.style.display = 'block';
         }
+    }
 
-        function filtrarPedidos() {
-            // ... (Tu función filtrarPedidos se mantiene igual) ...
-             const clienteSeleccionado = document.getElementById('clienteOT').value; // RUC
-             const servicioSeleccionado = document.getElementById('servicioOT').value; // ID Servicio
+    // --- EVENTOS Y CÁLCULOS ---
+    
+    function configurarEventos() {
+        document.getElementById('horaInicio').addEventListener('change', calcularTiempos);
+        document.getElementById('horaFin').addEventListener('change', calcularTiempos);
+        document.getElementById('tiempoRefrigerio').addEventListener('input', calcularTiempos);
+        
+        document.getElementById('horometroInicio').addEventListener('input', calcularHorometro);
+        document.getElementById('horometroFin').addEventListener('input', calcularHorometro);
+        
+        if (modoFormulario === 'crearGlobal') {
+             console.log("Añadiendo listeners de filtro para cliente y servicio.");
+             document.getElementById('clienteOT').addEventListener('change', filtrarPedidos);
+             document.getElementById('servicioOT').addEventListener('change', filtrarPedidos);
+        }
+    }
+    
+    function calcularTiempos() {
+        const horaInicio = document.getElementById('horaInicio').value;
+        const horaFin = document.getElementById('horaFin').value;
+        const tiempoRefrigerio = parseInt(document.getElementById('tiempoRefrigerio').value) || 0;
+
+        if (horaInicio && horaFin) {
+            const inicio = new Date(`2000-01-01T${horaInicio}`);
+            const fin = new Date(`2000-01-01T${horaFin}`);
             
-             if (!clienteSeleccionado || !servicioSeleccionado) {
-                document.getElementById('pedidoOT').innerHTML = '<option value="">-- Seleccione Cliente y Servicio --</option>';
-                return;
-             }
+            let diffMs = fin - inicio;
+            if (diffMs < 0) { 
+                fin.setDate(fin.getDate() + 1);
+                diffMs = fin - inicio;
+            }
+            
+            const diffMinutos = (diffMs / (1000 * 60)) - tiempoRefrigerio;
+            const horasTrabajo = (diffMinutos / 60).toFixed(2);
+            document.getElementById('tiempoTotal').textContent = horasTrabajo;
+        }
+    }
 
-            mostrarLoading(true, "Buscando pedidos...");
-            google.script.run
-                .withSuccessHandler(function(pedidosFiltrados) {
+    function calcularHorometro() {
+        const horometroInicio = parseFloat(document.getElementById('horometroInicio').value) || 0;
+        const horometroFin = parseFloat(document.getElementById('horometroFin').value) || 0;
+        
+        if (horometroFin > horometroInicio) {
+            const horometroTrabajado = (horometroFin - horometroInicio).toFixed(2);
+            document.getElementById('horometroTrabajado').textContent = horometroTrabajado;
+        } else {
+            document.getElementById('horometroTrabajado').textContent = '0';
+        }
+    }
+
+    function filtrarPedidos() {
+     // Extraer valor de los inputs
+     const valorCliente = document.getElementById('clienteOT').value;
+     const valorServicio = document.getElementById('servicioOT').value;
+
+     // --- Lógica para extraer RUC e ID ---
+     let clienteSeleccionado = null;
+     let servicioSeleccionado = null;
+
+     try {
+        // Extraer RUC: "Cliente Nombre (12345678901)" -> "12345678901"
+        if (valorCliente.includes('(')) {
+             clienteSeleccionado = valorCliente.split('(').pop().replace(')', '').trim();
+        }
+        // Extraer ID Servicio: "S001 - Descripcion" -> "S001"
+        if (valorServicio.includes(' - ')) {
+             servicioSeleccionado = valorServicio.split(' - ')[0].trim();
+        }
+     } catch (e) {
+        console.error("Error al parsear RUC o ID de servicio", e);
+     }
+     
+     // --- Fin de la lógica de extracción ---
+
+     if (!clienteSeleccionado || !servicioSeleccionado) {
+        document.getElementById('pedidoOT').innerHTML = '<option value="">-- Seleccione Cliente y Servicio --</option>';
+        return;
+     }
+
+    mostrarLoading(true, "Buscando pedidos...");
+    console.log(`Llamando a filtrarPedidosPorClienteYServicio(${clienteSeleccionado}, ${servicioSeleccionado})...`);
+    
+    google.script.run
+        .withSuccessHandler(function(pedidosFiltrados) {
+            mostrarLoading(false);
+            console.log("🚀 ÉXITO en filtrarPedidos. Pedidos recibidos:", pedidosFiltrados);
+            const selectPedido = document.getElementById('pedidoOT');
+            selectPedido.innerHTML = '<option value="">-- Seleccionar Pedido --</option>';
+            
+            if (pedidosFiltrados && pedidosFiltrados.length > 0) {
+                pedidosFiltrados.forEach(pedido => {
+                    if (pedido[0]) {
+                        const option = document.createElement('option');
+                        option.value = pedido[0]; 
+                        option.textContent = pedido[0]; 
+                        selectPedido.appendChild(option);
+                    }
+                });
+            } else {
+                console.warn("No se encontraron pedidos para ese filtro.");
+                selectPedido.innerHTML = '<option value="">-- No hay pedidos --</option>';
+            }
+        })
+        .withFailureHandler(function(error) {
+            mostrarLoading(false);
+            console.error("❌ ERROR CRÍTICO en filtrarPedidos:", error);
+            alert("Error filtrando pedidos: " + error.message);
+        })
+        .filtrarPedidosPorClienteYServicio(clienteSeleccionado, servicioSeleccionado);
+}
+
+    // --- GUARDADO ---
+
+    function guardarOT() {
+    
+    // --- Lógica para extraer RUC e ID ---
+    const valorCliente = document.getElementById('clienteOT').value;
+    const valorServicio = document.getElementById('servicioOT').value;
+    let rucCliente = valorCliente;
+    let idServicio = valorServicio;
+
+    try {
+        if (valorCliente.includes('(')) {
+             rucCliente = valorCliente.split('(').pop().replace(')', '').trim();
+        }
+        if (valorServicio.includes(' - ')) {
+             idServicio = valorServicio.split(' - ')[0].trim();
+        }
+    } catch (e) {
+        console.warn("No se pudo parsear RUC o ID de servicio al guardar, se guardará el texto completo.");
+        // Si falla el parseo, al menos guardamos el texto completo
+        rucCliente = valorCliente;
+        idServicio = valorServicio;
+    }
+    // --- Fin de la lógica de extracción ---
+
+    const formData = {
+        modo: modoFormulario,
+        otIDExistente: document.getElementById('otIDExistente').value,
+        lineaID: document.getElementById('lineaIDAsociada').value,
+        numeroOT: document.getElementById('numeroOT').value,
+        fecha: document.getElementById('fechaOT').value,
+        
+        // --- VALORES CORREGIDOS ---
+        clienteRUC: rucCliente, 
+        servicio: idServicio, 
+        // ---
+        
+        pedido: document.getElementById('pedidoOT').value,
+        horaInicio: document.getElementById('horaInicio').value,
+        horaFin: document.getElementById('horaFin').value,
+        tiempoRefrigerio: document.getElementById('tiempoRefrigerio').value,
+        tiempoTotal: document.getElementById('tiempoTotal').textContent,
+        horometroInicio: document.getElementById('horometroInicio').value,
+        horometroFin: document.getElementById('horometroFin').value,
+        horometroTrabajado: document.getElementById('horometroTrabajado').textContent,
+        esCamionGrua: false, 
+        montoDespacho: document.getElementById('montoDespacho').value,
+        montoMovilizacion: document.getElementById('montoMovilizacion').value
+    };
+
+    console.log("💾 Datos a guardar:", formData);
+
+    // Validaciones
+    if (!formData.numeroOT || !formData.fecha || !formData.clienteRUC || !formData.servicio || 
+        !formData.horaInicio || !formData.horaFin) {
+        alert("Por favor complete todos los campos obligatorios (*)");
+        return;
+    }
+
+    if (modoFormulario === 'crearAislado' && !formData.lineaID) {
+        alert("Error: No se encontró el ID de Línea asociado. No se puede guardar.");
+        return;
+    }
+    
+    if (parseFloat(formData.horometroTrabajado) <= 0) {
+         if (!confirm("Advertencia: El horómetro trabajado es 0. ¿Desea continuar?")) {
+             return;
+         }
+    }
+
+    const textoConfirmacion = (modoFormulario === 'editarGlobal') ? "Actualizar" : "Guardar";
+    if (!confirm(`¿Está seguro que desea ${textoConfirmacion.toLowerCase()} esta OT?`)) {
+        return;
+    }
+
+    mostrarLoading(true, (modoFormulario === 'editarGlobal') ? "Actualizando OT..." : "Guardando OT...");
+    console.log(`Llamando a guardarOT() en modo ${modoFormulario}...`);
+
+    google.script.run
+        .withSuccessHandler(function(resultado) {
+            mostrarLoading(false);
+            console.log("🚀 ÉXITO en guardarOT. Resultado:", resultado);
+            if (resultado.success) {
+                alert(`✅ OT ${textoConfirmacion.toLowerCase()}da exitosamente`);
+                
+                if (modoFormulario === 'crearAislado' && formData.pedido) {
+                    window.open(`${SCRIPT_URL}?page=OT&pedido=${encodeURIComponent(formData.pedido)}`, '_self');
+                } else {
+                    window.open(SCRIPT_URL + '?page=OT', '_self');
+                }
+            } else {
+                console.error("Error reportado por el servidor (guardarOT):", resultado.message);
+                alert("❌ Error al guardar: " + resultado.message);
+            }
+        })
+        .withFailureHandler(function(error) {
+            mostrarLoading(false);
+            console.error("❌ ERROR CRÍTICO en guardarOT:", error);
+            alert("❌ Error al guardar: " + error.message);
+        })
+        .guardarOT(formData);
+}
+
+    function eliminarOT() {
+        const otID = document.getElementById('otIDExistente').value;
+        if (!otID) {
+            alert("No hay una OT cargada para eliminar.");
+            return;
+        }
+        if (confirm(`¿Está SEGURO que desea eliminar permanentemente la OT ${otID}? Esta acción no se puede deshacer.`)) {
+             mostrarLoading(true, `Eliminando OT ${otID}...`);
+             
+             // ¡DEBES CREAR ESTA FUNCIÓN EN EL BACKEND!
+             /*
+             google.script.run
+                .withSuccessHandler(function(res) {
                     mostrarLoading(false);
-                    const selectPedido = document.getElementById('pedidoOT');
-                    selectPedido.innerHTML = '<option value="">-- Seleccionar Pedido --</option>';
-                    
-                    if (pedidosFiltrados && pedidosFiltrados.length > 0) {
-                        pedidosFiltrados.forEach(pedido => {
-                            if (pedido[0]) {
-                                const option = document.createElement('option');
-                                option.value = pedido[0]; // N° Pedido
-                                option.textContent = pedido[0]; // N° Pedido
-                                selectPedido.appendChild(option);
-                            }
-                        });
+                    if (res.success) {
+                        alert("OT eliminada exitosamente.");
+                        window.open(SCRIPT_URL + '?page=OT', '_self');
                     } else {
-                        selectPedido.innerHTML = '<option value="">-- No hay pedidos --</option>';
+                        alert("Error al eliminar: " + res.message);
                     }
                 })
-                .withFailureHandler(function(error) {
+                .withFailureHandler(function(err) {
                     mostrarLoading(false);
-                    alert("Error filtrando pedidos: " + error.message);
+                    alert("Error al eliminar: " + err.message);
                 })
-                .filtrarPedidosPorClienteYServicio(clienteSeleccionado, servicioSeleccionado);
+                .eliminarOTPorID(otID); // <--- Función a crear en _Comercial_Logic.gs
+             */
+             alert("Funcionalidad 'eliminarOT' no implementada en el backend.");
+             mostrarLoading(false);
         }
+    }
 
-        // --- GUARDADO ---
-
-        function guardarOT() {
-            const formData = {
-                // IDs
-                modo: modoFormulario,
-                otIDExistente: document.getElementById('otIDExistente').value,
-                lineaID: document.getElementById('lineaIDAsociada').value,
-                
-                // Datos del Formulario
-                numeroOT: document.getElementById('numeroOT').value,
-                fecha: document.getElementById('fechaOT').value,
-                clienteRUC: document.getElementById('clienteOT').value,
-                servicio: document.getElementById('servicioOT').value,
-                pedido: document.getElementById('pedidoOT').value,
-                
-                // Tiempos
-                horaInicio: document.getElementById('horaInicio').value,
-                horaFin: document.getElementById('horaFin').value,
-                tiempoRefrigerio: document.getElementById('tiempoRefrigerio').value,
-                tiempoTotal: document.getElementById('tiempoTotal').textContent,
-                
-                // Horómetros
-                horometroInicio: document.getElementById('horometroInicio').value,
-                horometroFin: document.getElementById('horometroFin').value,
-                horometroTrabajado: document.getElementById('horometroTrabajado').textContent,
-                
-                // (Tu lógica de esCamionGrua y sus horómetros va aquí)
-                esCamionGrua: false, // Reemplaza con tu lógica de checkbox
-
-                // Montos
-                montoDespacho: document.getElementById('montoDespacho').value,
-                montoMovilizacion: document.getElementById('montoMovilizacion').value
-            };
-
-            console.log("💾 Datos a guardar:", formData);
-
-            // Validaciones
-            if (!formData.numeroOT || !formData.fecha || !formData.clienteRUC || !formData.servicio || 
-                !formData.horaInicio || !formData.horaFin) {
-                alert("Por favor complete todos los campos obligatorios (*)");
-                return;
-            }
-
-            if (modoFormulario === 'crearAislado' && !formData.lineaID) {
-                alert("Error: No se encontró el ID de Línea asociado. No se puede guardar.");
-                return;
-            }
-            
-            if (parseFloat(formData.horometroTrabajado) <= 0) {
-                 if (!confirm("Advertencia: El horómetro trabajado es 0. ¿Desea continuar?")) {
-                     return;
-                 }
-            }
-
-            const textoConfirmacion = (modoFormulario === 'editarGlobal') ? "Actualizar" : "Guardar";
-            if (!confirm(`¿Está seguro que desea ${textoConfirmacion.toLowerCase()} esta OT?`)) {
-                return;
-            }
-
-            mostrarLoading(true, (modoFormulario === 'editarGlobal') ? "Actualizando OT..." : "Guardando OT...");
-
-            google.script.run
-                .withSuccessHandler(function(resultado) {
-                    mostrarLoading(false);
-                    if (resultado.success) {
-                        alert(`✅ OT ${textoConfirmacion.toLowerCase()}da exitosamente`);
-                        
-                        // Decidir a dónde volver
-                        if (modoFormulario === 'crearAislado' && formData.pedido) {
-                            window.open(`<?!= getScriptUrl() ?>?page=OT&pedido=${encodeURIComponent(formData.pedido)}`, '_self');
-                        } else {
-                            window.open('<?!= getScriptUrl() ?>?page=OT', '_self');
-                        }
-                    } else {
-                        alert("❌ Error al guardar: " + resultado.message);
-                    }
-                })
-                .withFailureHandler(function(error) {
-                    mostrarLoading(false);
-                    alert("❌ Error al guardar: " + error.message);
-                })
-                .guardarOT(formData);
-        }
-
-        function eliminarOT() {
-            // ... (Tu función eliminarOT se mantiene igual) ...
-        }
-
-        function mostrarLoading(mostrar, mensaje = "Cargando...") {
-             // ... (Tu función mostrarLoading se mantiene igual) ...
-            const overlay = document.getElementById("loadingOverlay");
-            if (overlay) overlay.style.display = mostrar ? "flex" : "none";
-            const texto = document.getElementById("loadingText");
-            if (texto) texto.textContent = mensaje;
-        }
-    </script>
+    function mostrarLoading(mostrar, mensaje = "Cargando...") {
+        const overlay = document.getElementById("loadingOverlay");
+        if (overlay) overlay.style.display = mostrar ? "flex" : "none";
+        const texto = document.getElementById("loadingText");
+        if (texto) texto.textContent = mensaje;
+    }
+</script>
 </body>
 </html>
