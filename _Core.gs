@@ -9,26 +9,26 @@ const cache = CacheService.getScriptCache();
  * Maneja las solicitudes GET y sirve las páginas correspondientes
  */
 function doGet(e) {
-    const page = e.parameter.page || 'Modulos'; 
-    // Añadir 'Acta' a la lista
-    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta']; // <-- Añadido 'Acta'
+    const page = e.parameter.page || 'Modulos';
+    
+    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta'];
+    
+    let tmpl;
     if (validPages.includes(page)) {
-        // --- CORRECCIÓN ---
-        // 1. PRIMERO creamos la plantilla
-        const tmpl = HtmlService.createTemplateFromFile(page);
-        
-        // 2. LUEGO le asignamos los permisos
-        tmpl.permisos = obtenerPermisosUsuario(); 
-        
-        // 3. FINALMENTE la evaluamos y retornamos
-        return tmpl.evaluate() 
-            .setTitle(page) 
-            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-        // --- FIN DE LA CORRECCIÓN ---
+        tmpl = HtmlService.createTemplateFromFile(page);
+    } else {
+        tmpl = HtmlService.createTemplateFromFile('Modulos'); // Página por defecto
     }
-    // Página por defecto
-    return HtmlService.createTemplateFromFile('Modulos').evaluate()
-        .setTitle('Módulos Principales')
+
+    // --- CORRECCIÓN DEFINITIVA ---
+    // Pasamos el objeto de parámetros tal cual.
+    tmpl.parametros = e.parameter || {}; 
+    // --- FIN DE LA CORRECCIÓN ---
+    
+    tmpl.permisos = obtenerPermisosUsuario();
+    
+    return tmpl.evaluate()
+        .setTitle(page)
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -56,7 +56,7 @@ function include(filename) {
  * @returns {Object} Un mapa de {HEADER_NAME_UPPERCASE: index}.
  */
 function getColumnMap(sheetName) {
-    const cacheKey = `header_map_${sheetName}`;
+    const cacheKey = `header_map_V5_${sheetName}`;
     let cachedMap = cache.get(cacheKey);
 
     if (cachedMap) {
@@ -154,7 +154,7 @@ function crudHoja(operacion, sheetName, datos = null, filtro = null) {
 /**
  * Función unificada para obtener datos con cache OPTIMIZADA
  */
-function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10, leerTodasLasFilas = false) {
+function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10) {
     const cacheKey = `hoja_${sheetName}`;
     const startTime = new Date().getTime();
     
@@ -176,7 +176,7 @@ function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10, leerTod
         }
         
         // Limitar cantidad de filas si es muy grande (máximo 1000 filas)
-        const lastRow = leerTodasLasFilas ? sheet.getLastRow() : Math.min(sheet.getLastRow(), 1000);
+        const lastRow = Math.min(sheet.getLastRow(), 1000);
         const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
         if (useCache && data.length > 0) {
             cache.put(cacheKey, JSON.stringify(data), cacheMinutes * 60);
@@ -233,14 +233,14 @@ function forzarAutorizacion() {
 }
 
 /**
- * Obtiene el objeto de permisos para el usuario activo (v3).
+ * Obtiene el objeto de permisos para el usuario activo (v4).
  * Lee columnas específicas de vendedor (ANTHONY, RENATO, etc.) desde "Permisos".
- * @returns {Object} Un objeto con permisos booleanos y visibilidadVendedores.
+ * CORREGIDO: Reemplazado el operador '...' por Object.assign() para compatibilidad ES5.
  */
 function obtenerPermisosUsuario() {
   const email = obtenerEmailSeguro();
   const cache = CacheService.getScriptCache();
-  const cacheKey = "permisos_v3_" + email; // Nueva clave caché
+  const cacheKey = "permisos_v3_" + email; // Mantenemos la clave v3, no hay problema
 
   // 1. Intentar obtener desde la caché
   const permisosCacheados = cache.get(cacheKey);
@@ -256,24 +256,24 @@ function obtenerPermisosUsuario() {
     puedeVerReportes: false,
     puedeVerTodasLasCotizaciones: false,
     nombreVendedorExacto: null,
-    visibilidadVendedores: {} // Objeto para guardar { ANTHONY: true, RENATO: false }
+    visibilidadVendedores: {} 
   };
-
+  
   try {
-    const data = obtenerDatosHoja(HOJA_PERMISOS); // Asume que HOJA_PERMISOS = "Permisos"
+    const data = obtenerDatosHoja(HOJA_PERMISOS); 
     if (data.length <= 1) return permisosPorDefecto;
-
+    
     const COL_MAP = getColumnMap(HOJA_PERMISOS);
     const COL_EMAIL = COL_MAP['EMAIL'];
-    const COL_NOMBRE_VENDEDOR = COL_MAP['NOMBREVENDEDOREXACTO']; // Columna con el nombre propio
+    const COL_NOMBRE_VENDEDOR = COL_MAP['NOMBREVENDEDOREXACTO'];
 
     if (COL_EMAIL === undefined) {
       Logger.log("Error de Permisos: La hoja 'Permisos' no tiene la columna 'EMAIL'.");
       return permisosPorDefecto;
     }
 
-    const encabezados = data[0]; // Nombres exactos de encabezados
-    const encabezadosUpper = encabezados.map(h => h ? h.toUpperCase().replace(/\s+/g, '') : ''); // Normalizados
+    const encabezados = data[0];
+    const encabezadosUpper = encabezados.map(h => h ? h.toUpperCase().replace(/\s+/g, '') : '');
     let filaUsuario = null;
 
     // 3. Buscar la fila del usuario
@@ -290,42 +290,42 @@ function obtenerPermisosUsuario() {
     }
 
     // 4. Construir el objeto de permisos
-    const permisosReales = { ...permisosPorDefecto, visibilidadVendedores: {} };
+    
+    // --- INICIO DE LA CORRECCIÓN ---
+    // const permisosReales = { ...permisosPorDefecto, visibilidadVendedores: {} }; // ESTA LÍNEA DABA EL ERROR
+    
+    // Esta es la versión compatible (ES5) que hace lo mismo:
+    const permisosReales = Object.assign({}, permisosPorDefecto, {
+      visibilidadVendedores: {}
+    });
+    // --- FIN DE LA CORRECCIÓN ---
 
-    // Índice a partir del cual buscar columnas de vendedor (AJUSTA SI ES NECESARIO)
-    // Busca el índice de "PuedeVerTodasLasCotizaciones" y empieza desde la siguiente
-    const indiceInicioVendedores = encabezadosUpper.indexOf('PUEDEVERVENTASDE'); // O usa un índice fijo si prefieres
+    const indiceInicioVendedores = encabezadosUpper.indexOf('PUEDEVERVENTASDE');
 
     encabezados.forEach((headerOriginal, index) => {
-      if (!headerOriginal) return; // Saltar encabezados vacíos
-      const headerKey = encabezadosUpper[index]; // Clave normalizada
+      if (!headerOriginal) return; 
+      const headerKey = encabezadosUpper[index]; 
       const valor = filaUsuario[index];
 
-      // Mapear booleanos estándar (puedeEditar...)
       if (headerKey.startsWith("PUEDE")) {
          const camelCaseKey = headerOriginal.charAt(0).toLowerCase() + headerOriginal.slice(1).replace(/([A-Z])/g, '$1').replace(/\s+/g, '');
          permisosReales[camelCaseKey] = (String(valor).toUpperCase() === 'VERDADERO' || String(valor).toUpperCase() === 'TRUE');
+  
       }
-      // Mapear NombreVendedorExacto
       else if (headerKey === 'NOMBREVENDEDOREXACTO') {
         permisosReales.nombreVendedorExacto = String(valor || '').trim();
       }
-      // Mapear Columnas de Vendedor Específicas (después de PUEDEVERVENTASDE)
-      // Asegúrate que el índice sea correcto
       else if (indiceInicioVendedores !== -1 && index > indiceInicioVendedores) {
-         // Usar el nombre ORIGINAL del encabezado (ej. "ANTHONY") como clave
-         const nombreVendedorColumna = headerOriginal.trim().toUpperCase(); // Normalizar a MAYÚSCULAS
-         if (nombreVendedorColumna) { // Solo si la columna tiene nombre
+         const nombreVendedorColumna = headerOriginal.trim().toUpperCase();
+         if (nombreVendedorColumna) { 
              permisosReales.visibilidadVendedores[nombreVendedorColumna] = (String(valor).toUpperCase() === 'VERDADERO' || String(valor).toUpperCase() === 'TRUE');
          }
       }
-      // Puedes añadir mapeo para 'Rol' aquí si lo necesitas
     });
-
-
+    
     // 5. Guardar en caché y devolver
-    cache.put(cacheKey, JSON.stringify(permisosReales), 300); // Cache por 1 hora modificado a 5 min
-    Logger.log("Permisos v3 cacheados para " + email + ": " + JSON.stringify(permisosReales));
+    cache.put(cacheKey, JSON.stringify(permisosReales), 300);
+    Logger.log("Permisos v3 (ES5) cacheados para " + email + ": " + JSON.stringify(permisosReales));
     return permisosReales;
 
   } catch (e) {
