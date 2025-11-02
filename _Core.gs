@@ -11,24 +11,31 @@ const cache = CacheService.getScriptCache();
 function doGet(e) {
     const page = e.parameter.page || 'Modulos';
     
+    // Añadir 'Acta' a la lista
     const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta'];
     
-    let tmpl;
     if (validPages.includes(page)) {
-        tmpl = HtmlService.createTemplateFromFile(page);
-    } else {
-        tmpl = HtmlService.createTemplateFromFile('Modulos'); // Página por defecto
+        const tmpl = HtmlService.createTemplateFromFile(page);
+        
+        // --- INYECCIÓN DE PARÁMETROS (LA CORRECCIÓN) ---
+        // Pasa todos los parámetros de la URL (e.g., 'pedido', 'editar', 'linea')
+        // a una variable 'parametros' dentro del HTML.
+        tmpl.parametros = e.parameter || {}; 
+        // --- FIN DE LA CORRECCIÓN ---
+        
+        tmpl.permisos = obtenerPermisosUsuario();
+        
+        return tmpl.evaluate()
+            .setTitle(page)
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
-
-    // --- CORRECCIÓN DEFINITIVA ---
-    // Pasamos el objeto de parámetros tal cual.
-    tmpl.parametros = e.parameter || {}; 
-    // --- FIN DE LA CORRECCIÓN ---
     
-    tmpl.permisos = obtenerPermisosUsuario();
-    
-    return tmpl.evaluate()
-        .setTitle(page)
+    // Página por defecto si 'page' no es válida
+    const defaultTmpl = HtmlService.createTemplateFromFile('Modulos');
+    defaultTmpl.parametros = {}; // Pasar objeto vacío
+    defaultTmpl.permisos = obtenerPermisosUsuario();
+    return defaultTmpl.evaluate()
+        .setTitle('Módulos Principales')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -233,103 +240,50 @@ function forzarAutorizacion() {
 }
 
 /**
- * Obtiene el objeto de permisos para el usuario activo (v4).
- * Lee columnas específicas de vendedor (ANTHONY, RENATO, etc.) desde "Permisos".
- * CORREGIDO: Reemplazado el operador '...' por Object.assign() para compatibilidad ES5.
+ * Obtiene el objeto de permisos para el usuario actual.
+ * Usa caché para alto rendimiento.
  */
 function obtenerPermisosUsuario() {
-  const email = obtenerEmailSeguro();
-  const cache = CacheService.getScriptCache();
-  const cacheKey = "permisos_v3_" + email; // Mantenemos la clave v3, no hay problema
-
-  // 1. Intentar obtener desde la caché
-  const permisosCacheados = cache.get(cacheKey);
-  if (permisosCacheados) {
-    return JSON.parse(permisosCacheados);
-  }
-
-  // 2. Definir permisos por defecto
-  const permisosPorDefecto = {
-    puedeEditarCotizacion: false,
-    puedeEditarServicios: false,
-    puedeEditarOT: false,
-    puedeVerReportes: false,
-    puedeVerTodasLasCotizaciones: false,
-    nombreVendedorExacto: null,
-    visibilidadVendedores: {} 
-  };
-  
-  try {
-    const data = obtenerDatosHoja(HOJA_PERMISOS); 
-    if (data.length <= 1) return permisosPorDefecto;
+    const email = obtenerEmailSeguro(); // Asumo que esta función ya existe en tu lógica
+    const cacheKey = 'permisos_' + email;
+    const cache = CacheService.getScriptCache();
     
+    // 1. Intentar obtener de la caché
+    const cachedPermisos = cache.get(cacheKey);
+    if (cachedPermisos) {
+        return JSON.parse(cachedPermisos);
+    }
+
+    // 2. Si no está en caché, leer la hoja
+    const HOJA_PERMISOS = "Permisos"; // Asegúrate que coincida
+    const permisosData = obtenerDatosHoja(HOJA_PERMISOS, false); // false = no usar caché para leer la hoja
     const COL_MAP = getColumnMap(HOJA_PERMISOS);
-    const COL_EMAIL = COL_MAP['EMAIL'];
-    const COL_NOMBRE_VENDEDOR = COL_MAP['NOMBREVENDEDOREXACTO'];
 
-    if (COL_EMAIL === undefined) {
-      Logger.log("Error de Permisos: La hoja 'Permisos' no tiene la columna 'EMAIL'.");
-      return permisosPorDefecto;
+    let permisosUsuario = {
+        email: email,
+        rol: 'Invitado', // Rol por defecto
+        puedeEditarServicios: false,
+        puedeEditarOT: false,
+        puedeVerReportes: false,
+        puedeEditarCotizacion: false
+    };
+
+    if (permisosData.length > 1) {
+        const filaUsuario = permisosData.slice(1).find(fila => 
+            String(fila[COL_MAP['EMAIL']] || '').trim().toLowerCase() === email.toLowerCase()
+        );
+
+        if (filaUsuario) {
+            permisosUsuario.rol = filaUsuario[COL_MAP['ROL']] || 'Invitado';
+            permisosUsuario.puedeEditarServicios = filaUsuario[COL_MAP['PUEDEEDITARSERVICIOS']] === true;
+            permisosUsuario.puedeEditarOT = filaUsuario[COL_MAP['PUEDEEDITAROT']] === true;
+            permisosUsuario.puedeVerReportes = filaUsuario[COL_MAP['PUEDEVERREPORTES']] === true;
+            permisosUsuario.puedeEditarCotizacion = filaUsuario[COL_MAP['PUEDEEDITARCOTIZACION']] === true;
+        }
     }
-
-    const encabezados = data[0];
-    const encabezadosUpper = encabezados.map(h => h ? h.toUpperCase().replace(/\s+/g, '') : '');
-    let filaUsuario = null;
-
-    // 3. Buscar la fila del usuario
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][COL_EMAIL] || '').trim().toLowerCase() === email.toLowerCase()) {
-        filaUsuario = data[i];
-        break;
-      }
-    }
-
-    if (!filaUsuario) {
-      Logger.log(`Permisos v3: Usuario '${email}' no encontrado. Usando permisos por defecto.`);
-      return permisosPorDefecto;
-    }
-
-    // 4. Construir el objeto de permisos
     
-    // --- INICIO DE LA CORRECCIÓN ---
-    // const permisosReales = { ...permisosPorDefecto, visibilidadVendedores: {} }; // ESTA LÍNEA DABA EL ERROR
+    // 3. Guardar en caché por 1 hora (3600 segundos)
+    cache.put(cacheKey, JSON.stringify(permisosUsuario), 3600);
     
-    // Esta es la versión compatible (ES5) que hace lo mismo:
-    const permisosReales = Object.assign({}, permisosPorDefecto, {
-      visibilidadVendedores: {}
-    });
-    // --- FIN DE LA CORRECCIÓN ---
-
-    const indiceInicioVendedores = encabezadosUpper.indexOf('PUEDEVERVENTASDE');
-
-    encabezados.forEach((headerOriginal, index) => {
-      if (!headerOriginal) return; 
-      const headerKey = encabezadosUpper[index]; 
-      const valor = filaUsuario[index];
-
-      if (headerKey.startsWith("PUEDE")) {
-         const camelCaseKey = headerOriginal.charAt(0).toLowerCase() + headerOriginal.slice(1).replace(/([A-Z])/g, '$1').replace(/\s+/g, '');
-         permisosReales[camelCaseKey] = (String(valor).toUpperCase() === 'VERDADERO' || String(valor).toUpperCase() === 'TRUE');
-  
-      }
-      else if (headerKey === 'NOMBREVENDEDOREXACTO') {
-        permisosReales.nombreVendedorExacto = String(valor || '').trim();
-      }
-      else if (indiceInicioVendedores !== -1 && index > indiceInicioVendedores) {
-         const nombreVendedorColumna = headerOriginal.trim().toUpperCase();
-         if (nombreVendedorColumna) { 
-             permisosReales.visibilidadVendedores[nombreVendedorColumna] = (String(valor).toUpperCase() === 'VERDADERO' || String(valor).toUpperCase() === 'TRUE');
-         }
-      }
-    });
-    
-    // 5. Guardar en caché y devolver
-    cache.put(cacheKey, JSON.stringify(permisosReales), 300);
-    Logger.log("Permisos v3 (ES5) cacheados para " + email + ": " + JSON.stringify(permisosReales));
-    return permisosReales;
-
-  } catch (e) {
-    Logger.log(`Error crítico en obtenerPermisosUsuario v3: ${e.message}\n${e.stack}`);
-    return permisosPorDefecto;
-  }
+    return permisosUsuario;
 }
