@@ -160,45 +160,35 @@
     let otExistente = null;
 
     document.addEventListener("DOMContentLoaded", function() {
-        console.log("✅ RegistrarOT.html CARGADO (v3.3 - Arreglo JSON Parse)");
+        console.log("✅ RegistrarOT.html CARGADO (v3.1 con parámetros inyectados)");
         
-        try {
-            // --- LÓGICA CORREGIDA PARA LEER PARÁMETROS ---
-            // 1. Inyectamos el objeto de parámetros directamente.
-            const parametrosServidor = <?!= JSON.stringify(parametros) ?>; 
+        // --- LÓGICA CORREGIDA PARA LEER PARÁMETROS ---
+        const parametrosServidor = <?!= JSON.stringify(parametros) ?>;
+        const otAEditar = parametrosServidor.editar || null;
+        const lineaIDParaCrear = parametrosServidor.linea || null;
+        // --- FIN DE LA CORRECCIÓN ---
+        
+        if (otAEditar) {
+            modoFormulario = 'editarGlobal';
+            console.log("Modo detectado: editarGlobal", otAEditar);
+            configurarModoEdicion(otAEditar);
+            cargarDatosInicialesGlobales(cargarDatosOTExistente); 
             
-            // 2. ¡YA NO NECESITAMOS JSON.parse!
+        } else if (lineaIDParaCrear) {
+            modoFormulario = 'crearAislado';
+            console.log("Modo detectado: crearAislado", lineaIDParaCrear); // <-- Esto ahora SÍ aparecerá
+            document.getElementById('lineaIDAsociada').value = lineaIDParaCrear;
+            configurarModoAislado(lineaIDParaCrear);
+            cargarDatosDesdeLinea(lineaIDParaCrear); 
             
-            const otAEditar = parametrosServidor.editar || null;
-            const lineaIDParaCrear = parametrosServidor.linea || null;
-            // --- FIN DE LA CORRECCIÓN ---
-            
-            if (otAEditar) {
-                modoFormulario = 'editarGlobal';
-                console.log("Modo detectado: editarGlobal", otAEditar);
-                configurarModoEdicion(otAEditar);
-                cargarDatosInicialesGlobales(cargarDatosOTExistente); 
-                
-            } else if (lineaIDParaCrear) {
-                modoFormulario = 'crearAislado';
-                console.log("Modo detectado: crearAislado", lineaIDParaCrear); 
-                document.getElementById('lineaIDAsociada').value = lineaIDParaCrear;
-                configurarModoAislado(lineaIDParaCrear);
-                cargarDatosDesdeLinea(lineaIDParaCrear); 
-                
-            } else {
-                modoFormulario = 'crearGlobal';
-                console.log("Modo detectado: crearGlobal");
-                configurarModoCreacion();
-                cargarDatosInicialesGlobales(); 
-            }
-            
-            configurarEventos();
-
-        } catch (e) {
-            mostrarError("Error crítico al iniciar la página: " + e.message);
-            console.error("Error en DOMContentLoaded:", e);
+        } else {
+            modoFormulario = 'crearGlobal';
+            console.log("Modo detectado: crearGlobal");
+            configurarModoCreacion();
+            cargarDatosInicialesGlobales(); 
         }
+        
+        configurarEventos();
     });
 
     // --- CONFIGURACIÓN DE MODOS ---
