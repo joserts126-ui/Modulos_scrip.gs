@@ -12,7 +12,7 @@ function doGet(e) {
     const page = e.parameter.page || 'Modulos';
     
     // Añadir 'Acta' a la lista
-    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta'];
+    const validPages = ['Modulos', 'Comercial', 'Servicios', 'Contactos', 'ResumenComercial', 'OT', 'RegistrarOT', 'Acta', 'Valorizacion']
     
     if (validPages.includes(page)) {
         const tmpl = HtmlService.createTemplateFromFile(page);
