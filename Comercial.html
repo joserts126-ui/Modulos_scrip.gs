@@ -28,8 +28,8 @@
             <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen </button>
             <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF" style="display: none;"> 📄 PDF </button> 
             <button type="button" onclick="gestionarActaGlobal()" class="btn-guardar-top btn-info" id="btnGestionarActa" style="display: none; background-color: #17a2b8;"> 📋 Acta </button> 
-            
             <button type="button" onclick="gestionarOTsParaPedido()" class="btn-guardar-top btn-warning" id="btnGestionarOT" style="display: none; background-color: #f0ad4e;"> ⚙️ OTs </button>
+            <button type="button" onclick="gestionarValorizaciones()" class="btn-guardar-top btn-success" id="btnGestionarValorizacion">    💲 Valorizaciones</button>
             </div>
         </div>
         <div class="contenedor-principal contenedor-compacto">
@@ -197,6 +197,12 @@
     </div>
 
 <script>
+  function gestionarValorizaciones() {
+    if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) return;
+    const urlBase = '<?!= getScriptUrl() ?>';
+    const urlDestino = `${urlBase}?page=Valorizacion&pedido=${encodeURIComponent(estadoApp.numPedidoEdicion)}`;
+    window.open(urlDestino, '_blank');
+    }
 
   function navegarAResumen() {
         const urlBase = '<?!= getScriptUrl() ?>';
@@ -232,6 +238,28 @@
             // Si no, usa la que te di: generarPDFPorNumeroPedido
             .generarYDevolverPDF(numPedido); 
     }
+/**
+ * REEMPLAZO (Misión 3 - Revisada)
+ * Abre la página de Actas de Planificación, pasando el N° de Pedido actual.
+ */
+function gestionarActaGlobal() {
+    // 1. Verifica que estemos en modo edición
+    if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) {
+        alert('Debe estar en modo de edición de un pedido existente para gestionar sus Actas.');
+        return;
+    }
+
+    // 2. Obtiene la URL base y el N° de Pedido
+    const urlBase = '<?!= getScriptUrl() ?>';
+    const numPedido = estadoApp.numPedidoEdicion;
+
+    // 3. Construye la URL de destino
+    const urlDestino = `${urlBase}?page=Acta&pedido=${encodeURIComponent(numPedido)}`;
+
+    // 4. Abre en una nueva pestaña
+    console.log(`Navegando a la gestión de Actas para el pedido: ${numPedido}`);
+    window.open(urlDestino, '_blank');
+}
 
 /**
  * NUEVA FUNCIÓN
