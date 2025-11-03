@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Gestión de Valorizaciones</title>
+    
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+
+    <style>
+        .valorizacion-contenedor {
+            padding: 20px;
+        }
+        .card-valorizacion {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-valorizacion h2 {
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            margin-top: 0;
+            color: #333;
+        }
+        .tabla-valorizacion {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .tabla-valorizacion th,
+        .tabla-valorizacion td {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+            font-size: 0.9em;
+        }
+        .tabla-valorizacion th {
+            background-color: #f4f4f4;
+            font-weight: bold;
+        }
+        .tabla-valorizacion tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .col-check { width: 40px; text-align: center; }
+        .col-monto { width: 120px; text-align: right; }
+        .col-fecha { width: 100px; }
+        .col-estado { width: 100px; }
+        
+        .footer-acciones {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .summary-total {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .btn-crear-valorizacion {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=ResumenComercial' class="retornarModulos iconoTopBarra" id="retornarLink">← Resumen</a>
+            <h1 id="tituloPrincipal">Gestión de Valorizaciones</h1>
+        </div>
+        <div class="topBarra-derecha">
+             <button onclick="location.reload()" class="btn-info" style="background-color: #17a2b8; color: white;">
+                🔄 Actualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="valorizacion-contenedor">
+        <h2 id="subtituloPedido" style="color: #555;">Cargando pedido...</h2>
+
+        <div class="card-valorizacion">
+            <h2>1. OTs Pendientes de Valorizar</h2>
+            <div style="overflow-x: auto;">
+                <table class="tabla-valorizacion">
+                    <thead>
+                        <tr>
+                            <th class="col-check"><input type="checkbox" id="checkAll" onchange="toggleAllCheckboxes(this)"></th>
+                            <th>N° OT</th>
+                            <th class="col-fecha">Fecha</th>
+                            <th class="col-monto">Monto Servicio</th>
+                            <th class="col-monto">Monto Movil.</th>
+                            <th class="col-monto">Monto Total OT</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaPendientesBody">
+                        <tr><td colspan="6" style="text-align: center; padding: 20px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="footer-acciones">
+                <button class="btn-guardar-top btn-crear-valorizacion" onclick="crearValorizacionClick()">
+                    💲 Crear Valorización con OTs Seleccionadas
+                </button>
+                <div class="summary-total" id="totalSeleccionado">
+                    Total Seleccionado: S/ 0.00
+                </div>
+            </div>
+        </div>
+
+        <div class="card-valorizacion">
+            <h2>2. Historial de Valorizaciones Emitidas</h2>
+            <div style="overflow-x: auto;">
+                <table class="tabla-valorizacion">
+                    <thead>
+                        <tr>
+                            <th>ID Valorización</th>
+                            <th class="col-fecha">Fecha Emisión</th>
+                            <th class="col-monto">Monto Total</th>
+                            <th class="col-estado">Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaEmitidasBody">
+                        <tr><td colspan="5" style="text-align: center; padding: 20px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <p id="loadingText">Cargando...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+<script>
+    let numPedido = null;
+    let otsPendientesData = []; // Almacena los datos de las OTs pendientes
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. Obtener el numPedido de los parámetros inyectados por _Core.gs
+        const parametrosServidor = <?!= JSON.stringify(parametros) ?>;
+        numPedido = parametrosServidor.pedido || null;
+
+        if (numPedido) {
+            document.getElementById('subtituloPedido').textContent = `Pedido: ${numPedido}`;
+            // Cambiar el link de retorno para que vuelva al pedido
+            const urlBase = '<?!= getScriptUrl() ?>';
+            document.getElementById('retornarLink').href = `${urlBase}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+            
+            cargarDatos();
+        } else {
+            mostrarErrorFatal("No se especificó un número de pedido. Por favor, acceda desde la vista de un Pedido.");
+        }
+    });
+
+    function cargarDatos() {
+        mostrarLoading(true, "Cargando datos de valorización...");
+        google.script.run
+            .withSuccessHandler(function(resultado) {
+                mostrarLoading(false);
+                if (resultado.success) {
+                    otsPendientesData = resultado.pendientes || []; // Guardar datos para cálculos
+                    renderOTsPendientes(otsPendientesData);
+                    renderValorizacionesEmitidas(resultado.emitidas || []);
+                } else {
+                    mostrarErrorFatal(resultado.message);
+                }
+            })
+            .withFailureHandler(function(error) {
+                mostrarLoading(false);
+                mostrarErrorFatal(error.message);
+            })
+            .getDatosParaValorizar(numPedido);
+    }
+
+    // --- RENDERIZADO DE TABLAS ---
+
+    function renderOTsPendientes(ots) {
+        const tbody = document.getElementById("tablaPendientesBody");
+        tbody.innerHTML = "";
+        
+        if (ots.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #888;">No hay OTs pendientes de valorizar.</td></tr>';
+            return;
+        }
+
+        ots.forEach(ot => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td class="col-check">
+                    <input type="checkbox" class="ot-checkbox" 
+                           data-ot-id="${escapeHtml(ot.otId)}" 
+                           data-row-index="${ot.rowIndex}"
+                           data-monto-servicio="${ot.montoServicio}"
+                           data-monto-movilizacion="${ot.montoMovilizacion}"
+                           onchange="actualizarTotalSeleccionado()">
+                </td>
+                <td>${escapeHtml(ot.otId)}</td>
+                <td class="col-fecha">${escapeHtml(ot.fecha)}</td>
+                <td class="col-monto">${formatearMoneda(ot.montoServicio)}</td>
+                <td class="col-monto">${formatearMoneda(ot.montoMovilizacion)}</td>
+                <td class="col-monto"><strong>${formatearMoneda(ot.montoTotalOT)}</strong></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderValorizacionesEmitidas(valorizaciones) {
+        const tbody = document.getElementById("tablaEmitidasBody");
+        tbody.innerHTML = "";
+
+        if (valorizaciones.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #888;">No se han emitido valorizaciones para este pedido.</td></tr>';
+            return;
+        }
+
+        valorizaciones.forEach(val => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${escapeHtml(val.valId)}</td>
+                <td class="col-fecha">${escapeHtml(val.fecha)}</td>
+                <td class="col-monto">${formatearMoneda(val.montoTotal)}</td>
+                <td class="col-estado">${escapeHtml(val.estado)}</td>
+                <td>
+                    <button class="btn-base btn-info" style="padding: 4px 8px; font-size: 0.8em;" onclick="alert('Ver PDF no implementado')">Ver PDF</button>
+                    <button class="btn-base btn-warning" style="padding: 4px 8px; font-size: 0.8em;" onclick="alert('Enviar por correo no implementado')">Enviar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // --- ACCIONES ---
+
+    function toggleAllCheckboxes(masterCheckbox) {
+        const checkboxes = document.querySelectorAll(".ot-checkbox");
+        checkboxes.forEach(cb => {
+            cb.checked = masterCheckbox.checked;
+        });
+        actualizarTotalSeleccionado();
+    }
+
+    function actualizarTotalSeleccionado() {
+        let total = 0;
+        const checkboxes = document.querySelectorAll(".ot-checkbox:checked");
+        
+        checkboxes.forEach(cb => {
+            total += parseFloat(cb.dataset.montoServicio || 0);
+            total += parseFloat(cb.dataset.montoMovilizacion || 0);
+        });
+
+        document.getElementById("totalSeleccionado").textContent = `Total Seleccionado: ${formatearMoneda(total)}`;
+    }
+
+    function crearValorizacionClick() {
+        const otsSeleccionadas = [];
+        const checkboxes = document.querySelectorAll(".ot-checkbox:checked");
+
+        if (checkboxes.length === 0) {
+            alert("Error: Debe seleccionar al menos una OT para crear la valorización.");
+            return;
+        }
+
+        checkboxes.forEach(cb => {
+            otsSeleccionadas.push({
+                otId: cb.dataset.otId,
+                rowIndex: parseInt(cb.dataset.rowIndex),
+                montoServicio: parseFloat(cb.dataset.montoServicio),
+                montoMovilizacion: parseFloat(cb.dataset.montoMovilizacion),
+                fecha: cb.closest('tr').cells[2].textContent // Obtener la fecha de la tabla
+            });
+        });
+
+        if (!confirm(`¿Está seguro que desea crear una valorización con ${otsSeleccionadas.length} OTs?`)) {
+            return;
+        }
+
+        mostrarLoading(true, "Creando valorización...");
+        google.script.run
+            .withSuccessHandler(function(resultado) {
+                mostrarLoading(false);
+                if (resultado.success) {
+                    alert(resultado.message);
+                    location.reload(); // Recargar la página para ver los cambios
+                } else {
+                    alert("Error al crear la valorización: " + resultado.message);
+                }
+            })
+            .withFailureHandler(function(error) {
+                mostrarLoading(false);
+                alert("Error de conexión al crear: " + error.message);
+            })
+            .crearValorizacion(numPedido, otsSeleccionadas);
+    }
+
+    // --- UTILIDADES ---
+
+    function mostrarLoading(mostrar, mensaje = "Cargando...") {
+        const overlay = document.getElementById("loadingOverlay");
+        if (overlay) overlay.style.display = mostrar ? "flex" : "none";
+        const texto = document.getElementById("loadingText");
+        if (texto) texto.textContent = mensaje;
+    }
+
+    function mostrarErrorFatal(mensaje) {
+        document.body.innerHTML = `<div class="card-valorizacion" style="margin: 20px; background-color: #f8d7da; border: 1px solid #f5c6cb;">
+            <h2 style="color: #721c24;">Error Crítico</h2>
+            <p>${escapeHtml(mensaje)}</p>
+            <a href="#" onclick="window.history.back(); return false;">Volver</a>
+        </div>`;
+    }
+
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+    
+    function formatearMoneda(valor) {
+        const num = parseFloat(valor || 0);
+        // Asume Soles (S/) como moneda principal para esta vista.
+        return "S/ " + num.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+</script>
+
+</body>
+</html>
