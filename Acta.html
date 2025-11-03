@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Actas de Planificación</title>
+    
+    <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
+
+    <style>
+        .acta-contenedor {
+            padding: 20px;
+        }
+        .card-acta {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-acta h2 {
+            border-bottom: 2px solid #5cb85c; /* Verde */
+            padding-bottom: 10px;
+            margin-top: 0;
+            color: #333;
+        }
+        .btn-generar-acta {
+            background-color: #5cb85c;
+            color: white;
+            padding: 12px 25px;
+            font-size: 1.2em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn-generar-acta:hover:not(:disabled) {
+            background-color: #45a049;
+        }
+        .btn-generar-acta:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .tabla-historial {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .tabla-historial th,
+        .tabla-historial td {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            text-align: left;
+            font-size: 0.9em;
+        }
+        .tabla-historial th {
+            background-color: #f4f4f4;
+            font-weight: bold;
+        }
+        .tabla-historial .link-acta {
+            background-color: #007bff;
+            color: white;
+            padding: 5px 10px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .tabla-historial .link-acta:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="barraTopComercial">
+        <div class="topBarra-izquierda">
+            <? var url = getScriptUrl(); ?>
+            <a href='<?= url ?>?page=ResumenComercial' class="retornarModulos iconoTopBarra" id="retornarLink">← Resumen</a>
+            <h1 id="tituloPrincipal">Actas de Planificación</h1>
+        </div>
+        <div class="topBarra-derecha">
+             <button onclick="cargarHistorial()" class="btn-info" style="background-color: #17a2b8; color: white;">
+                🔄 Actualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="acta-contenedor">
+        <h2 id="subtituloPedido" style="color: #555;">Cargando pedido...</h2>
+
+        <div class="card-acta">
+            <h2>Generar Nueva Acta</h2>
+            <p>Haga clic en el botón para generar un nuevo documento de "Acta de Planificación" basado en los datos actuales del pedido. Esto creará una nueva versión.</p>
+            <button class="btn-generar-acta" id="btnGenerar" onclick="generarActaClick()">
+                ➕ Generar Nueva Acta de Planificación
+            </button>
+        </div>
+
+        <div class="card-acta">
+            <h2>Historial de Actas Generadas</h2>
+            <div style="overflow-x: auto;">
+                <table class="tabla-historial">
+                    <thead>
+                        <tr>
+                            <th>ID Acta</th>
+                            <th>Versión</th>
+                            <th>Fecha Emisión</th>
+                            <th>Emitida Por</th>
+                            <th>Documento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaHistorialBody">
+                        <tr><td colspan="5" style="text-align: center; padding: 20px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <p id="loadingText">Cargando...</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+<script>
+    let numPedido = null;
+    const btnGenerar = document.getElementById("btnGenerar");
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. Obtener el numPedido de los parámetros
+        const parametrosServidor = <?!= JSON.stringify(parametros) ?>;
+        numPedido = parametrosServidor.pedido || null;
+
+        if (numPedido) {
+            document.getElementById('subtituloPedido').textContent = `Pedido: ${numPedido}`;
+            // Cambiar el link de retorno para que vuelva al pedido
+            const urlBase = '<?!= getScriptUrl() ?>';
+            document.getElementById('retornarLink').href = `${urlBase}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+            
+            cargarHistorial();
+        } else {
+            mostrarErrorFatal("No se especificó un número de pedido. Por favor, acceda desde la vista de un Pedido.");
+        }
+    });
+
+    /**
+     * Carga la tabla de historial de actas.
+     */
+    function cargarHistorial() {
+        if (!numPedido) return;
+        
+        mostrarLoading(true, "Cargando historial...");
+        google.script.run
+            .withSuccessHandler(function(resultado) {
+                mostrarLoading(false);
+                if (resultado.success) {
+                    renderHistorial(resultado.historial || []);
+                } else {
+                    alert("Error: " + resultado.message);
+                }
+            })
+            .withFailureHandler(function(error) {
+                mostrarLoading(false);
+                alert("Error de conexión: " + error.message);
+            })
+            .getHistorialDeActas(numPedido);
+    }
+
+    /**
+     * Dibuja la tabla de historial.
+     */
+    function renderHistorial(historial) {
+        const tbody = document.getElementById("tablaHistorialBody");
+        tbody.innerHTML = "";
+
+        if (historial.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #888;">No se han generado actas para este pedido.</td></tr>';
+            return;
+        }
+
+        historial.forEach(acta => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${escapeHtml(acta.actaId)}</td>
+                <td><strong>${escapeHtml(acta.version)}</strong></td>
+                <td>${escapeHtml(acta.fecha)}</td>
+                <td>${escapeHtml(acta.emitidaPor)}</td>
+                <td>
+                    <a href="${escapeHtml(acta.link)}" target="_blank" class="link-acta">
+                        Abrir Documento 📄
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    /**
+     * Llama al backend para generar un nuevo documento.
+     */
+    function generarActaClick() {
+        if (!numPedido) return;
+
+        if (!confirm(`¿Está seguro que desea generar una nueva Acta de Planificación para el pedido ${numPedido}?\nEsto creará una nueva versión del documento.`)) {
+            return;
+        }
+
+        mostrarLoading(true, "Generando documento...");
+        btnGenerar.disabled = true;
+        btnGenerar.textContent = "Generando...";
+
+        google.script.run
+            .withSuccessHandler(function(resultado) {
+                mostrarLoading(false);
+                btnGenerar.disabled = false;
+                btnGenerar.textContent = "➕ Generar Nueva Acta de Planificación";
+
+                if (resultado.success) {
+                    alert(`¡Éxito! Se generó el Acta ${resultado.id}.\nEl nuevo documento se abrirá en una pestaña.`);
+                    window.open(resultado.link, '_blank'); // Abrir el doc
+                    cargarHistorial(); // Refrescar la tabla
+                } else {
+                    alert("Error al generar el Acta: " + resultado.message);
+                }
+            })
+            .withFailureHandler(function(error) {
+                mostrarLoading(false);
+                btnGenerar.disabled = false;
+                btnGenerar.textContent = "➕ Generar Nueva Acta de Planificación";
+                alert("Error de conexión al generar: " + error.message);
+            })
+            .generarActaPlanificacion(numPedido);
+    }
+
+
+    // --- UTILIDADES ---
+
+    function mostrarLoading(mostrar, mensaje = "Cargando...") {
+        const overlay = document.getElementById("loadingOverlay");
+        if (overlay) overlay.style.display = mostrar ? "flex" : "none";
+        const texto = document.getElementById("loadingText");
+        if (texto) texto.textContent = mensaje;
+    }
+
+    function mostrarErrorFatal(mensaje) {
+        document.body.innerHTML = `<div class="card-acta" style="margin: 20px; background-color: #f8d7da; border: 1px solid #f5c6cb;">
+            <h2 style="color: #721c24;">Error Crítico</h2>
+            <p>${escapeHtml(mensaje)}</p>
+            <a href="#" onclick="window.history.back(); return false;">Volver</a>
+        </div>`;
+    }
+
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+</script>
+
+</body>
+</html>
