@@ -50,19 +50,32 @@ function getHistorialDeActas(numPedido) {
 }
 
 /**
+ * REEMPLAZO TOTAL (Misión 3 - Corregida v2)
  * Genera un nuevo Google Doc de Acta de Planificación basado en el Pedido.
+ * CORREGIDO: Llama a DOS funciones de obtención de datos:
+ * 1. obtenerDetallesCompletosDePedido: para el array 'servicios' que necesita 'getDestinationFolder'.
+ * 2. obtenerPedidoParaEdicion: para el array 'Lineas' y 'aclaracionesServicio' que necesita la plantilla.
  */
 function generarActaPlanificacion(numPedido) {
   const usuario = obtenerEmailSeguro();
-  Logger.log(`Iniciando generación de Acta para ${numPedido} por ${usuario}`);
+  Logger.log(`Iniciando generación de Acta (v2) para ${numPedido} por ${usuario}`);
 
   try {
-    // 1. Obtener Datos del Pedido
-    // REUTILIZAMOS la función de _Comercial_Logic.gs
-    // Esta función ya devuelve un objeto { success: true, ...datos }
-    const datosPedido = obtenerPedidoParaEdicion(numPedido);
-    if (!datosPedido || !datosPedido.success) {
-      throw new Error(`No se pudieron obtener los datos del pedido: ${datosPedido.message || 'Error desconocido'}`);
+    // 1. Obtener Datos del Pedido (EN DOS PARTES)
+    
+    // PASO 1.A: Llamar a 'obtenerDetallesCompletosDePedido'
+    // Esta función nos da los datos de cabecera y el array 'servicios'
+    // que 'getDestinationFolder' necesita.
+    const datosPedidoParaCarpeta = obtenerDetallesCompletosDePedido(numPedido); // de _Comercial_Logic.gs
+    if (!datosPedidoParaCarpeta || !datosPedidoParaCarpeta.success) {
+      throw new Error(`No se pudieron obtener los datos (parte 1) del pedido: ${datosPedidoParaCarpeta.message || 'Error desconocido'}`);
+    }
+
+    // PASO 1.B: Llamar a 'obtenerPedidoParaEdicion'
+    // Esta función nos da el array 'Lineas' (para la tabla) y 'aclaracionesServicio'.
+    const datosPedidoParaPlantilla = obtenerPedidoParaEdicion(numPedido); // de _Comercial_Logic.gs
+    if (!datosPedidoParaPlantilla || !datosPedidoParaPlantilla.success) {
+      throw new Error(`No se pudieron obtener los datos (parte 2) del pedido: ${datosPedidoParaPlantilla.message || 'Error desconocido'}`);
     }
 
     // 2. Determinar Versión
@@ -72,28 +85,33 @@ function generarActaPlanificacion(numPedido) {
     const fechaEmision = new Date();
 
     // 3. Obtener Carpeta de Destino
-    // Reutilizamos la lógica de _Comercial_Logic.gs para encontrar la carpeta del pedido
-    // Nota: getDestinationFolder devuelve la subcarpeta "cot", así que subimos un nivel.
-    const carpetaCot = getDestinationFolder(datosPedido.Ejecutivo, datosPedido.Empresa, fechaEmision, datosPedido);
+    // ¡CORRECCIÓN! Usamos 'datosPedidoParaCarpeta' que contiene el array 'servicios'.
+    const carpetaCot = getDestinationFolder(
+        datosPedidoParaCarpeta.ejecutivo, 
+        datosPedidoParaCarpeta.empresa, 
+        fechaEmision, 
+        datosPedidoParaCarpeta // Este objeto SÍ tiene '.servicios'
+    );
     const carpetaPedido = carpetaCot.getParents().next(); // Sube a la carpeta del Pedido (Nivel 4)
     const carpetaActas = findOrCreateFolder(carpetaPedido, "Actas de Planificacion"); // Crea subcarpeta
 
     // 4. Copiar Plantilla
-    const plantillaDoc = DriveApp.getFileById(ID_PLANTILLA_ACTA_PLANIFICACION);
+    const plantillaDoc = DriveApp.getFileById(ID_PLANTILLA_ACTA_PLANIFICACION); // de _Constants_Lists.gs
     const nombreArchivo = `Acta de Planificación - ${numPedido} - ${nuevaVersion}`;
     const nuevoArchivo = plantillaDoc.makeCopy(carpetaActas, nombreArchivo);
     const nuevoDoc = DocumentApp.openById(nuevoArchivo.getId());
     
     // 5. Rellenar Placeholders Simples
+    // Usamos 'datosPedidoParaPlantilla' que tiene los nombres de propiedad correctos (ej. 'Cliente' con mayúscula)
     const body = nuevoDoc.getBody();
     body.replaceText("{{PEDIDO}}", numPedido);
     body.replaceText("{{FECHA_EMISION}}", formatearFechaRapido(fechaEmision, Session.getScriptTimeZone()));
-    body.replaceText("{{EJECUTIVO}}", datosPedido.Ejecutivo || '');
-    body.replaceText("{{CLIENTE}}", datosPedido.Cliente || '');
-    body.replaceText("{{RUC}}", datosPedido.RUC || '');
-    body.replaceText("{{CONTACTO}}", datosPedido.Contacto || '');
-    body.replaceText("{{LUGAR}}", datosPedido.Direccion || ''); // Usa 'Direccion' para 'Lugar'
-    body.replaceText("{{ACLARACIONES}}", datosPedido.aclaracionesServicio || 'Ninguna.');
+    body.replaceText("{{EJECUTIVO}}", datosPedidoParaPlantilla.Ejecutivo || '');
+    body.replaceText("{{CLIENTE}}", datosPedidoParaPlantilla.Cliente || '');
+    body.replaceText("{{RUC}}", datosPedidoParaPlantilla.RUC || '');
+    body.replaceText("{{CONTACTO}}", datosPedidoParaPlantilla.Contacto || '');
+    body.replaceText("{{LUGAR}}", datosPedidoParaPlantilla.Direccion || ''); // Usa 'Direccion' para 'Lugar'
+    body.replaceText("{{ACLARACIONES}}", datosPedidoParaPlantilla.aclaracionesServicio || 'Ninguna.');
 
     // 6. Rellenar Tabla de Servicios
     const placeholderTabla = body.findText("{{TABLA_SERVICIOS}}");
@@ -104,17 +122,17 @@ function generarActaPlanificacion(numPedido) {
 
       // Crear la tabla
       const tabla = body.insertTable(indiceParrafo, [['Item', 'Código', 'Descripción', 'Cant.', 'Unidad']]);
-      // Aplicar estilo de cabecera
       tabla.getRow(0).editAsText().setBold(true).setBackgroundColor("#EEEEEE");
       
-      const lineasServicio = datosPedido.Lineas || [];
+      // ¡CORRECCIÓN! Leemos de 'datosPedidoParaPlantilla.Lineas'
+      const lineasServicio = datosPedidoParaPlantilla.Lineas || [];
       lineasServicio.forEach((linea, index) => {
         const fila = tabla.appendRow([
-          index + 1,
-          linea.cod,
-          linea.descripcion,
-          linea.cantidad,
-          linea.und_medida
+          (index + 1).toString(),
+          linea.cod || '',
+          linea.descripcion || '',
+          (linea.cantidad || 0).toString(),
+          linea.und_medida || ''
         ]);
         fila.editAsText().setBold(false);
       });
@@ -131,7 +149,8 @@ function generarActaPlanificacion(numPedido) {
     Logger.log(`Documento ${nuevoArchivo.getName()} creado exitosamente.`);
     
     // 8. Registrar en Hoja: Actas
-    const sheetActas = ss.getSheetByName(HOJA_ACTAS);
+    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+    const sheetActas = _crearHojaActasSiNoExiste(ss); // Usamos el helper para asegurar
     sheetActas.appendRow([
       nuevoActaId,
       numPedido,
@@ -148,11 +167,11 @@ function generarActaPlanificacion(numPedido) {
     return { success: true, link: nuevoArchivo.getUrl(), id: nuevoActaId };
 
   } catch (e) {
-    Logger.log(`ERROR en generarActaPlanificacion: ${e.message}\nStack: ${e.stack}`);
-    return manejarError('generarActaPlanificacion', e);
+    Logger.log(`ERROR en generarActaPlanificacion (v2): ${e.message}\nStack: ${e.stack}`);
+    // Usamos la función de manejo de errores centralizada
+    return manejarError('generarActaPlanificacion', e); 
   }
 }
-
 
 // --- FUNCIONES DE AYUDA PARA ROBUSTEZ ---
 
