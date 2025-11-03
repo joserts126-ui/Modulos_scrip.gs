@@ -332,87 +332,66 @@ function getContactosParaComercial(ruc) {
 // ====================================================
 
 function guardarCotizacion(datos) {
-    // --- NUEVA VERIFICACIÓN DE PERMISO ---
+    // 1. Permisos y Validación (Sin cambios)
     const permisos = obtenerPermisosUsuario();
-    if (!permisos.puedeEditarCotizacion) { // <-- CORREGIDO: Usar el permiso correcto 'puedeEditarCotizacion'
-        // Devolver un error manejable
+    if (!permisos.puedeEditarCotizacion) {
         return { success: false, message: "Acceso denegado. No tiene permiso para editar cotizaciones." };
     }
-    // --- FIN DE VERIFICACIÓN ---
+
+    const datosSanitizados = sanitizarDatos(datos);
+    const erroresValidacion = validarDatosCotizacion(datosSanitizados);
+    if (erroresValidacion.length > 0) {
+        return { success: false, message: "Errores de validación: " + erroresValidacion.join(', ') };
+    }
+
+    // 2. Setup de Hojas
+    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+    let hojaCot = ss.getSheetByName(HOJA_COTIZACIONES);
+    const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
+    
+    // Validar que DataCot no esté vacía (el mapa de columnas es esencial)
+    if (!COL_MAP || Object.keys(COL_MAP).length === 0) {
+        return manejarError('guardarCotizacion', new Error("Error Crítico: No se pudo cargar el mapa de columnas de DataCot."));
+    }
+
+    const fechaRegistro = new Date();
+    const lineas = datosSanitizados.Lineas || [];
+    if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio a la cotización");
+
+    let codigoPedido;
+    const esModoUpdate = !!datosSanitizados.numPedido;
+    let filaInicioNuevas = -1; // Para rollback
 
     try {
-        const datosSanitizados = sanitizarDatos(datos);
-        const erroresValidacion = validarDatosCotizacion(datosSanitizados);
-        
-        if (erroresValidacion.length > 0) {
-            return { success: false, message: "Errores de validación: " + erroresValidacion.join(', ') };
-        }
-
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        let hojaCot = ss.getSheetByName(HOJA_COTIZACIONES);
-        
-        if (!hojaCot) {
-            hojaCot = ss.insertSheet(HOJA_COTIZACIONES);
-            const encabezados = [
-                'COT', 'NUM', 'FECHA COT', 'EMPRESA', 'EJECUTIVO', 'ID CLIENTE', 'CLIENTE', 'ESTADO COT', 
-                'COD', 'DESCRIPCION', 'UND', 'UND. PEDIDO', 'UND. DESPACHO', 'UND. PENDIENTE', 'PRECIO', 
-                'MONEDA', 'M. PEDIDO', 'M. DESPACHO', 'M. PENDIENTE', 'MOV. Y DES. MOV.', 'MYDM VALORIZADA', 
-                'MYDM x VALORIZAR', 'Total servicio', 'Total Valorizado', 'Total por valorizar', 'TURNO', 
-                'FECHA INICIO', 'FECHA FIN', 'PLACA', 'UND. HORAS. MINIMAS', 'HORAS SEGÚN', 'HORAS MINIMAS', 
-                'TOTAL HORAS MINIMAS', 'TOTAL DIAS', 'ESTADO DE SERVICIO', 'ACTA', 'VALORIZADO', 'FACTURA', 
-                'F. PAGO', 'Link COT', 'Link Act', 'Link Val', 'Link Factura', 'Observaciones', 'UBICACIÓN', 
-                'CONTACTO', 'MES', 'AÑO', 'FECHA EJECUCION' // <-- Asegúrate que FECHA EJECUCION exista aquí
-            ];
-            hojaCot.getRange(1, 1, 1, encabezados.length).setValues([encabezados]);
-        }
-
-        let codigoPedido;
-        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        
-        // --- FECHA DE REGISTRO SE DEFINE UNA SOLA VEZ AQUÍ ---
-        const fechaRegistro = new Date(); 
-        
-        if (datosSanitizados.numPedido) {
-            const allData = hojaCot.getDataRange().getValues();
-            const CODIGO_COL_INDEX = COL_MAP['COT'] || 0; 
-            const filasAEliminar = [];
-            for (let i = 1; i < allData.length; i++) {
-                if (String(allData[i][CODIGO_COL_INDEX] || '').trim() === datosSanitizados.numPedido) {
-                    filasAEliminar.push(i + 1);
-                }
-            }
-            if (filasAEliminar.length > 0) {
-                filasAEliminar.sort((a, b) => b - a).forEach(rowIndex => hojaCot.deleteRow(rowIndex));
-            }
+        // 3. Determinar Código y Fila de Inicio
+        if (esModoUpdate) {
             codigoPedido = datosSanitizados.numPedido;
+            filaInicioNuevas = hojaCot.getLastRow() + 1; // Las nuevas filas se añaden al final
         } else {
+            // Generar nuevo código (sin cambios)
             let intentos = 0;
             do {
                 codigoPedido = generarCodigoPedido(datosSanitizados.Empresa);
                 intentos++;
             } while (!verificarCodigoUnico(codigoPedido) && intentos < 5);
             if (intentos >= 5) throw new Error("No se pudo generar un código único.");
+            
+            filaInicioNuevas = hojaCot.getLastRow() + 1;
         }
 
-        const lineas = datosSanitizados.Lineas || [];
-        if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio a la cotización");
-        
-        const TOTAL_COLS = hojaCot.getLastColumn() > 0 ? hojaCot.getLastColumn() : 48; 
-        let filaActual = hojaCot.getLastRow() + 1;
+        // 4. PREPARAR NUEVAS FILAS
+        const TOTAL_COLS = hojaCot.getLastColumn() > 0 ? hojaCot.getLastColumn() : 48;
+        const nuevasFilasDatos = [];
         
         for (let i = 0; i < lineas.length; i++) {
             const linea = lineas[i];
             const filaCompleta = new Array(TOTAL_COLS).fill('');
             const lineaIDUnico = `${codigoPedido}-L${i + 1}`;
 
-            // ASIGNACIÓN DE DATOS GENERALES USANDO MAPEO (CRÍTICO)
+            // --- Asignación de Datos Generales (usando tu lógica original) ---
             filaCompleta[COL_MAP['COT']] = codigoPedido;
-            if (COL_MAP['NUM'] !== undefined) {
             filaCompleta[COL_MAP['NUM']] = lineaIDUnico;
-        } else {
-            Logger.log("ADVERTENCIA: No se encontró la columna 'NUM' para guardar el LineaID.");
-        }
-            filaCompleta[COL_MAP['FECHA COT']] = fechaRegistro; // Usa la fecha definida al inicio
+            filaCompleta[COL_MAP['FECHA COT']] = fechaRegistro;
             filaCompleta[COL_MAP['EMPRESA']] = datosSanitizados.Empresa || '';
             filaCompleta[COL_MAP['EJECUTIVO']] = datosSanitizados.Ejecutivo || '';
             filaCompleta[COL_MAP['ID CLIENTE']] = datosSanitizados.RUC || '';
@@ -421,59 +400,188 @@ function guardarCotizacion(datos) {
             filaCompleta[COL_MAP['MONEDA']] = datosSanitizados.Moneda || 'SOLES';
             filaCompleta[COL_MAP['TURNO']] = datosSanitizados.Turno || 'Diurno';
             filaCompleta[COL_MAP['F. PAGO']] = datosSanitizados.Forma_Pago || '';
-            filaCompleta[COL_MAP['UBICACIÓN']] = datosSanitizados.Direccion || ''; 
+            filaCompleta[COL_MAP['UBICACIÓN']] = datosSanitizados.Direccion || '';
             filaCompleta[COL_MAP['CONTACTO']] = datosSanitizados.Contacto || '';
             
-            // --- Guardar fecha de ejecución ---
+            // Fecha Ejecución
             if (COL_MAP['FECHA EJECUCION'] !== undefined) {
-                 // Formatear la fecha antes de guardar si viene como string
                  let fechaEjec = datosSanitizados.fechaEjecucion;
                  if (fechaEjec && !(fechaEjec instanceof Date)) {
                      try { fechaEjec = new Date(fechaEjec); } catch(e){ fechaEjec = null; }
                  }
                  filaCompleta[COL_MAP['FECHA EJECUCION']] = fechaEjec instanceof Date && !isNaN(fechaEjec) ? fechaEjec : null;
-            } else {
-                 Logger.log("Advertencia: No se encontró la columna 'FECHA EJECUCION' en DataCot.");
             }
-            // ---
-            
-            //if (i === 0) filaCompleta[COL_MAP['Total servicio']] = parseFloat(datosSanitizados.Total) || 0;
-            
-            // ASIGNACIÓN DE DATOS DE LÍNEA USANDO MAPEO
+
+            // --- Asignación de Datos de Línea (usando tu lógica original) ---
             filaCompleta[COL_MAP['COD']] = linea.cod || '';
             filaCompleta[COL_MAP['DESCRIPCION']] = linea.descripcion || '';
             filaCompleta[COL_MAP['UND']] = linea.und_medida || 'HORAS';
             filaCompleta[COL_MAP['UND. PEDIDO']] = parseFloat(linea.cantidad) || 0;
             filaCompleta[COL_MAP['PRECIO']] = parseFloat(linea.precio) || 0;
-            // --- CORRECCIÓN LÓGICA DE TOTALES (Problema 2) ---
-            // El frontend envía 'linea.subtotal' como (Precio*Cant) + Movilizacion
-            // Y 'linea.movilizacion' como Movilizacion.
-            // El objetivo es: W = Q + T
-
-            const movilizacion = parseFloat(linea.movilizacion) || 0;
-            const subtotalCompleto = parseFloat(linea.subtotal) || 0; // Este es (P*Q) + Mov
             
-            // Calculamos Q (M. PEDIDO) como el subtotal MENOS la movilización
+            const movilizacion = parseFloat(linea.movilizacion) || 0;
+            const subtotalCompleto = parseFloat(linea.subtotal) || 0; 
             const subtotalSinMov = subtotalCompleto - movilizacion;
-
+            
             filaCompleta[COL_MAP['M. PEDIDO']] = subtotalSinMov;
             filaCompleta[COL_MAP['MOV. Y DES. MOV.']] = movilizacion;
-            filaCompleta[COL_MAP['TOTAL SERVICIO']] = subtotalCompleto;
+            // Corregido: Asegúrate de que 'TOTAL SERVICIO' existe o usa 'Total servicio'
+            const totalServicioColName = COL_MAP['TOTAL SERVICIO'] !== undefined ? 'TOTAL SERVICIO' : 'Total servicio';
+            filaCompleta[COL_MAP[totalServicioColName]] = subtotalCompleto;
+
             filaCompleta[COL_MAP['UND. HORAS. MINIMAS']] = linea.und_horas_minimas || '';
             filaCompleta[COL_MAP['HORAS SEGÚN']] = linea.hora_segun || '';
             filaCompleta[COL_MAP['HORAS MINIMAS']] = parseFloat(linea.horas_minimas_num) || 0;
             filaCompleta[COL_MAP['TOTAL DIAS']] = parseFloat(linea.dias_cotizados) || 0;
 
-            hojaCot.getRange(filaActual, 1, 1, filaCompleta.length).setValues([filaCompleta]);
-            filaActual++;
+            nuevasFilasDatos.push(filaCompleta);
+        }
+
+        // 5. INICIO DE TRANSACCIÓN SEGURA
+        // PASO 1: Escribir todas las nuevas filas
+        if (nuevasFilasDatos.length > 0) {
+            hojaCot.getRange(filaInicioNuevas, 1, nuevasFilasDatos.length, TOTAL_COLS)
+                   .setValues(nuevasFilasDatos);
+        }
+
+        // PASO 2: Escribir notas complementarias
+        guardarDatosComplementarios(codigoPedido, datosSanitizados);
+        
+        // PASO 3 (SOLO MODO UPDATE): Borrar filas antiguas
+        if (esModoUpdate) {
+            // Leemos los datos *después* de escribir para tener la imagen más reciente
+            const allData = hojaCot.getDataRange().getValues();
+            const filasAEliminar = [];
+            const CODIGO_COL_INDEX = COL_MAP['COT'] || 0; 
+            
+            // Iteramos hacia atrás, *excepto* las filas que acabamos de añadir
+            for (let i = filaInicioNuevas - 2; i >= 1; i--) { // (filaInicioNuevas - 2) es el índice 0-based de la fila anterior a las nuevas
+                const row = allData[i];
+                if (String(row[CODIGO_COL_INDEX] || '').trim() === codigoPedido) {
+                    filasAEliminar.push(i + 1); // i+1 es el N° de fila real
+                }
+            }
+            
+            if (filasAEliminar.length > 0) {
+                // Borramos de abajo hacia arriba
+                filasAEliminar.sort((a, b) => b - a).forEach(rowIndex => hojaCot.deleteRow(rowIndex));
+            }
         }
         
-        // --- Guardar notas en la hoja complementaria ---
-        guardarDatosComplementarios(codigoPedido, datosSanitizados);
+        // PASO 4 (PRIORIDAD 2): Actualizar la hoja de resumen
+        // Lo hacemos al final, solo si todo lo demás fue exitoso
+        _actualizarResumenCot(codigoPedido, datosSanitizados, filaInicioNuevas);
 
-        return { success: true, message: datosSanitizados.numPedido ? 'Cotización actualizada con éxito. Código: ' + codigoPedido : 'Cotización registrada con éxito. Código: ' + codigoPedido, codigoPedido: codigoPedido };
+        // 6. ÉXITO
+        return { 
+            success: true, 
+            message: esModoUpdate ? 'Cotización actualizada con éxito. Código: ' + codigoPedido : 'Cotización registrada con éxito. Código: ' + codigoPedido,
+            codigoPedido: codigoPedido 
+        };
+
     } catch (error) {
+        // 7. MANEJO DE ERROR Y ROLLBACK
+        Logger.log(`ERROR en guardarCotizacion (Transacción): ${error.message}. Iniciando ROLLBACK.`);
+        
+        // Si estamos en MODO UPDATE, y el error ocurrió *después* de escribir las nuevas filas
+        // (filaInicioNuevas > 0), borramos esas nuevas filas que quedaron huérfanas.
+        // En MODO CREAR, también borramos las filas recién añadidas.
+        if (filaInicioNuevas > 0) {
+            try {
+                const filasAEliminar = (hojaCot.getLastRow() - filaInicioNuevas) + 1;
+                if (filasAEliminar > 0) {
+                    Logger.log(`Rollback: Eliminando ${filasAEliminar} filas desde la fila ${filaInicioNuevas}`);
+                    hojaCot.deleteRows(filaInicioNuevas, filasAEliminar);
+                }
+            } catch (rollbackError) {
+                Logger.log(`ERROR CRÍTICO DE ROLLBACK: ${rollbackError.message}`);
+                // Notificar al admin, las filas temporales deben borrarse manualmente
+                enviarNotificacionError(`ERROR CRÍTICO DE ROLLBACK en guardarCotizacion para ${codigoPedido}. ${rollbackError.message}`);
+            }
+        }
+        
+        // Devolver el error original al frontend
         return manejarError('guardarCotizacion', error);
+    }
+}
+
+/**
+ * FUNCIÓN DE AYUDA (PRIORIDAD 2)
+ * Crea o actualiza la fila de resumen en la hoja 'ResumenCot'.
+ * Esta función es llamada por 'guardarCotizacion'.
+ * @param {string} codigoPedido - El ID del pedido (ej. "COT.ALP...").
+ * @param {Object} datosSanitizados - Los datos de cabecera del formulario.
+ * @param {number} filaInicioDataCot - El N° de fila donde se insertó la *primera* línea en DataCot.
+ */
+function _actualizarResumenCot(codigoPedido, datosSanitizados, filaInicioDataCot) {
+    try {
+        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
+        const sheetResumen = ss.getSheetByName(HOJA_RESUMEN_COT);
+        
+        if (!sheetResumen) {
+            Logger.log(`Error: No se encontró la hoja de resumen '${HOJA_RESUMEN_COT}'. No se puede actualizar el resumen.`);
+            return; // Salir silenciosamente para no detener el guardado principal
+        }
+
+        const COL_MAP_RESUMEN = getColumnMap(HOJA_RESUMEN_COT);
+        const ID_PEDIDO_COL = COL_MAP_RESUMEN['ID_PEDIDO'];
+
+        if (ID_PEDIDO_COL === undefined) {
+             Logger.log(`Error: No se encontró la columna 'ID_Pedido' en '${HOJA_RESUMEN_COT}'.`);
+             return;
+        }
+
+        const allDataResumen = sheetResumen.getDataRange().getValues();
+        let rowIndexToUpdate = -1;
+
+        // Buscar la fila existente
+        for (let i = 1; i < allDataResumen.length; i++) {
+            if (String(allDataResumen[i][ID_PEDIDO_COL] || '').trim() === codigoPedido) {
+                rowIndexToUpdate = i + 1; // N° de fila (1-based)
+                break;
+            }
+        }
+
+        // Preparar la fila con los datos más recientes
+        const montoTotal = parseFloat(datosSanitizados.Total) || 0;
+        const numColsResumen = sheetResumen.getLastColumn() > 0 ? sheetResumen.getLastColumn() : 10;
+        const filaResumen = new Array(numColsResumen).fill('');
+
+        filaResumen[COL_MAP_RESUMEN['ID_PEDIDO']] = codigoPedido;
+        filaResumen[COL_MAP_RESUMEN['FECHA_COT']] = datosSanitizados.numPedido ? (allDataResumen[rowIndexToUpdate -1][COL_MAP_RESUMEN['FECHA_COT']] || new Date()) : new Date(); // Conservar fecha original si se actualiza
+        filaResumen[COL_MAP_RESUMEN['CLIENTE']] = datosSanitizados.Cliente || '';
+        filaResumen[COL_MAP_RESUMEN['ID_CLIENTE']] = datosSanitizados.RUC || '';
+        filaResumen[COL_MAP_RESUMEN['EJECUTIVO']] = datosSanitizados.Ejecutivo || '';
+        filaResumen[COL_MAP_RESUMEN['EMPRESA']] = datosSanitizados.Empresa || '';
+        filaResumen[COL_MAP_RESUMEN['MONTO_TOTAL']] = montoTotal;
+        filaResumen[COL_MAP_RESUMEN['MONEDA']] = datosSanitizados.Moneda || '';
+        filaResumen[COL_MAP_RESUMEN['ESTADO_PEDIDO']] = datosSanitizados.Estado || '';
+        
+        // Guardar el RowIndex de DataCot solo en la creación
+        if (rowIndexToUpdate === -1) {
+             filaResumen[COL_MAP_RESUMEN['DATACOT_ROWINDEX']] = filaInicioDataCot;
+        } else {
+             // Conservar el RowIndex original si ya existía
+             filaResumen[COL_MAP_RESUMEN['DATACOT_ROWINDEX']] = allDataResumen[rowIndexToUpdate -1][COL_MAP_RESUMEN['DATACOT_ROWINDEX']];
+        }
+
+
+        // Escribir en la hoja de resumen
+        if (rowIndexToUpdate > 1) {
+            // Actualizar fila existente
+            sheetResumen.getRange(rowIndexToUpdate, 1, 1, filaResumen.length).setValues([filaResumen]);
+        } else {
+            // Crear nueva fila
+            sheetResumen.appendRow(filaResumen);
+        }
+
+        // Invalidar caché de resumen
+        cache.remove(`hoja_${HOJA_RESUMEN_COT}`);
+        Logger.log(`ResumenCot actualizado para ${codigoPedido}.`);
+
+    } catch (e) {
+        Logger.log(`ERROR al actualizar ResumenCot: ${e.message}`);
+        enviarNotificacionError(`Fallo al actualizar ResumenCot para ${codigoPedido}: ${e.message}`);
     }
 }
 
@@ -842,89 +950,91 @@ function getFilaPorRowIndex(ruc, rowIndex, tipo) {
 }
 
 /**
- * REEMPLAZO v2 de getListaCotizacionesResumen
- * Incluye Vendedor y Compañía en los datos devueltos.
+ * REEMPLAZO COMPLETO (PRIORIDAD 2)
+ * Obtiene la lista de cotizaciones ÚNICAMENTE desde la hoja 'ResumenCot'.
+ * Esta función es ahora ultra-rápida y escalable.
  */
 function getListaCotizacionesResumen() {
     try {
-        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, false); // Usar caché
+        // Encabezado que espera el frontend ResumenComercial.html
         const encabezadoBase = ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"];
+        
+        // 1. Leer datos (con caché) desde la nueva hoja de resumen
+        const allData = obtenerDatosHoja(HOJA_RESUMEN_COT, true); 
 
         if (allData.length <= 1) {
             return [encabezadoBase]; // Devuelve solo encabezados si no hay datos
         }
 
-        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        // Asegúrate que los nombres de encabezado coincidan con tu HOJA_COTIZACIONES
+        // 2. Obtener mapa de columnas de la hoja de resumen
+        const COL_MAP = getColumnMap(HOJA_RESUMEN_COT);
+        
+        // 3. Validar columnas críticas
         const INDICES = {
-            NUM_PEDIDO: COL_MAP['COT'],
-            FECHA_CREACION: COL_MAP['FECHA COT'],
+            NUM_PEDIDO: COL_MAP['ID_PEDIDO'],
+            FECHA_CREACION: COL_MAP['FECHA_COT'],
             CLIENTE: COL_MAP['CLIENTE'],
-            VENDEDOR: COL_MAP['EJECUTIVO'], // Mapea a la columna EJECUTIVO
-            COMPANIA: COL_MAP['EMPRESA'],   // Mapea a la columna EMPRESA
-            MONTO_TOTAL: COL_MAP['TOTAL SERVICIO'], // Usa TOTAL SERVICIO
+            VENDEDOR: COL_MAP['EJECUTIVO'],
+            COMPANIA: COL_MAP['EMPRESA'],
+            MONTO_TOTAL: COL_MAP['MONTO_TOTAL'],
             MONEDA: COL_MAP['MONEDA'],
-            ESTADO: COL_MAP['ESTADO COT'],
-            ID_CLIENTE: COL_MAP['ID CLIENTE'],
+            ESTADO: COL_MAP['ESTADO_PEDIDO'],
+            ID_CLIENTE: COL_MAP['ID_CLIENTE'],
+            ROW_INDEX: COL_MAP['DATACOT_ROWINDEX'] // ¡Crítico para el PDF!
         };
 
-        // Validar que se encontraron los índices necesarios
         for (const key in INDICES) {
             if (INDICES[key] === undefined) {
-                 Logger.log(`Advertencia: No se encontró el encabezado para '${key}' en HOJA_COTIZACIONES. Usando índice por defecto o causará error.`);
-                 // Podrías asignar índices por defecto aquí si es necesario, ej: INDICES.VENDEDOR = 4;
+                 Logger.log(`Error Fatal: No se encontró el encabezado para '${key}' en HOJA_RESUMEN_COT.`);
+                 throw new Error(`Configuración incorrecta: Falta la columna para ${key} en ResumenCot.`);
             }
         }
 
-
-        const resumenMap = new Map();
+        const resumenData = [encabezadoBase];
         const scriptTimeZone = Session.getScriptTimeZone();
 
+        // 4. Procesar las filas (ya no se agrupa, solo se formatea)
         for (let i = 1; i < allData.length; i++) {
             const row = allData[i];
+            
             const numPedido = String(row[INDICES.NUM_PEDIDO] || '').trim();
-            if (!numPedido) continue;
+            if (!numPedido) continue; // Saltar filas vacías
 
-            let montoLinea = 0;
-            try { montoLinea = procesarMontoRapido(row[INDICES.MONTO_TOTAL]); } catch(e){ montoLinea = 0; }
-
-            if (!resumenMap.has(numPedido)) {
-                const fecha = formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone);
-                const rowIndex = i + 1;
-                resumenMap.set(numPedido, {
-                    numPedido: numPedido,
-                    fecha: fecha,
-                    cliente: row[INDICES.CLIENTE] || 'N/A',
-                    vendedor: row[INDICES.VENDEDOR] || 'N/A', // Capturar vendedor
-                    compania: row[INDICES.COMPANIA] || 'N/A', // Capturar compañía
-                    moneda: String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
-                    estado: row[INDICES.ESTADO] || 'Pendiente',
-                    idCliente: row[INDICES.ID_CLIENTE] || '',
-                    montoTotal: montoLinea,
-                    rowIndex: rowIndex
-                });
-            } else {
-                 const existente = resumenMap.get(numPedido);
-                 existente.montoTotal += montoLinea;
-                 // Opcional: actualizar vendedor/compañía si estaban vacíos
-                 if (existente.vendedor === 'N/A' && row[INDICES.VENDEDOR]) existente.vendedor = row[INDICES.VENDEDOR];
-                 if (existente.compania === 'N/A' && row[INDICES.COMPANIA]) existente.compania = row[INDICES.COMPANIA];
-            }
-        }
-
-        const resumenData = [encabezadoBase]; // Usar el encabezado definido al inicio
-        resumenMap.forEach(item => {
+            const montoTotal = parseFloat(row[INDICES.MONTO_TOTAL] || 0);
+            
             resumenData.push([
-                item.numPedido, item.fecha, item.cliente,
-                item.vendedor, item.compania, // Añadir los nuevos datos
-                item.montoTotal.toFixed(2), // Mantener el número aquí, el formato se hace en frontend
-                item.moneda,
-                item.estado, item.idCliente, item.rowIndex
+                numPedido,
+                formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone),
+                row[INDICES.CLIENTE] || 'N/A',
+                row[INDICES.VENDEDOR] || 'N/A',
+                row[INDICES.COMPANIA] || 'N/A',
+                montoTotal.toFixed(2), // Formato simple, frontend puede mejorarlo
+                String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
+                row[INDICES.ESTADO] || 'Pendiente',
+                row[INDICES.ID_CLIENTE] || '',
+                row[INDICES.ROW_INDEX] // El Row Index de DataCot
             ]);
+        }
+        
+        // 5. Devolver datos ordenados (más reciente primero)
+        // Se ordena por fecha (col 1)
+        const datosOrdenados = resumenData.slice(1).sort((a, b) => {
+             try {
+                // Formato de fecha es dd/MM/yyyy
+                const partsA = a[1].split('/');
+                const partsB = b[1].split('/');
+                const dateA = new Date(partsA[2], partsA[1] - 1, partsA[0]);
+                const dateB = new Date(partsB[2], partsB[1] - 1, partsB[0]);
+                return dateB - dateA; // Descendente
+             } catch(e) {
+                return 0;
+             }
         });
-        return resumenData;
+
+        return [encabezadoBase].concat(datosOrdenados);
+        
     } catch (e) {
-        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen: ${e.message} \n ${e.stack}`);
+        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen (v2): ${e.message} \n ${e.stack}`);
         // Devolver encabezado y mensaje de error
         return [ ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"],
                  ["Error", "No se pudieron cargar los datos", e.message, "", "", "", "", "", "", ""] ];
@@ -1257,137 +1367,206 @@ function filtrarPedidosPorClienteYServicio(rucCliente, idServicio) {
 }
 
 /**
- * REEMPLAZO 1:
- * Guarda o actualiza una Orden de Trabajo.
- * Simplificado para usar LineaID.
+ * [NUEVO HELPER]
+ * Busca una línea en DataCot por su LineaID y devuelve detalles clave.
+ * DEBE ser añadido a _Comercial_Logic.gs
+ * @param {string} lineaID El ID único de la línea (ej. "COT...-L1").
+ * @returns {object} Un objeto {success, precio, cliente, ruc, horasSegun}
  */
-function guardarOT(data) {
-    // --- VERIFICACIÓN DE PERMISO ---
-    const permisos = obtenerPermisosUsuario();
-    if (!permisos.puedeEditarServicios) { 
-        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." }; 
+function _getDetallesDeLineaCot(lineaID) {
+    Logger.log(`Buscando detalles de DataCot para lineaID: ${lineaID}`);
+    if (!lineaID) {
+        return { success: false, message: "lineaID nulo o vacío." };
+    }
+    
+    // Usamos obtenerDatosHoja sin caché para asegurar el precio más reciente al *crear* la OT
+    const allDataCot = obtenerDatosHoja(HOJA_COTIZACIONES, false); 
+    const COL_MAP_COT = getColumnMap(HOJA_COTIZACIONES);
+
+    const LINEAID_COL = COL_MAP_COT['NUM'];
+    const PRECIO_COL = COL_MAP_COT['PRECIO'];
+    const CLIENTE_COL = COL_MAP_COT['CLIENTE'];
+    const RUC_COL = COL_MAP_COT['ID CLIENTE'];
+    const HORAS_SEGUN_COL = COL_MAP_COT['HORAS SEGÚN'];
+
+    // Validar que las columnas esenciales existan en DataCot
+    if ([LINEAID_COL, PRECIO_COL, CLIENTE_COL, RUC_COL, HORAS_SEGUN_COL].includes(undefined)) {
+        Logger.log(`Error de configuración en _getDetallesDeLineaCot: Faltan columnas en DataCot.
+            NUM=${LINEAID_COL}, PRECIO=${PRECIO_COL}, CLIENTE=${CLIENTE_COL}, ID CLIENTE=${RUC_COL}, HORAS SEGÚN=${HORAS_SEGUN_COL}`);
+        return { success: false, message: "Error de configuración: Faltan columnas (NUM, PRECIO, CLIENTE, ID CLIENTE, HORAS SEGÚN) en DataCot." };
     }
 
-    Logger.log("INICIO guardarOT (v5 Corregida). Datos recibidos: " + JSON.stringify(data));
+    for (let i = 1; i < allDataCot.length; i++) {
+        const row = allDataCot[i];
+        if (String(row[LINEAID_COL] || '').trim() === lineaID) {
+            const detalles = {
+                success: true,
+                precio: parseFloat(row[PRECIO_COL] || 0),
+                cliente: String(row[CLIENTE_COL] || ''),
+                ruc: String(row[RUC_COL] || ''),
+                horasSegun: String(row[HORAS_SEGUN_COL] || '').trim().toUpperCase()
+            };
+            Logger.log(`Detalles encontrados: ${JSON.stringify(detalles)}`);
+            return detalles;
+        }
+    }
+    
+    Logger.log(`Error: No se encontró la línea con ID ${lineaID} en DataCot.`);
+    return { success: false, message: `No se encontró la línea con ID ${lineaID} en DataCot.` };
+}
 
+
+/**
+ * REEMPLAZO TOTAL de guardarOT (v6 - Con Cálculo Backend)
+ * Esta función ahora busca en DataCot para calcular el Monto Servicio.
+ */
+function guardarOT(data) {
+    // 1. Verificación de Permisos
+    const permisos = obtenerPermisosUsuario();
+    if (!permisos.puedeEditarServicios) { // O un permiso 'puedeEditarOT'
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
+    }
+
+    Logger.log("INICIO guardarOT (v6 - Con Cálculo Backend). Datos recibidos: " + JSON.stringify(data));
+    
     try {
         const OT_SHEET = HOJA_OT;
-        const COL_MAP = getColumnMap(OT_SHEET); 
-        Logger.log("Mapa de columnas de 'OT': " + JSON.stringify(COL_MAP));
-
-        const datos = sanitizarDatos(data); 
-        const modo = datos.modo;
-        const numOT = datos.numeroOT; 
+        const datos = sanitizarDatos(data);
         
-        let rowIndex = 0;
-        if (modo === 'editar' || modo === 'editarGlobal') { 
-            const resultado = buscarRegistro(OT_SHEET, datos.otIDExistente, COL_MAP['N° OT'] || 0);
-            if (!resultado) throw new Error(`OT a editar ${datos.otIDExistente} no encontrada.`); 
-            rowIndex = resultado.indiceFila;
-            Logger.log(`Modo Edición. Actualizando fila: ${rowIndex}`);
-        } else {
-            Logger.log("Modo Creación.");
+        // --- PASO 1: Validar datos de entrada ---
+        const lineaID = datos.lineaID;
+        if (!lineaID) {
+            return manejarError('guardarOT', new Error("Error Crítico: No se proporcionó un lineaID. No se puede enlazar a DataCot."));
+        }
+        
+        // --- PASO 2: Obtener datos de DataCot usando el helper ---
+        const detallesLinea = _getDetallesDeLineaCot(lineaID);
+        if (!detallesLinea.success) {
+            return manejarError('guardarOT', new Error(detallesLinea.message));
         }
 
-        const filaCompleta = new Array(Object.keys(COL_MAP).length).fill('');
+        // --- PASO 3: Calcular Montos ---
+        const horasSegun = detallesLinea.horasSegun;
+        let horasParaActualizar = 0;
+        
+        // Determinar qué horas usar (basado en la lógica anterior de 'obtenerHorasSegunPorLineaID')
+        if (horasSegun.includes("HORÓMETRO") || horasSegun.includes("HOROMETRO")) {
+            horasParaActualizar = parseFloat(datos.horometroTrabajado || 0);
+            Logger.log(`Lógica de horas: Usando Horómetro (${horasParaActualizar} hrs).`);
+        } else {
+            // Usar Tiempo Total (Inicio/Fin) como default
+            horasParaActualizar = parseFloat(datos.tiempoTotal || 0);
+            Logger.log(`Lógica de horas: Usando Tiempo Total (${horasParaActualizar} hrs).`);
+        }
+
+        const precioUnitario = detallesLinea.precio;
+        
+        // --- ¡CÁLCULO CLAVE! ---
+        const montoServicioCalculado = horasParaActualizar * precioUnitario;
+        // --- Lectura de Movilización (del formulario) ---
+        const montoMovilizacionForm = parseFloat(datos.montoMovilizacion || 0);
+
+        Logger.log(`Cálculo: ${horasParaActualizar} hrs * S/ ${precioUnitario} (precio) = S/ ${montoServicioCalculado} (Monto Servicio)`);
+        Logger.log(`Movilización (Form): S/ ${montoMovilizacionForm}`);
+
+        // --- PASO 4: Preparar fila para HOJA: OT ---
+        const COL_MAP_OT = getColumnMap(HOJA_OT);
+        if (Object.keys(COL_MAP_OT).length === 0) throw new Error("Mapa de columnas de HOJA: OT está vacío o no se cargó.");
+        
+        const filaCompleta = new Array(Object.keys(COL_MAP_OT).length).fill('');
         
         const mapAndSet = (colName, value) => {
-            // Buscamos la clave en MAYÚSCULAS en el mapa
-            // (Tu mapa ya tiene las claves en mayúsculas, como "FECHA", "CLIENTE RUC", etc.)
-            const index = COL_MAP[colName]; 
-            
+            const index = COL_MAP_OT[colName.toUpperCase()];
             if (index !== undefined) {
-                filaCompleta[index] = value; 
+                filaCompleta[index] = value;
             } else {
-                Logger.log(`ADVERTENCIA: La columna '${colName}' no se encontró en el mapa. El dato '${value}' será omitido.`);
+                Logger.log(`ADVERTENCIA (guardarOT v6): La columna '${colName}' no se encontró en el mapa de HOJA: OT.`);
             }
         };
-        
-        // --- INICIO DE MAPEO DE DATOS (CORREGIDO A MAYÚSCULAS) ---
-        // (Basado en tu log: {"N°COTIZACION":0, "FECHA":2, "LINEAID":3, "CLIENTE RUC":4, ...})
-        
-        mapAndSet('N°COTIZACION', datos.pedido);
+
+        // --- Mapeo de datos ---
         mapAndSet('N° OT', datos.numeroOT);
-        mapAndSet('FECHA', datos.fecha); // <-- CORREGIDO
-        mapAndSet('LINEAID', datos.lineaID); // <-- CORREGIDO
-        mapAndSet('CLIENTE RUC', datos.clienteRUC); // <-- CORREGIDO
-        mapAndSet('SERVICIO ID', datos.servicio); // <-- CORREGIDO
-        mapAndSet('HORA INICIO', datos.horaInicio); // <-- CORREGIDO
-        mapAndSet('HORA FIN', datos.horaFin); // <-- CORREGIDO
-        mapAndSet('TIEMPO REFRIGERIO', parseFloat(datos.tiempoRefrigerio || 0)); // <-- CORREGIDO
-        mapAndSet('TIEMPO TOTAL', parseFloat(datos.tiempoTotal || 0)); // <-- CORREGIDO
-        mapAndSet('HOROMETRO INICIO', parseFloat(datos.horometroInicio || 0)); // <-- CORREGIDO
-        mapAndSet('HOROMETRO FIN', parseFloat(datos.horometroFin || 0)); // <-- CORREGIDO
-        mapAndSet('HOROMETRO TRABAJADO', parseFloat(datos.horometroTrabajado || 0)); // <-- CORREGIDO
-        mapAndSet('ES CAMION GRUA', datos.esCamionGrua ? 'SI' : 'NO'); // <-- CORREGIDO
+        mapAndSet('FECHA', datos.fecha);
+        mapAndSet('N°COTIZACION', datos.pedido);
+        mapAndSet('LINEAID', lineaID);
+        mapAndSet('CLIENTE RUC', detallesLinea.ruc); // <-- DE DATACOT
+        mapAndSet('CLIENTE', detallesLinea.cliente); // <-- DE DATACOT (NUEVO)
+        mapAndSet('SERVICIO ID', datos.servicio);
+        mapAndSet('HORA INICIO', datos.horaInicio);
+        mapAndSet('HORA FIN', datos.horaFin);
+        mapAndSet('TIEMPO REFRIGERIO', parseFloat(datos.tiempoRefrigerio || 0));
+        mapAndSet('TIEMPO TOTAL', parseFloat(datos.tiempoTotal || 0));
+        mapAndSet('HOROMETRO INICIO', parseFloat(datos.horometroInicio || 0));
+        mapAndSet('HOROMETRO FIN', parseFloat(datos.horometroFin || 0));
+        mapAndSet('HOROMETRO TRABAJADO', parseFloat(datos.horometroTrabajado || 0));
 
-        mapAndSet('HOROMETRO INICIO CAMION', datos.horometroInicioCamion || 0); // <-- CORREGIDO
-        mapAndSet('HOROMETRO FIN CAMION', datos.horometroFinCamion || 0); // <-- CORREGIDO
-        mapAndSet('HOROMETRO INICIO GRUA', datos.horometroInicioGrua || 0); // <-- CORREGIDO
-        mapAndSet('HOROMETRO FIN GRUA', datos.horometroFinGrua || 0); // <-- CORREGIDO
+        // --- Mapeo de Montos (NUEVO) ---
+        mapAndSet('MONTO SERVICIO', montoServicioCalculado);     // <-- CALCULADO (NUEVO)
+        mapAndSet('MONTO MOVILIZACION', montoMovilizacionForm); // <-- DEL FORM (NUEVO)
 
-        if (modo !== 'editar' && modo !== 'editarGlobal') {
-            mapAndSet('FECHA REGISTRO', new Date()); // <-- CORREGIDO
-            mapAndSet('USUARIO', obtenerEmailSeguro()); // <-- CORREGIDO
-        }
+        // Mapeo de campos de Camión Grúa
+        mapAndSet('ES CAMION GRUA', datos.esCamionGrua ? 'SI' : 'NO');
+        mapAndSet('HOROMETRO INICIO CAMION', datos.horometroInicioCamion || 0);
+        mapAndSet('HOROMETRO FIN CAMION', datos.horometroFinCamion || 0);
+        mapAndSet('HOROMETRO INICIO GRUA', datos.horometroInicioGrua || 0);
+        mapAndSet('HOROMETRO FIN GRUA', datos.horometroFinGrua || 0);
+
+        // --- PASO 5: Guardar en HOJA: OT ---
+        let modo = 'CREATE';
+        let rowIndex = 0;
         
-        // --- FIN DE MAPEO ---
-
-        Logger.log("Fila que se va a guardar (CORREGIDA): " + JSON.stringify(filaCompleta));
+        if (datos.modo === 'editar' || datos.modo === 'editarGlobal') {
+            const resultado = buscarRegistro(OT_SHEET, datos.otIDExistente, COL_MAP_OT['N° OT'] || 0);
+            if (!resultado) throw new Error(`OT a editar ${datos.otIDExistente} no encontrada.`); 
+            rowIndex = resultado.indiceFila;
+            modo = 'UPDATE';
+        }
 
         let resultadoCRUD;
-        if (modo === 'editar' || modo === 'editarGlobal') { 
+        if (modo === 'UPDATE') {
+            // Nota: Al editar una OT, los montos calculados se basan en las horas *editadas*.
+            // Esto es correcto.
             resultadoCRUD = crudHoja('UPDATE', OT_SHEET, { rowIndex: rowIndex, valores: filaCompleta });
-            return { success: true, message: `OT ${numOT} actualizada.` };
+            
+            // ADVERTENCIA: La lógica para "revertir" los montos antiguos en DataCot
+            // y sumar los nuevos es compleja y no está implementada aquí.
+            // Por ahora, la edición de una OT NO actualiza DataCot.
+            Logger.log(`OT ${datos.numeroOT} actualizada. La actualización de DataCot en modo edición no está implementada.`);
+            return { success: true, message: `OT ${datos.numeroOT} actualizada.` };
+
         } else {
-            // --- INICIO DE LÓGICA DE DESPACHO FLEXIBLE (MODO CREACIÓN) ---
+            // Modo CREACIÓN
+            mapAndSet('FECHA REGISTRO', new Date());
+            mapAndSet('USUARIO', obtenerEmailSeguro());
+            mapAndSet('ESTADO_VALORIZACION', 'Pendiente'); // <- Dato clave para Módulo Valorización
             
             resultadoCRUD = crudHoja('CREATE', OT_SHEET, filaCompleta);
-            
-            if (resultadoCRUD.success && datos.lineaID) {
-                
-                // 1. Obtener la regla de negocio desde DataCot
-                const horasSegun = obtenerHorasSegunPorLineaID(datos.lineaID); // Llama a la función ayudante
-                
-                let horasParaActualizar = 0;
-                
-                // 2. Decidir qué valor usar
-                if (horasSegun.includes("HORÓMETRO") || horasSegun.includes("HOROMETRO")) {
-                    horasParaActualizar = parseFloat(datos.horometroTrabajado || 0);
-                    Logger.log(`Lógica flexible: "HORAS SEGÚN" es '${horasSegun}'. Usando Horómetro: ${horasParaActualizar} horas.`);
-                } else {
-                    // Usar Tiempo Total (Inicio/Fin) como default
-                    horasParaActualizar = parseFloat(datos.tiempoTotal || 0);
-                    Logger.log(`Lógica flexible: "HORAS SEGÚN" es '${horasSegun}'. Usando Tiempo Total (Inicio/Fin): ${horasParaActualizar} horas.`);
-                }
-
-                // 3. Obtener los montos (del formulario)
-                const montoDespachoOT = parseFloat(datos.montoDespacho || 0);
-                const montoMovilizacionOT = parseFloat(datos.montoMovilizacion || 0);
-
-                // 4. Llamar a la función de actualización con el valor de horas decidido
-                const actualizacionExitosa = actualizarDataCotDesdeOT(
-                    datos.lineaID,
-                    horasParaActualizar, // <-- Valor flexible
-                    montoDespachoOT,
-                    montoMovilizacionOT
-                );
-                
-                if (!actualizacionExitosa) {
-                    Logger.log(`ADVERTENCIA: OT ${numOT} registrada, pero HUBO UN ERROR al actualizar DataCot (LineaID: ${datos.lineaID}).`);
-                    return { success: true, message: `OT ${numOT} registrada, pero ¡Advertencia! No se pudo actualizar el resumen del pedido.` };
-                }
-            }
-            return { success: true, message: `OT ${numOT} registrada.` };
-            // --- FIN DE LA LÓGICA ---
         }
 
+        // --- PASO 6: Actualizar DataCot (Solo en modo CREACIÓN) ---
+        if (resultadoCRUD.success) {
+            Logger.log(`Llamando a actualizarDataCotDesdeOT con: LineaID=${lineaID}, Horas=${horasParaActualizar}, MontoServicio=${montoServicioCalculado}, MontoMov=${montoMovilizacionForm}`);
+            
+            const actualizacionExitosa = actualizarDataCotDesdeOT(
+                lineaID,
+                horasParaActualizar,     // <-- Horas (de horómetro o tiempo total)
+                montoServicioCalculado,  // <-- Monto de servicio (calculado)
+                montoMovilizacionForm    // <-- Monto de movilización (del form)
+            );
+            
+            if (!actualizacionExitosa) {
+                Logger.log(`ADVERTENCIA: OT ${datos.numeroOT} registrada, pero HUBO UN ERROR al actualizar DataCot (LineaID: ${lineaID}).`);
+                return { success: true, message: `OT ${datos.numeroOT} registrada, pero ¡Advertencia! No se pudo actualizar el resumen del pedido.` };
+            }
+        }
+        
+        return { success: true, message: `OT ${datos.numeroOT} registrada y DataCot actualizada.` };
+
     } catch (e) {
-        Logger.log(`ERROR FATAL en guardarOT: ${e.message} \n Stack: ${e.stack}`);
+        Logger.log(`ERROR FATAL en guardarOT (v6): ${e.message} \n Stack: ${e.stack}`);
         return manejarError('guardarOT', e);
     }
 }
-
 // ====================================================
 // === FUNCIONES DE PDF (SIN CAMBIOS ESTRUCTURALES) ===
 // ====================================================
@@ -3012,3 +3191,4 @@ function obtenerHorasSegunPorLineaID(lineaID) {
     return ''; // Devolver vacío en caso de error
   }
 }
+
