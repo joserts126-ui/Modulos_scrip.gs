@@ -28,8 +28,8 @@
             <button onclick="navegarAResumen()" class="boton-regresar"> ← Resumen </button>
             <button type="button" onclick="llamarGenerarPDF()" class="btn-guardar-top btn-pdf" id="btnGenerarPDF" style="display: none;"> 📄 PDF </button> 
             <button type="button" onclick="gestionarActaGlobal()" class="btn-guardar-top btn-info" id="btnGestionarActa" style="display: none; background-color: #17a2b8;"> 📋 Acta </button> 
-            
             <button type="button" onclick="gestionarOTsParaPedido()" class="btn-guardar-top btn-warning" id="btnGestionarOT" style="display: none; background-color: #f0ad4e;"> ⚙️ OTs </button>
+            <button type="button" onclick="gestionarValorizaciones()" class="btn-guardar-top btn-success" id="btnGestionarValorizacion">    💲 Valorizaciones</button>
             </div>
         </div>
         <div class="contenedor-principal contenedor-compacto">
@@ -197,6 +197,12 @@
     </div>
 
 <script>
+  function gestionarValorizaciones() {
+    if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) return;
+    const urlBase = '<?!= getScriptUrl() ?>';
+    const urlDestino = `${urlBase}?page=Valorizacion&pedido=${encodeURIComponent(estadoApp.numPedidoEdicion)}`;
+    window.open(urlDestino, '_blank');
+    }
 
   function navegarAResumen() {
         const urlBase = '<?!= getScriptUrl() ?>';
@@ -232,6 +238,28 @@
             // Si no, usa la que te di: generarPDFPorNumeroPedido
             .generarYDevolverPDF(numPedido); 
     }
+/**
+ * REEMPLAZO (Misión 3 - Revisada)
+ * Abre la página de Actas de Planificación, pasando el N° de Pedido actual.
+ */
+function gestionarActaGlobal() {
+    // 1. Verifica que estemos en modo edición
+    if (!estadoApp.esEdicion || !estadoApp.numPedidoEdicion) {
+        alert('Debe estar en modo de edición de un pedido existente para gestionar sus Actas.');
+        return;
+    }
+
+    // 2. Obtiene la URL base y el N° de Pedido
+    const urlBase = '<?!= getScriptUrl() ?>';
+    const numPedido = estadoApp.numPedidoEdicion;
+
+    // 3. Construye la URL de destino
+    const urlDestino = `${urlBase}?page=Acta&pedido=${encodeURIComponent(numPedido)}`;
+
+    // 4. Abre en una nueva pestaña
+    console.log(`Navegando a la gestión de Actas para el pedido: ${numPedido}`);
+    window.open(urlDestino, '_blank');
+}
 
 /**
  * NUEVA FUNCIÓN
@@ -1351,154 +1379,191 @@ function procesarDatosInicialesComercial(data) {
         }
 
         function precargarFormulario(datos) {
-    console.log("🎨 INICIANDO PRECARGA DE FORMULARIO");
-    // ... (otros logs) ...
-    
-    setTimeout(() => {
-        try {
-            // 1. Rellenar campos generales
-            console.log("📝 Llenando campos generales...");
-            const campos = {
-                'fechaEjecucion': datos.fechaEjecucion || '', 
-                'empresa': datos.Empresa || '',
-                'rucCliente': datos.RUC || '',
-                'clienteNombre': datos.Cliente || '',
-                'formaPago': datos.Forma_Pago || '',
-                'direccion': datos.Direccion || '', 
-                'ejecutivo': datos.Ejecutivo || '',
-                'moneda': datos.Moneda || 'Soles'
-            };
+            console.log("🎨 INICIANDO PRECARGA DE FORMULARIO");
+            console.log("📍 Datos recibidos - Dirección:", datos.Direccion);
+            console.log("📞 Datos recibidos - Contacto:", datos.Contacto);
+            console.log("👨‍💼 Datos recibidos - Ejecutivo:", datos.Ejecutivo);
+            console.log("🏢 Datos recibidos - Empresa:", datos.Empresa);
+            console.log("👤 Datos recibidos - Cliente:", datos.Cliente);
+            console.log("💰 Datos recibidos - Moneda:", datos.Moneda);
+            console.log("📅 Datos recibidos - Fecha Ejecución:", datos.fechaEjecucion); // Log para verificar
+            console.log("🏷️ Datos recibidos - Estado:", datos.Estado); // Log para verificar
             
-            Object.keys(campos).forEach(campoId => {
-                const elemento = document.getElementById(campoId);
-                if (elemento) {
-                    if (campoId === 'fechaEjecucion' && campos[campoId] === null) {
-                        elemento.value = ''; 
-                    } else {
-                        elemento.value = campos[campoId];
-                    }
-                } else {
-                    console.warn(`⚠️ Campo no encontrado: ${campoId}`);
-                }
-            });
-
-            // --- CORRECCIÓN MEJORADA PARA ESTADO (CON Array.from) ---
-            const estadoSelect = document.getElementById('estadoCotizacion');
-            if (estadoSelect) {
-                 const estadoASeleccionar = datos.Estado || 'COTIZACION';
-                 
-                 // --- CORRECIÓN AQUÍ ---
-                 const opcionEncontrada = Array.from(estadoSelect.options).find(option => // <-- SINTAXIS COMPATIBLE (ES5)
-                     option.value.toLowerCase() === estadoASeleccionar.toLowerCase()
-                 );
-
-                 if (opcionEncontrada) {
-                      estadoSelect.value = opcionEncontrada.value; 
-                 } else {
-                      console.warn(`⚠️ Estado "${estadoASeleccionar}" (o equivalente) no encontrado.`);
-                      if (estadoSelect.options.length > 1) { 
-                           estadoSelect.value = estadoSelect.options[1].value;
-                      }
-                 }
-            }
-            // --- FIN CORRECCIÓN ESTADO ---
-            
-            // Cargar contactos
-            if (datos.RUC) {
-                google.script.run
-                    .withSuccessHandler(function(contactosData) {
-                        listaContactos = contactosData || [];
-                        llenarDatalistContactos(); 
-                        if (datos.Contacto) {
-                            seleccionarContactoEspecifico(datos.Contacto);
-                        }
-                    })
-                    .withFailureHandler(function(error) {
-                        console.error("❌ Error cargando contactos en modo edición:", error);
-                        listaContactos = [];
-                        llenarDatalistContactos();
-                    })
-                    .getContactosParaComercial(datos.RUC);
-            } else {
-                 listaContactos = [];
-                 llenarDatalistContactos();
-            }
-
-            // --- CORRECCIÓN CRÍTICA: TURNO (CON Array.from) ---
-            const turnoSelect = document.getElementById('turno');
-            if (turnoSelect && datos.Turno) {
-                const mapeoTurnos = { 'DIURNO': 'Diurno', 'NOCTURNO': 'Nocturno', 'DOBLE TURNO': 'Doble Turno', 'DOBLETURNO': 'Doble Turno', 'DOBLE': 'Doble Turno', 'DIURNA': 'Diurno', 'NOCTURNA': 'Nocturno' };
-                const turnoRecibido = String(datos.Turno).toUpperCase().trim();
-                const turnoNormalizado = mapeoTurnos[turnoRecibido] || (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
-                
-                // --- CORRECCIÓN AQUÍ ---
-                let opcionEncontrada = Array.from(turnoSelect.options).find(opt => opt.value.toLowerCase() === turnoNormalizado.toLowerCase()); // <-- SINTAXIS COMPATIBLE (ES5)
-                
-                if (!opcionEncontrada) { 
-                   opcionEncontrada = Array.from(turnoSelect.options).find(opt => opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) || turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase()));
-                }
-                if (opcionEncontrada) { turnoSelect.value = opcionEncontrada.value; } 
-                else { console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`); }
-            }
-            
-            // Moneda
-            let monedaValue = datos.Moneda || 'Soles';
-            if (monedaValue === 'SOL') monedaValue = 'Soles';
-            if (monedaValue === 'USD') monedaValue = 'Dolares';
-            const monedaSelect = document.getElementById('moneda');
-            if (monedaSelect) {
-                monedaSelect.value = monedaValue;
-            }
-            
-            // --- CORRECCIÓN EJECUTIVO (CON Array.from) ---
-            const ejecutivoSelect = document.getElementById('ejecutivo');
-            if (ejecutivoSelect && datos.Ejecutivo) {
-                const ejecutivoNormalizado = String(datos.Ejecutivo).toUpperCase().trim();
-                
-                // --- CORRECCIÓN AQUÍ ---
-                const opcionEjecutivo = Array.from(ejecutivoSelect.options).find(opt => opt.value.toUpperCase() === ejecutivoNormalizado); // <-- SINTAXIS COMPATIBLE (ES5)
-                
-                if (opcionEjecutivo) { ejecutivoSelect.value = opcionEjecutivo.value; } 
-                else { console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`); }
-            }
-            
-            // (El resto de la función: notas, líneas de servicio, etc. sigue igual)
-            document.getElementById('plantillaNotas').value = datos.plantillaNotas || '';
-            document.getElementById('aclaracionesServicio').value = datos.aclaracionesServicio || '';
-            document.getElementById('rucCliente').readOnly = true;
-            document.getElementById('rucCliente').style.backgroundColor = '#f5f5ff';
-            const tbody = document.getElementById('cuerpoDetalle');
-            if (tbody) {
-                tbody.innerHTML = '';
-                estadoApp.lineaCounter = 0;
-            }
-            const servicios = datos.Lineas || [];
-            if (servicios.length > 0) {
-                servicios.forEach((servicio, index) => {
-                    const lineaData = {
-                        COD: servicio.cod || '', DESC: servicio.descripcion || '', UND: servicio.und_medida || 'HORAS', 
-                        CANTIDAD: servicio.cantidad || 1, UND_H_MIN: servicio.und_horas_minimas || '', 
-                        DIAS_COT: servicio.dias_cotizados || 0, H_MIN_NUM: servicio.horas_minimas_num || 0, 
-                        H_SEGUN: servicio.hora_segun || '', MOV: servicio.movilizacion || 0, 
-                        PRECIO: servicio.precio || 0, SUB: servicio.subtotal || 0
-                    };
-                    agregarLineaDetalle(lineaData);
-                });
-            } else {
-                agregarLineaDetalle(); 
-            }
+            // Pequeño delay para asegurar que el DOM esté listo Y que llenarSelect haya corrido
             setTimeout(() => {
-                calcularTotalGeneral();
-                console.log("🎉🎉🎉 PRECARGA COMPLETADA EXITOSAMENTE 🎉🎉🎉");
-            }, 500); 
-            
-        } catch (error) {
-            console.error("💥 ERROR en precargarFormulario:", error);
-            console.error("Stack trace:", error.stack);
-            mostrarError(error, 'precargar formulario');
-        }
-    }, 300); 
-}
+                try {
+                    // 1. Rellenar campos generales
+                    console.log("📝 Llenando campos generales...");
+                    
+                    const campos = {
+                        // Usar el valor directo (ya viene formateado yyyy-MM-dd o es null)
+                        'fechaEjecucion': datos.fechaEjecucion || '', 
+                        // 'estadoCotizacion': datos.Estado || 'COTIZACION', // Se maneja por separado abajo
+                        'empresa': datos.Empresa || '',
+                        'rucCliente': datos.RUC || '',
+                        'clienteNombre': datos.Cliente || '',
+                        'formaPago': datos.Forma_Pago || '',
+                        'direccion': datos.Direccion || '', 
+                        'ejecutivo': datos.Ejecutivo || '',
+                        'moneda': datos.Moneda || 'Soles' // Moneda se maneja abajo con lógica especial
+                    };
+                    
+                    Object.keys(campos).forEach(campoId => {
+                        const elemento = document.getElementById(campoId);
+                        if (elemento) {
+                            // Validar específicamente para fechaEjecucion si es null
+                            if (campoId === 'fechaEjecucion' && campos[campoId] === null) {
+                                elemento.value = ''; // Asegurar que quede vacío si es null
+                                console.log(`✅ Campo ${campoId}: "" (valor era null)`);
+                            } else {
+                                elemento.value = campos[campoId];
+                                console.log(`✅ Campo ${campoId}: "${campos[campoId]}"`);
+                            }
+                        } else {
+                            console.warn(`⚠️ Campo no encontrado: ${campoId}`);
+                        }
+                    });
+
+                    // --- CORRECCIÓN MEJORADA PARA ESTADO (maneja mayúsculas/minúsculas) ---
+                    const estadoSelect = document.getElementById('estadoCotizacion');
+                    if (estadoSelect) {
+                         const estadoASeleccionar = datos.Estado || 'COTIZACION';
+                         console.log(`🔍 Intentando seleccionar Estado: "${estadoASeleccionar}"`);
+                         
+                         // Buscar opción comparando en minúsculas
+                         const opcionEncontrada = [...estadoSelect.options].find(option => 
+                             option.value.toLowerCase() === estadoASeleccionar.toLowerCase()
+                         );
+
+                         if (opcionEncontrada) {
+                              estadoSelect.value = opcionEncontrada.value; // Usar el valor original de la opción
+                              console.log(`✅ Estado seleccionado: "${estadoSelect.value}"`);
+                         } else {
+                              console.warn(`⚠️ Estado "${estadoASeleccionar}" (o equivalente) no encontrado en las opciones.`);
+                              // Opcional: seleccionar el primer valor válido
+                              if (estadoSelect.options.length > 1) { // >1 para ignorar el "-- Seleccione --"
+                                   estadoSelect.value = estadoSelect.options[1].value;
+                                   console.log(`ℹ️ Seleccionado estado por defecto: "${estadoSelect.value}"`);
+                              }
+                         }
+                    } else {
+                         console.warn(`⚠️ Select 'estadoCotizacion' no encontrado.`);
+                    }
+                    // --- FIN CORRECCIÓN ESTADO ---
+                    
+                    // ✅ Cargar contactos si hay RUC (VERSIÓN CORREGIDA)
+                    if (datos.RUC) {
+                        console.log("📞 Cargando contactos para RUC:", datos.RUC);
+                        google.script.run
+                            .withSuccessHandler(function(contactosData) {
+                                console.log("✅ Contactos recibidos para edición:", contactosData);
+                                listaContactos = contactosData || [];
+                                llenarDatalistContactos(); // Llena el select
+                                // Ahora selecciona el contacto DESPUÉS de llenar
+                                if (datos.Contacto) {
+                                    seleccionarContactoEspecifico(datos.Contacto);
+                                }
+                            })
+                            .withFailureHandler(function(error) {
+                                console.error("❌ Error cargando contactos en modo edición:", error);
+                                // Asegurar que la lista quede vacía si falla
+                                listaContactos = [];
+                                llenarDatalistContactos();
+                            })
+                            .getContactosParaComercial(datos.RUC);
+                    } else {
+                         // Si no hay RUC, asegurar que la lista de contactos esté vacía
+                         listaContactos = [];
+                         llenarDatalistContactos();
+                    }
+
+
+                    // ✅ CORRECCIÓN CRÍTICA: Manejar el SELECT de TURNO especial
+                    const turnoSelect = document.getElementById('turno');
+                    if (turnoSelect && datos.Turno) {
+                        const mapeoTurnos = { 'DIURNO': 'Diurno', 'NOCTURNO': 'Nocturno', 'DOBLE TURNO': 'Doble Turno', 'DOBLETURNO': 'Doble Turno', 'DOBLE': 'Doble Turno', 'DIURNA': 'Diurno', 'NOCTURNA': 'Nocturno' };
+                        const turnoRecibido = String(datos.Turno).toUpperCase().trim();
+                        const turnoNormalizado = mapeoTurnos[turnoRecibido] || (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
+                        let opcionEncontrada = [...turnoSelect.options].find(opt => opt.value.toLowerCase() === turnoNormalizado.toLowerCase());
+                        if (!opcionEncontrada) { 
+                           // Buscar coincidencia parcial si falla exacta
+                           opcionEncontrada = [...turnoSelect.options].find(opt => opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) || turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase()));
+                        }
+                        if (opcionEncontrada) { turnoSelect.value = opcionEncontrada.value; console.log(`✅ Turno seleccionado: "${opcionEncontrada.value}"`); } 
+                        else { console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`); }
+                    }
+                    
+                    // Moneda - manejar conversión especial
+                    let monedaValue = datos.Moneda || 'Soles';
+                    if (monedaValue === 'SOL') monedaValue = 'Soles';
+                    if (monedaValue === 'USD') monedaValue = 'Dolares';
+                    const monedaSelect = document.getElementById('moneda');
+                    if (monedaSelect) {
+                        monedaSelect.value = monedaValue; // Asume que 'Soles' y 'Dolares' son los values en el HTML
+                        console.log(`✅ Moneda: "${monedaValue}"`);
+                    }
+                    
+                    // ✅ Manejar el SELECT de EJECUTIVO
+                    const ejecutivoSelect = document.getElementById('ejecutivo');
+                    if (ejecutivoSelect && datos.Ejecutivo) {
+                        const ejecutivoNormalizado = String(datos.Ejecutivo).toUpperCase().trim();
+                        const opcionEjecutivo = [...ejecutivoSelect.options].find(opt => opt.value.toUpperCase() === ejecutivoNormalizado);
+                        if (opcionEjecutivo) { ejecutivoSelect.value = opcionEjecutivo.value; console.log(`✅ Ejecutivo seleccionado: "${opcionEjecutivo.value}"`); } 
+                        else { console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`); }
+                    }
+                    
+                    // Llenar notas
+                    document.getElementById('plantillaNotas').value = datos.plantillaNotas || '';
+                    document.getElementById('aclaracionesServicio').value = datos.aclaracionesServicio || '';
+                    
+                    // Deshabilitar RUC en edición
+                    document.getElementById('rucCliente').readOnly = true;
+                    document.getElementById('rucCliente').style.backgroundColor = '#f5f5f5';
+
+                    console.log("✅✅✅ TODOS los campos generales llenados (excepto tabla)");
+
+                    // 2. Limpiar tabla y resetear contador
+                    const tbody = document.getElementById('cuerpoDetalle');
+                    if (tbody) {
+                        tbody.innerHTML = '';
+                        estadoApp.lineaCounter = 0;
+                        console.log("✅ Tabla limpiada");
+                    }
+
+                    // 3. Cargar líneas de servicios
+                    const servicios = datos.Lineas || [];
+                    console.log("📦 Cargando", servicios.length, "líneas de servicios");
+                    
+                    if (servicios.length > 0) {
+                        servicios.forEach((servicio, index) => {
+                            const lineaData = {
+                                COD: servicio.cod || '', DESC: servicio.descripcion || '', UND: servicio.und_medida || 'HORAS', 
+                                CANTIDAD: servicio.cantidad || 1, UND_H_MIN: servicio.und_horas_minimas || '', 
+                                DIAS_COT: servicio.dias_cotizados || 0, H_MIN_NUM: servicio.horas_minimas_num || 0, 
+                                H_SEGUN: servicio.hora_segun || '', MOV: servicio.movilizacion || 0, 
+                                PRECIO: servicio.precio || 0, SUB: servicio.subtotal || 0
+                            };
+                            agregarLineaDetalle(lineaData);
+                            // console.log(`✅ Línea ${index + 1} agregada - ${lineaData.COD}: ${lineaData.DESC}`); 
+                        });
+                    } else {
+                        console.warn("⚠️ No hay líneas de servicio para cargar");
+                        agregarLineaDetalle(); // Agregar una línea vacía si no hay ninguna
+                    }
+                    
+                    // 4. Calcular total y finalizar
+                    setTimeout(() => {
+                        calcularTotalGeneral();
+                        console.log("🎉🎉🎉 PRECARGA COMPLETADA EXITOSAMENTE 🎉🎉🎉");
+                    }, 500); // Un pequeño delay extra para asegurar renderizado de la tabla
+                    
+                } catch (error) {
+                    console.error("💥 ERROR en precargarFormulario:", error);
+                    console.error("Stack trace:", error.stack);
+                    mostrarError(error, 'precargar formulario');
+                }
+            }, 300); // Delay inicial para asegurar que selects básicos estén listos
+        } 
 
         function formatDateForInput(dateString) {
             if (!dateString) return '';
