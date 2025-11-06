@@ -28,22 +28,13 @@ const FOLDER_ID_CARMEN = "1h4LZiA9Iwx54jHqOyHqFvDJykGipM6YO";
 const FOLDER_ID_GYM     = "1ODozAGz2AeDmFGk_rT_axt7bhG6SdLv2"; // Gruas y Montacargas San Jose SAC
 const FOLDER_ID_SJ      = "1bO8-_ZWM2nFfc1jl4PDYrf6aTnKqp7s4"; // Gruas San Jose Peru SAC
 const FOLDER_ID_ALP     = "1ZrPgv6mfTZk5r4GE49tAlc9C559b_M93"; // Alpamayo
+const HOJA_ACTAS = "Actas";
 // --- IDs DE ARCHIVOS DE PLANTILLA (¡DEBES RELLENAR ESTOS!) ---
 // Ve a tu Google Drive, haz clic derecho en el archivo plantilla y "Obtener enlace"
 // Copia el ID desde el enlace (ej. .../d/AQUI_VA_EL_ID/edit)
 const ID_PLANTILLA_FILE_ALP = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y";
 const ID_PLANTILLA_FILE_GYM = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y";
 const ID_PLANTILLA_FILE_SJ  = "15qfA3idaLkyhvFwAeEZQo6L9BudBBfgnV8DFrs1qV6Y";
-const HOJA_RESUMEN_COT = "ResumenCot";
-
-// ====================================================
-// === CONSTANTES DEL MÓDULO DE ACTAS (PLANIFICACIÓN) ===
-// ====================================================
-
-// Pega aquí el ID de tu plantilla de Google Doc
-const ID_PLANTILLA_ACTA_PLANIFICACION = "1BDOjkWX1qnQuwOopsMlg7glJhBWGLc7aOYq7cSc1lqY"; 
-
-const HOJA_ACTAS = "Actas";
 
 // ====================================================
 // === LISTAS ESTÁTICAS COMO CONSTANTES GLOBALES ===
@@ -57,13 +48,6 @@ const LISTA_FORMAS_PAGO = [
     "CREDITO. 45 DIAS", "CREDITO. 60 DIAS", "CREDITO. 90 DIAS"
 ];
 const LISTA_HORAS_MINIMAS_UND = ["Mensual", "Diarias", "Semanal"]; 
-
-// ====================================================
-// === CONSTANTES DEL MÓDULO DE VALORIZACIÓN ===
-// ====================================================
-
-const HOJA_VALORIZACIONES = "Valorizaciones";
-const HOJA_VALORIZACION_DETALLE = "Valorizacion_Detalle";
 
 // ====================================================
 // === CONSTANTES DE NEGOCIO Y CÁLCULO ===
