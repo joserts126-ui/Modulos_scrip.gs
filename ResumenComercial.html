@@ -77,21 +77,25 @@
     console.log("🔗 Script URL obtenida:", '<?!= getScriptUrl() ?>');
     // Variables globales
     let datosCotizaciones = [];
+    
+    // ---
+    // INICIO DE LA CORRECCIÓN (v2 - Sin async/await)
+    // ---
 
     // =============================================================================
     // FUNCIONES UNIFICADAS Y OPTIMIZADAS
     // =============================================================================
 
-    // Configuración global (El índice ROW_INDEX es la última columna del array de 8 columnas)
     const CONFIG = {
-    columnas: { 
-        NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, VENDEDOR: 3, COMPANIA: 4,
-        MONTO: 5, MONEDA: 6, ESTADO: 7, ID_CLIENTE: 8, ROW_INDEX: 9 
-    }
-};
+        columnas: { 
+            NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, VENDEDOR: 3, COMPANIA: 4,
+            MONTO: 5, MONEDA: 6, ESTADO: 7, ID_CLIENTE: 8, ROW_INDEX: 9 
+        }
+    };
 
-    // Función unificada para llamadas a Google Apps Script
-    async function ejecutarGAS(funcion, parametros = null) {
+    // --- CORREGIDO: 'async function ejecutarGAS' ---
+    // Reemplazado async/await con promesas estándar .then() y .catch()
+    function ejecutarGAS(funcion, parametros = null) {
         mostrarLoading(true, `Ejecutando ${funcion}...`);
         
         return new Promise((resolve, reject) => {
@@ -111,7 +115,6 @@
         });
     }
 
-    // Función unificada para navegación
     function navegarA(pagina, parametros = {}) {
         const urlBase = '<?!= getScriptUrl() ?>';
         const parametrosURL = new URLSearchParams(parametros).toString();
@@ -128,299 +131,212 @@
         console.log("🔄 ResumenComercial.html CARGADO");
         cargarDatosResumen();
         
-        // Configurar filtro
         document.getElementById("filtroPedidos").addEventListener("input", filtrarPedidos);
     });
 
-    async function cargarDatosResumen() {
-        try {
-            // Esta llamada activa la función getListaCotizacionesResumen en el backend
-            const datos = await ejecutarGAS('getListaCotizacionesResumen');
-            datosCotizaciones = datos;
-            renderizarTablaResumen(datos);
-        } catch (error) {
-            console.error("Error cargando datos:", error);
-        }
+    // --- CORREGIDO: 'async function cargarDatosResumen' ---
+    // Reemplazado async/await con .then() y .catch()
+    function cargarDatosResumen() {
+        // Esta llamada activa la función getListaCotizacionesResumen en el backend
+        ejecutarGAS('getListaCotizacionesResumen')
+            .then(datos => {
+                datosCotizaciones = datos;
+                renderizarTablaResumen(datos);
+            })
+            .catch(error => {
+                console.error("Error cargando datos:", error);
+            });
     }
-// === Variables Globales para Paginación ===
-let paginaActual = 1;
-let filasPorPagina = 80; // Valor inicial
-let datosFiltradosPaginacion = []; // Datos actualmente filtrados para paginar
+    
+    // ---
+    // FIN DE LA CORRECCIÓN
+    // ---
 
-// === MODIFICAR renderizarTablaResumen ===
-function renderizarTablaResumen(datos) {
-    // Guarda los datos completos (o filtrados) para paginar
-    datosFiltradosPaginacion = datos || [];
-    // Define filasPorPagina según el selector
-    const selectFilas = document.getElementById("filasPorPagina");
-    filasPorPagina = parseInt(selectFilas.value) || 80;
+    // (El resto de tu código de paginación, renderizado y filtros sigue igual)
 
-    paginaActual = 1; // Resetear a la primera página cada vez que se renderiza (ej. al filtrar)
+    // === Variables Globales para Paginación ===
+    let paginaActual = 1;
+    let filasPorPagina = 80; // Valor inicial
+    let datosFiltradosPaginacion = []; // Datos actualmente filtrados para paginar
 
-    mostrarPagina(paginaActual); // Muestra la primera página
-}
-
-// === NUEVA FUNCIÓN para mostrar una página específica ===
-function mostrarPagina(numeroPagina) {
-        const tbody = document.getElementById("cuerpoTablaResumen");
-        tbody.innerHTML = "";
-
-        const datosParaMostrar = datosFiltradosPaginacion;
-
-        // --- Corrección: Validar si hay datos reales ---
-        if (!datosParaMostrar || datosParaMostrar.length <= 1 || datosParaMostrar[1][0] === "Error") { // <= 1 por encabezado, o si el backend devolvió error
-            const mensaje = (datosParaMostrar && datosParaMostrar.length > 1 && datosParaMostrar[1][0] === "Error") ? datosParaMostrar[1][2] : "No hay cotizaciones para mostrar.";
-            tbody.innerHTML = crearFilaVacia(mensaje);
-            actualizarControlesPaginacion(0);
-            return;
-        }
-        // --- Fin Corrección ---
-
-
-        paginaActual = numeroPagina;
-        const totalFilasDatos = datosParaMostrar.length - 1;
-        const indiceInicio = (paginaActual - 1) * filasPorPagina;
-        const indiceFin = indiceInicio + filasPorPagina;
-        const filasPagina = datosParaMostrar.slice(indiceInicio + 1, indiceFin + 1);
-
-         if (filasPagina.length === 0 && paginaActual > 1) { /* ... ir a pág anterior ... */ }
-         else if (filasPagina.length === 0 && paginaActual === 1) { /* ... mostrar fila vacía ... */ }
-
-
-        const scriptUrl = '<?!= getScriptUrl() ?>';
-
-        filasPagina.forEach((fila) => {
-            // Leer datos usando CONFIG actualizado
-            const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
-            const fecha = fila[CONFIG.columnas.FECHA];
-            const cliente = fila[CONFIG.columnas.CLIENTE];
-            const vendedor = fila[CONFIG.columnas.VENDEDOR]; // Nuevo
-            const compania = fila[CONFIG.columnas.COMPANIA]; // Nuevo
-            const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
-            const moneda = String(fila[CONFIG.columnas.MONEDA] || '').toUpperCase(); // Asegurar mayúsculas
-            const estado = fila[CONFIG.columnas.ESTADO];
-            const rowIndexOriginal = fila[CONFIG.columnas.ROW_INDEX];
-
-            if (!numPedido || typeof rowIndexOriginal !== 'number' || rowIndexOriginal < 2) return;
-
-            // Formateo de Moneda
-            const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES') ? 'S/ ' : '$ ';
-            // Usar toLocaleString para formato de miles y decimales correcto
-            const montoFormateado = simboloMoneda + monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-            const tr = document.createElement("tr");
-            // Añadir nuevas celdas td
-            tr.innerHTML = `
-                <td>${escapeHtml(numPedido)}</td>
-                <td>${escapeHtml(fecha)}</td>
-                <td>${escapeHtml(cliente)}</td>
-                <td>${escapeHtml(vendedor)}</td>      <td>${escapeHtml(compania)}</td>      <td class="monto-col">${montoFormateado}</td> <td>${escapeHtml(moneda)}</td>
-                <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado || 'Desconocido')}</span></td>
-                <td><button onclick="editarCotizacionSegura('${escapeHtml(numPedido)}')" class="btn-editar">✏️ Editar</button></td>
-                <td style="text-align: center;"><button onclick="generarPDF(${rowIndexOriginal})" class="btn-pdf" data-row="${rowIndexOriginal}">📄 PDF</button></td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        actualizarControlesPaginacion(totalFilasDatos);
-        console.log(`Página ${paginaActual} renderizada...`); // Opcional
+    function renderizarTablaResumen(datos) {
+        datosFiltradosPaginacion = datos || [];
+        const selectFilas = document.getElementById("filasPorPagina");
+        filasPorPagina = parseInt(selectFilas.value) || 80;
+        paginaActual = 1; 
+        mostrarPagina(paginaActual); 
     }
 
-// === NUEVA FUNCIÓN para actualizar los controles de paginación ===
-function actualizarControlesPaginacion(totalFilasDatos) {
-    const infoPagina = document.getElementById("infoPagina");
-    const btnAnterior = document.getElementById("btnAnterior");
-    const btnSiguiente = document.getElementById("btnSiguiente");
+    function mostrarPagina(numeroPagina) {
+            const tbody = document.getElementById("cuerpoTablaResumen");
+            tbody.innerHTML = "";
+            const datosParaMostrar = datosFiltradosPaginacion;
 
-    const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
-
-    if (totalFilasDatos === 0) {
-        infoPagina.textContent = "0 resultados";
-        btnAnterior.disabled = true;
-        btnSiguiente.disabled = true;
-    } else {
-        const inicio = (paginaActual - 1) * filasPorPagina + 1;
-        const fin = Math.min(inicio + filasPorPagina - 1, totalFilasDatos);
-        infoPagina.textContent = `${inicio}-${fin} de ${totalFilasDatos}`;
-
-        btnAnterior.disabled = (paginaActual === 1);
-        btnSiguiente.disabled = (paginaActual === totalPaginas);
-    }
-}
-
-// === NUEVA FUNCIÓN para cambiar de página ===
-function cambiarPagina(direccion) { // direccion es +1 (siguiente) o -1 (anterior)
-    const nuevaPagina = paginaActual + direccion;
-    const totalFilasDatos = datosFiltradosPaginacion.length - 1;
-    const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
-
-    // Validar límites
-    if (nuevaPagina >= 1 && nuevaPagina <= totalPaginas) {
-        mostrarPagina(nuevaPagina);
-    }
-}
-
- // === NUEVA FUNCIÓN para cambiar filas por página ===
-function cambiarFilasPorPagina() {
-    const selectFilas = document.getElementById("filasPorPagina");
-    filasPorPagina = parseInt(selectFilas.value) || 80;
-    // Volver a mostrar la primera página con la nueva cantidad de filas
-    mostrarPagina(1); 
-}
-
-// === MODIFICAR filtrarPedidos para usar paginación ===
- function filtrarPedidos() {
-    const filtro = document.getElementById("filtroPedidos").value.toLowerCase();
-
-    let datosParaFiltrar = datosCotizaciones; // Siempre filtrar sobre los datos originales completos
-    let datosFiltradosResultado = [datosParaFiltrar[0]]; // Mantener encabezados
-
-    if (!filtro) {
-        // Si no hay filtro, usar todos los datos
-         datosFiltradosResultado = datosParaFiltrar;
-    } else {
-         // Aplicar filtro
-        datosParaFiltrar.slice(1).forEach(fila => {
-            const numPedido = String(fila[CONFIG.columnas.NUM_PEDIDO] || '').toLowerCase();
-            const cliente = String(fila[CONFIG.columnas.CLIENTE] || '').toLowerCase();
-            const estado = String(fila[CONFIG.columnas.ESTADO] || '').toLowerCase();
-
-            if (numPedido.includes(filtro) || cliente.includes(filtro) || estado.includes(filtro)) {
-                datosFiltradosResultado.push(fila);
+            if (!datosParaMostrar || datosParaMostrar.length <= 1 || (datosParaMostrar[1] && datosParaMostrar[1][0] === "Error")) { 
+                const mensaje = (datosParaMostrar && datosParaMostrar.length > 1 && datosParaMostrar[1][0] === "Error") ? datosParaMostrar[1][2] : "No hay cotizaciones para mostrar.";
+                tbody.innerHTML = crearFilaVacia(mensaje);
+                actualizarControlesPaginacion(0);
+                return;
             }
-        });
+
+            paginaActual = numeroPagina;
+            const totalFilasDatos = datosParaMostrar.length - 1;
+            const indiceInicio = (paginaActual - 1) * filasPorPagina;
+            const indiceFin = indiceInicio + filasPorPagina;
+            const filasPagina = datosParaMostrar.slice(indiceInicio + 1, indiceFin + 1);
+
+            if (filasPagina.length === 0 && paginaActual === 1) {
+                tbody.innerHTML = crearFilaVacia("No hay cotizaciones para mostrar.");
+            }
+
+            const scriptUrl = '<?!= getScriptUrl() ?>';
+
+            filasPagina.forEach((fila) => {
+                const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
+                const fecha = fila[CONFIG.columnas.FECHA];
+                const cliente = fila[CONFIG.columnas.CLIENTE];
+                const vendedor = fila[CONFIG.columnas.VENDEDOR]; 
+                const compania = fila[CONFIG.columnas.COMPANIA]; 
+                const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
+                const moneda = String(fila[CONFIG.columnas.MONEDA] || '').toUpperCase(); 
+                const estado = fila[CONFIG.columnas.ESTADO];
+                const rowIndexOriginal = fila[CONFIG.columnas.ROW_INDEX];
+
+                if (!numPedido || typeof rowIndexOriginal !== 'number' || rowIndexOriginal < 2) return;
+
+                const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES') ? 'S/ ' : '$ ';
+                const montoFormateado = simboloMoneda + monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${escapeHtml(numPedido)}</td>
+                    <td>${escapeHtml(fecha)}</td>
+                    <td>${escapeHtml(cliente)}</td>
+                    <td>${escapeHtml(vendedor)}</td>      
+                    <td>${escapeHtml(compania)}</td>      
+                    <td class="monto-col">${montoFormateado}</td> 
+                    <td>${escapeHtml(moneda)}</td>
+                    <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado || 'Desconocido')}</span></td>
+                    <td><button onclick="editarCotizacionSegura('${escapeHtml(numPedido)}')" class="btn-editar">✏️ Editar</button></td>
+                    <td style="text-align: center;"><button onclick="generarPDF(${rowIndexOriginal})" class="btn-pdf" data-row="${rowIndexOriginal}">📄 PDF</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            actualizarControlesPaginacion(totalFilasDatos);
+        }
+
+    function actualizarControlesPaginacion(totalFilasDatos) {
+        const infoPagina = document.getElementById("infoPagina");
+        const btnAnterior = document.getElementById("btnAnterior");
+        const btnSiguiente = document.getElementById("btnSiguiente");
+
+        const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
+
+        if (totalFilasDatos === 0) {
+            infoPagina.textContent = "0 resultados";
+            btnAnterior.disabled = true;
+            btnSiguiente.disabled = true;
+        } else {
+            const inicio = (paginaActual - 1) * filasPorPagina + 1;
+            const fin = Math.min(inicio + filasPorPagina - 1, totalFilasDatos);
+            infoPagina.textContent = `${inicio}-${fin} de ${totalFilasDatos}`;
+            btnAnterior.disabled = (paginaActual === 1);
+            btnSiguiente.disabled = (paginaActual === totalPaginas);
+        }
     }
 
-    // Llamar a renderizarTablaResumen con los datos filtrados (esta función resetea a pág 1)
-    renderizarTablaResumen(datosFiltradosResultado);
-}
+    function cambiarPagina(direccion) { 
+        const nuevaPagina = paginaActual + direccion;
+        const totalFilasDatos = datosFiltradosPaginacion.length - 1;
+        const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
 
-// Inicializar el selector de filas al cargar
- document.addEventListener("DOMContentLoaded", function() {
-      const selectFilas = document.getElementById("filasPorPagina");
-      selectFilas.value = filasPorPagina; // Asegurar que muestre 80 al inicio
- });
-
-// === FIN CÓDIGO PAGINACIÓN ===
-
-// ✅ FUNCIÓN AUXILIAR PARA ESCAPAR HTML
-function escapeHtml(unsafe) {
-    if (unsafe === null || unsafe === undefined) return '';
-    return String(unsafe)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-// =============================================================================
-// FUNCIÓN CORREGIDA PARA EDITAR COTIZACIÓN
-// =============================================================================
-function editarCotizacion(scriptUrl, numPedido) {
-    if (!numPedido) {
-        console.error("❌ Error: numPedido no definido");
-        alert("Error: No se puede editar, número de pedido no disponible");
-        return;
-    }
-    
-    console.log("📝 Editando cotización:", numPedido);
-    console.log("🔗 Script URL:", scriptUrl);
-    
-    // ✅ CONSTRUIR URL CORRECTAMENTE
-    const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
-    
-    console.log("🎯 URL final:", url);
-    
-    // ✅ ABRIR EN LA MISMA VENTANA (no en nueva pestaña)
-    window.top.location.href = url;
-}
-
-// ✅ FUNCIÓN AUXILIAR PARA DEBUG
-function debugURL(scriptUrl, numPedido) {
-    console.log("=== 🔗 DEBUG URL ===");
-    console.log("Script URL:", scriptUrl);
-    console.log("Número Pedido:", numPedido);
-    console.log("URL construida:", `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`);
-    console.log("=== FIN DEBUG ===");
-}
-    
-    function crearFilaVacia(mensaje) {
-        return `
-            <tr>
-                <td colspan="8" style="text-align: center; padding: 30px; color: #666;">
-                    ${mensaje}
-                </td>
-            </tr>
-        `;
+        if (nuevaPagina >= 1 && nuevaPagina <= totalPaginas) {
+            mostrarPagina(nuevaPagina);
+        }
     }
 
-    function editarCotizacion(scriptUrl, numPedido) {
-        const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
-        window.open(url, '_blank');
+    function cambiarFilasPorPagina() {
+        const selectFilas = document.getElementById("filasPorPagina");
+        filasPorPagina = parseInt(selectFilas.value) || 80;
+        mostrarPagina(1); 
     }
 
-    // =============================================================================
-    // FUNCIÓN PARA EDITAR COTIZACIÓN - CORREGIDA
-    // =============================================================================
+     function filtrarPedidos() {
+        const filtro = document.getElementById("filtroPedidos").value.toLowerCase();
+        let datosParaFiltrar = datosCotizaciones; 
+        let datosFiltradosResultado = [datosParaFiltrar[0]]; 
+
+        if (!filtro) {
+             datosFiltradosResultado = datosParaFiltrar;
+        } else {
+            datosParaFiltrar.slice(1).forEach(fila => {
+                const numPedido = String(fila[CONFIG.columnas.NUM_PEDIDO] || '').toLowerCase();
+                const cliente = String(fila[CONFIG.columnas.CLIENTE] || '').toLowerCase();
+                const estado = String(fila[CONFIG.columnas.ESTADO] || '').toLowerCase();
+
+                if (numPedido.includes(filtro) || cliente.includes(filtro) || estado.includes(filtro)) {
+                    datosFiltradosResultado.push(fila);
+                }
+            });
+        }
+        renderizarTablaResumen(datosFiltradosResultado);
+    }
+
+     document.addEventListener("DOMContentLoaded", function() {
+          const selectFilas = document.getElementById("filasPorPagina");
+          if (selectFilas) { 
+              selectFilas.value = filasPorPagina;
+          }
+     });
+
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     function editarCotizacion(scriptUrl, numPedido) {
         if (!numPedido) {
             console.error("❌ Error: numPedido no definido");
             alert("Error: No se puede editar, número de pedido no disponible");
             return;
         }
-    
-        console.log("📝 Editando cotización:", numPedido);
         const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
-        console.log("🔗 URL de edición:", url);
         window.open(url, '_blank');
     }
 
-    // =============================================================================
-    // FUNCIONES DE FILTRADO
-    // =============================================================================
-
-    function filtrarPedidos() {
-        const filtro = document.getElementById("filtroPedidos").value.toLowerCase();
-        
-        if (!filtro) {
-            renderizarTablaResumen(datosCotizaciones);
-            return;
-        }
-
-        const datosFiltrados = [datosCotizaciones[0]]; // Mantener encabezados
-        
-        datosCotizaciones.slice(1).forEach(fila => {
-            const numPedido = String(fila[CONFIG.columnas.NUM_PEDIDO] || '').toLowerCase();
-            const cliente = String(fila[CONFIG.columnas.CLIENTE] || '').toLowerCase();
-            const estado = String(fila[CONFIG.columnas.ESTADO] || '').toLowerCase();
-            
-            if (numPedido.includes(filtro) || cliente.includes(filtro) || estado.includes(filtro)) {
-                datosFiltrados.push(fila);
-            }
-        });
-        
-        renderizarTablaResumen(datosFiltrados);
+    function debugURL(scriptUrl, numPedido) {
+        console.log("=== 🔗 DEBUG URL ===");
+        console.log("Script URL:", scriptUrl);
+        console.log("Número Pedido:", numPedido);
+        console.log("URL construida:", `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`);
+        console.log("=== FIN DEBUG ===");
     }
-
-    // =============================================================================
-    // FUNCIONES DE ACCIÓN
-    // =============================================================================
-    
+        
+    function crearFilaVacia(mensaje) {
+        return `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 30px; color: #666;">
+                    ${mensaje}
+                </td>
+            </tr>
+        `;
+    }
+        
     function abrirNuevoPedido() {
         navegarA('Comercial');
     }
 
-    /**
-     * Llama al servidor para generar el PDF del pedido y lo abre.
-     * @param {number} rowIndex El índice de la fila del pedido a procesar (para el detalle completo).
-     */
     function generarPDF(rowIndex) {
         if (!confirm(`¿Estás seguro de que deseas generar el PDF para el pedido en la fila ${rowIndex}?`)) {
             return;
         }
         
-        // 1. Mostrar mensaje de carga
         const btn = document.querySelector(`.btn-pdf[data-row='${rowIndex}']`);
         if(btn) {
             btn.disabled = true;
@@ -431,29 +347,25 @@ function debugURL(scriptUrl, numPedido) {
 
         google.script.run
             .withSuccessHandler(function(resultado) {
+                if(btn) { 
+                    btn.disabled = false;
+                    btn.textContent = '📄 PDF';
+                }
                 if (resultado.success) {
-                    // 2. Abrir el PDF en nueva pestaña
                     window.open(resultado.pdfUrl, '_blank');
                     alert('✅ PDF generado exitosamente!');
                 } else {
                     alert('❌ Error al generar PDF: ' + (resultado.error || resultado.message || 'Error desconocido'));
                 }
-                
-                // 3. Restaurar botón
-                if(btn) {
-                    btn.disabled = false;
-                    btn.textContent = '📄 PDF';
-                }
             })
             .withFailureHandler(function(error) {
-                alert('❌ Error al conectar con el servidor: ' + error.message);
-                // 3. Restaurar botón
-                if(btn) {
+                if(btn) { 
                     btn.disabled = false;
                     btn.textContent = '📄 PDF';
                 }
+                alert('❌ Error al conectar con el servidor: ' + error.message);
             })
-            .generarYDevolverPDF(rowIndex); // Llama a la función de GS
+            .generarYDevolverPDF(rowIndex); 
     }
 
     function debugFrontend() {
@@ -468,124 +380,102 @@ function debugURL(scriptUrl, numPedido) {
 
     function mostrarLoading(mostrar, mensaje = "Cargando...") {
         const overlay = document.getElementById("loadingOverlay");
-        const texto = document.getElementById("loadingText");
+        if (!overlay) return; 
+
+        const texto = overlay.querySelector("#loadingText"); 
         
-        if (overlay && texto) {
-            overlay.style.display = mostrar ? "flex" : "none";
+        overlay.style.display = mostrar ? "flex" : "none";
+        if (texto) {
             texto.textContent = mensaje;
         }
     }
 
+
     function editarCotizacionSegura(numPedido) {
-    if (!numPedido) {
-        alert("Error: No se puede editar, número de pedido no disponible");
-        return;
-    }
-    
-    console.log("📝 Guardando pedido para edición:", numPedido);
-    
-    // Guardar en sessionStorage
-    sessionStorage.setItem('pedidoAEditar', numPedido);
-    
-    // Navegar a Comercial
-    const url = '<?!= getScriptUrl() ?>?page=Comercial';
-    console.log("🔗 Navegando a:", url);
-    window.top.location.href = url;
-}
-
-// === Variables Globales para Ordenación ===
-let columnaOrden = -1; // Columna actualmente ordenada (-1 = ninguna)
-let direccionOrden = 'asc'; // 'asc' o 'desc'
-
-/**
- * Ordena la tabla de cotizaciones por la columna especificada.
- * @param {number} indiceColumna - El índice de la columna (0, 1, 2...).
- * @param {string} tipoDato - 'texto', 'numero' o 'fecha'.
- */
-function ordenarTabla(indiceColumna, tipoDato) {
-    console.log(`Ordenando por columna ${indiceColumna}, tipo ${tipoDato}`);
-    const tbody = document.getElementById("cuerpoTablaResumen");
-    // Convertir filas HTML a un array de arrays para poder ordenar
-    const filasArray = Array.from(tbody.querySelectorAll("tr"));
-
-    // Determinar nueva dirección de orden
-    if (indiceColumna === columnaOrden) {
-        direccionOrden = (direccionOrden === 'asc') ? 'desc' : 'asc';
-    } else {
-        columnaOrden = indiceColumna;
-        direccionOrden = 'asc'; // Por defecto ascendente al cambiar de columna
+        if (!numPedido) {
+            alert("Error: No se puede editar, número de pedido no disponible");
+            return;
+        }
+        console.log("📝 Guardando pedido para edición:", numPedido);
+        sessionStorage.setItem('pedidoAEditar', numPedido);
+        const url = '<?!= getScriptUrl() ?>?page=Comercial';
+        console.log("🔗 Navegando a:", url);
+        window.top.location.href = url;
     }
 
-    // Función de comparación
-    const compararFilas = (filaA, filaB) => {
-        const valorA = filaA.cells[indiceColumna].textContent || filaA.cells[indiceColumna].innerText;
-        const valorB = filaB.cells[indiceColumna].textContent || filaB.cells[indiceColumna].innerText;
+    // === Variables Globales para Ordenación ===
+    let columnaOrden = -1; 
+    let direccionOrden = 'asc'; 
 
-        let comparacion = 0;
+    function ordenarTabla(indiceColumna, tipoDato) {
+        console.log(`Ordenando por columna ${indiceColumna}, tipo ${tipoDato}`);
+        const tbody = document.getElementById("cuerpoTablaResumen");
+        
+        // CORRECCIÓN: Usar los datos cacheados 'datosFiltradosPaginacion'
+        let filasParaOrdenar = datosFiltradosPaginacion.slice(1);
 
-        switch (tipoDato) {
-            case 'numero':
-                // Extraer solo números y punto decimal
-                const numA = parseFloat(valorA.replace(/[^0-9.-]+/g,""));
-                const numB = parseFloat(valorB.replace(/[^0-9.-]+/g,""));
-                comparacion = (isNaN(numA) ? 0 : numA) - (isNaN(numB) ? 0 : numB);
-                break;
-            case 'fecha':
-                // Asumir formato DD/MM/AAAA y convertir a objeto Date para comparar
-                try {
-                    const partesA = valorA.split('/');
-                    const partesB = valorB.split('/');
-                    // Formato: AAAA, MM-1, DD
-                    const fechaA = new Date(partesA[2], partesA[1] - 1, partesA[0]);
-                    const fechaB = new Date(partesB[2], partesB[1] - 1, partesB[0]);
-                    comparacion = fechaA - fechaB;
-                } catch (e) {
-                    console.warn("Error parseando fecha:", valorA, valorB);
-                    comparacion = valorA.localeCompare(valorB, 'es', { sensitivity: 'base' }); // Fallback a texto
-                }
-                break;
-            case 'texto':
-            default:
-                comparacion = valorA.localeCompare(valorB, 'es', { sensitivity: 'base' }); // Comparación de texto insensible a mayúsculas/acentos
-                break;
+        if (filasParaOrdenar.length === 0) return;
+
+        if (indiceColumna === columnaOrden) {
+            direccionOrden = (direccionOrden === 'asc') ? 'desc' : 'asc';
+        } else {
+            columnaOrden = indiceColumna;
+            direccionOrden = 'asc'; 
         }
 
-        return (direccionOrden === 'asc') ? comparacion : -comparacion;
-    };
+        const compararFilas = (filaA, filaB) => {
+            const valorA = filaA[indiceColumna];
+            const valorB = filaB[indiceColumna];
+            
+            let comparacion = 0;
 
-    // Ordenar el array de filas
-    filasArray.sort(compararFilas);
+            switch (tipoDato) {
+                case 'numero':
+                    const numA = parseFloat(valorA) || 0;
+                    const numB = parseFloat(valorB) || 0;
+                    comparacion = numA - numB;
+                    break;
+                case 'fecha':
+                    try {
+                        const partesA = String(valorA).split('/');
+                        const partesB = String(valorB).split('/');
+                        const fechaA = new Date(partesA[2], partesA[1] - 1, partesA[0]);
+                        const fechaB = new Date(partesB[2], partesB[1] - 1, partesB[0]);
+                        comparacion = fechaA - fechaB;
+                    } catch (e) {
+                        comparacion = String(valorA).localeCompare(String(valorB)); 
+                    }
+                    break;
+                case 'texto':
+                default:
+                    comparacion = String(valorA).localeCompare(String(valorB), 'es', { sensitivity: 'base' }); 
+                    break;
+            }
 
-    // Limpiar tbody
-    tbody.innerHTML = "";
+            return (direccionOrden === 'asc') ? comparacion : -comparacion;
+        };
 
-    // Volver a añadir las filas ordenadas
-    filasArray.forEach(fila => tbody.appendChild(fila));
+        filasParaOrdenar.sort(compararFilas);
 
-    // Actualizar iconos visuales en encabezados
-    actualizarIconosOrden(indiceColumna, direccionOrden);
-}
+        datosFiltradosPaginacion = [datosFiltradosPaginacion[0]].concat(filasParaOrdenar);
+        
+        mostrarPagina(1);
+        
+        actualizarIconosOrden(indiceColumna, direccionOrden);
+    }
 
-/**
- * Actualiza los iconos de flecha en los encabezados de la tabla.
- */
-function actualizarIconosOrden(indiceColumnaActiva, direccion) {
-    const encabezados = document.querySelectorAll("#tablaResumen th .sort-icon");
-    encabezados.forEach((icono, index) => {
-        icono.classList.remove('asc', 'desc');
-        icono.style.opacity = '0.4'; // Resetear opacidad
-        // El índice del icono puede no coincidir directamente si hay TH no ordenables
-        // Buscamos el índice correcto basado en el TH padre
-        const thPadre = icono.closest('th');
-        if (thPadre && thPadre.cellIndex === indiceColumnaActiva) {
-            icono.classList.add(direccion);
-            icono.style.opacity = '1'; // Hacer visible el icono activo
-        }
-    });
-}
-
-// === FIN CÓDIGO ORDENACIÓN ===
-
+    function actualizarIconosOrden(indiceColumnaActiva, direccion) {
+        const encabezados = document.querySelectorAll("#tablaResumen th .sort-icon");
+        encabezados.forEach((icono) => {
+            icono.classList.remove('asc', 'desc');
+            icono.style.opacity = '0.4'; 
+            const thPadre = icono.closest('th');
+            if (thPadre && thPadre.cellIndex === indiceColumnaActiva) {
+                icono.classList.add(direccion);
+                icono.style.opacity = '1'; 
+            }
+        });
+    }
 </script>
 </body>
 </html>
