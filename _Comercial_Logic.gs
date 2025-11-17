@@ -2825,9 +2825,8 @@ function obtenerHorasSegunPorLineaID(lineaID) {
   }
 }
 /**
- * GUARDA LA COTIZACIÓN EN SUPABASE (v1.1 - CORREGIDA CON Cot_Linea_Ref)
- * PASO 1 (Crear): Inserta la cabecera y luego las líneas.
- * PASO 1 (Actualizar): Llama a la RPC 'actualizar_cotizacion_y_detalles'
+ * GUARDA LA COTIZACIÓN EN SUPABASE (v1.2 - CORREGIDA)
+ * Soluciona el problema de nombres de columnas inconsistentes
  */
 function guardarCotizacion(datos) {
   const permisos = obtenerPermisosUsuario();
@@ -2841,65 +2840,73 @@ function guardarCotizacion(datos) {
   try {
     let codigoPedido;
     
-    // --- Preparar las líneas PRIMERO ---
+    // Preparar las líneas PRIMERO
     const lineas = datosSanitizados.Lineas || [];
     if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio.");
     
+    // ✅ CORRECCIÓN: Normalizar el nombre de la propiedad
+    // Convertir 'Forma_Pago' a 'Forma_De_Pago' si existe
+    if (datosSanitizados.Forma_Pago && !datosSanitizados.Forma_De_Pago) {
+      datosSanitizados.Forma_De_Pago = datosSanitizados.Forma_Pago;
+    }
+    
     //=====================================================
-    // MODO ACTUALIZACIÓN (PATCH) - ¡RPC!
+    // MODO ACTUALIZACIÓN (PATCH) - RPC
     //=====================================================
     if (esModoUpdate) {
       codigoPedido = datosSanitizados.numPedido;
       Logger.log(`Iniciando MODO UPDATE (RPC) para: ${codigoPedido}`);
 
-      // ---- PASO 1: Preparar la cabecera (JSON) ----
+      // ✅ CORRECCIÓN: Payload con nombres consistentes
       const payloadCabecera = {
         Estado_Cot: datosSanitizados.Estado,
         Total_Cot: parseFloat(datosSanitizados.Total),
         Moneda: datosSanitizados.Moneda,
         Ejecutivo: datosSanitizados.Ejecutivo,
         Fecha_Inicio: datosSanitizados.fechaEjecucion, 
-        Forma_De_Pago: datosSanitizados.Forma_Pago,
+        Forma_De_Pago: datosSanitizados.Forma_De_Pago, // ✅ CORREGIDO
         Empresa: datosSanitizados.Empresa,
-        RUC_DNI: datosSanitizados.RUC, // <-- CORREGIDO A RUC_DNI
-        Direccion: datosSanitizados.Direccion, // <-- Columna nueva
-        Turno: datosSanitizados.Turno         // <-- Columna nueva
+        RUC_DNI: datosSanitizados.RUC,
+        Direccion: datosSanitizados.Direccion,
+        Turno: datosSanitizados.Turno
       };
 
-      // ---- PASO 2: Preparar las líneas (JSON) ----
+      // Preparar las líneas
       const payloadDetalles = [];
       for (let i = 0; i < lineas.length; i++) {
         const linea = lineas[i];
-        const lineaIDRef = `${codigoPedido}-L${i + 1}`; // ID de Texto
+        const lineaIDRef = `${codigoPedido}-L${i + 1}`;
         
         const detalle = {
-          "Cot_Linea_Ref": lineaIDRef, // <-- NUEVA COLUMNA DE TEXTO
+          "Cot_Linea_Ref": lineaIDRef,
           "Cot": codigoPedido,
           "ID_Servicio": linea.cod,
-          "Cantidad": linea.cantidad,
-          "Precio": linea.precio,
-          "Monto_Movilizacion": linea.movilizacion,
-          "Horas_Segun": linea.hora_segun,
-          "UND": linea.und_medida,
-          "UND_HORAS_MINIMAS": linea.und_horas_minimas,
-          "Horas_minimas": linea.horas_minimas_num
+          "Cantidad": parseFloat(linea.cantidad) || 0, // ✅ Asegurar número
+          "Precio": parseFloat(linea.precio) || 0,     // ✅ Asegurar número
+          "Monto_Movilizacion": parseFloat(linea.movilizacion) || 0, // ✅ Asegurar número
+          "Horas_Segun": linea.hora_segun || '',
+          "UND": linea.und_medida || '',
+          "UND_HORAS_MINIMAS": linea.und_horas_minimas || '',
+          "Horas_minimas": parseFloat(linea.horas_minimas_num) || 0 // ✅ Asegurar número
         };
         payloadDetalles.push(detalle);
       }
 
-      // ---- PASO 3: Llamar a la función RPC ----
+      // Llamar a la RPC
       const payloadRPC = {
         "codigo_pedido": codigoPedido,
         "datos_cabecera": payloadCabecera,
         "nuevas_lineas": payloadDetalles
       };
       
-      Logger.log("Llamando a RPC 'actualizar_cotizacion_y_detalles'...");
-      supabaseFetch('rpc/actualizar_cotizacion_y_detalles', {
+      Logger.log("📤 Payload RPC UPDATE: " + JSON.stringify(payloadRPC));
+      
+      const resultado = supabaseFetch('rpc/actualizar_cotizacion_y_detalles', {
         method: 'post',
         payload: payloadRPC
       });
-      Logger.log(`Cotización ${codigoPedido} actualizada vía RPC.`);
+      
+      Logger.log(`✅ Cotización ${codigoPedido} actualizada vía RPC.`);
 
     } 
     //=====================================================
@@ -2910,7 +2917,7 @@ function guardarCotizacion(datos) {
       codigoPedido = generarCodigoPedido(datosSanitizados.Empresa);
       Logger.log(`Nuevo código generado: ${codigoPedido}`);
       
-      // ---- PASO 1 (CREATE): Insertar la cabecera ----
+      // ✅ CORRECCIÓN: Payload con nombres consistentes
       const payloadPedido = {
         Cot: codigoPedido,
         Fecha_Creacion: new Date().toISOString(),
@@ -2919,45 +2926,51 @@ function guardarCotizacion(datos) {
         Moneda: datosSanitizados.Moneda,
         Ejecutivo: datosSanitizados.Ejecutivo,
         Fecha_Inicio: datosSanitizados.fechaEjecucion,
-        Forma_De_Pago: datosSanitizados.Forma_De_Pago,
+        Forma_De_Pago: datosSanitizados.Forma_De_Pago, // ✅ CORREGIDO
         Empresa: datosSanitizados.Empresa,
-        RUC_DNI: datosSanitizados.RUC, // <-- CORREGIDO A RUC_DNI
-        Direccion: datosSanitizados.Direccion, // <-- Columna nueva
-        Turno: datosSanitizados.Turno         // <-- Columna nueva
+        RUC_DNI: datosSanitizados.RUC,
+        Direccion: datosSanitizados.Direccion,
+        Turno: datosSanitizados.Turno
       };
+      
+      Logger.log("📤 Payload CREATE Cabecera: " + JSON.stringify(payloadPedido));
       
       supabaseFetch('Pedidos', {
         method: 'post',
         payload: payloadPedido
       });
-      Logger.log(`Cabecera ${codigoPedido} creada.`);
+      
+      Logger.log(`✅ Cabecera ${codigoPedido} creada.`);
 
-      // ---- PASO 2 (CREATE): Preparar e Insertar líneas ----
+      // Preparar e Insertar líneas
       const payloadDetalles = [];
       for (let i = 0; i < lineas.length; i++) {
         const linea = lineas[i];
-        const lineaIDRef = `${codigoPedido}-L${i + 1}`; // ID de Texto
+        const lineaIDRef = `${codigoPedido}-L${i + 1}`;
         
         const detalle = {
-          "Cot_Linea_Ref": lineaIDRef, // <-- NUEVA COLUMNA DE TEXTO
+          "Cot_Linea_Ref": lineaIDRef,
           "Cot": codigoPedido,
           "ID_Servicio": linea.cod,
-          "Cantidad": linea.cantidad,
-          "Precio": linea.precio,
-          "Monto_Movilizacion": linea.movilizacion,
-          "Horas_Segun": linea.hora_segun,
-          "UND": linea.und_medida,
-          "UND_HORAS_MINIMAS": linea.und_horas_minimas,
-          "Horas_minimas": linea.horas_minimas_num
+          "Cantidad": parseFloat(linea.cantidad) || 0,
+          "Precio": parseFloat(linea.precio) || 0,
+          "Monto_Movilizacion": parseFloat(linea.movilizacion) || 0,
+          "Horas_Segun": linea.hora_segun || '',
+          "UND": linea.und_medida || '',
+          "UND_HORAS_MINIMAS": linea.und_horas_minimas || '',
+          "Horas_minimas": parseFloat(linea.horas_minimas_num) || 0
         };
         payloadDetalles.push(detalle);
       }
+      
+      Logger.log("📤 Payload CREATE Detalles: " + JSON.stringify(payloadDetalles));
       
       supabaseFetch('Detalle_Pedidos', {
         method: 'post',
         payload: payloadDetalles
       });
-      Logger.log(`${payloadDetalles.length} líneas de detalle guardadas para ${codigoPedido}.`);
+      
+      Logger.log(`✅ ${payloadDetalles.length} líneas guardadas para ${codigoPedido}.`);
     }
     
     return { 
@@ -2967,7 +2980,7 @@ function guardarCotizacion(datos) {
     };
     
   } catch (error) {
-    Logger.log(`ERROR en guardarCotizacion (v1.1): ${error.message}\nStack: ${error.stack}`);
+    Logger.log(`❌ ERROR en guardarCotizacion: ${error.message}\nStack: ${error.stack}`);
     return manejarError('guardarCotizacion', error);
   }
 }
