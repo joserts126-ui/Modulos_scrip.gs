@@ -1274,55 +1274,212 @@ function procesarDatosInicialesComercial(data) {
             }
         }
 
-        function prepararDatosEnvio() {
-            console.log("📦 PREPARANDO DATOS PARA ENVÍO...");
-            const datos = {};
-            
-            // Helper function to get value safely
-            function obtenerValorElemento(id) {
-                const elemento = document.getElementById(id);
-                if (!elemento) {
-                    // Si el elemento no se encuentra, lanza un error claro
-                    throw new Error(`Error Interno: No se encontró el elemento con id "${id}" en el HTML.`);
-                }
-                return elemento.value;
-            }
-
-            try {
-                // Obtener datos del formulario principal usando el helper
-                datos.Empresa = obtenerValorElemento('empresa');
-                datos.RUC = obtenerValorElemento('rucCliente');
-                datos.Cliente = obtenerValorElemento('clienteNombre');
-                datos.Moneda = obtenerValorElemento('moneda');
-                datos.Forma_Pago = obtenerValorElemento('formaPago');
-                datos.Direccion = obtenerValorElemento('direccion');
-                datos.Turno = obtenerValorElemento('turno');
-                datos.Ejecutivo = obtenerValorElemento('ejecutivo');
-                datos.Contacto = obtenerValorElemento('contacto');
-                datos.Estado = obtenerValorElemento('estadoCotizacion');
-                datos.fechaEjecucion = obtenerValorElemento('fechaEjecucion');
-                datos.plantillaNotas = obtenerValorElemento('plantillaNotas'); // Verifica este ID
-                datos.aclaracionesServicio = obtenerValorElemento('aclaracionesServicio'); // Verifica este ID
-                
-                // Añadir numPedido si estamos en modo edición
-                if (estadoApp.esEdicion) {
-                    datos.numPedido = estadoApp.numPedidoEdicion;
-                }
-
-                // Obtener líneas y total
-                datos.Lineas = obtenerLineasDetalleCorregidas(); // Asume que esta función ya valida sus propios elementos
-                datos.Total = obtenerValorElemento('total') || '0.00'; // El input hidden total también debe existir
-
-                console.log("📤 DATOS A ENVIAR:", datos);
-                return datos;
-
-            } catch (error) {
-                // Si el error viene de obtenerValorElemento, lo relanzamos
-                // para que sea capturado por handleErrorGuardado
-                console.error("💥 ERROR DURANTE LA PREPARACIÓN DE DATOS:", error.message);
-                throw error; // Propaga el error para que se muestre al usuario
-            }
+        /**
+ * FUNCIÓN COMPLETA CORREGIDA para que copies y pegues:
+ */
+function prepararDatosEnvio() {
+    console.log("📦 PREPARANDO DATOS PARA ENVÍO...");
+    const datos = {};
+    
+    function obtenerValorElemento(id) {
+        const elemento = document.getElementById(id);
+        if (!elemento) {
+            throw new Error(`Error Interno: No se encontró el elemento con id "${id}" en el HTML.`);
         }
+        console.log(`✅ ${id}: "${elemento.value}"`);
+        return elemento.value;
+    }
+
+    try {
+        datos.Empresa = obtenerValorElemento('empresa');
+        datos.RUC = obtenerValorElemento('rucCliente');
+        datos.Cliente = obtenerValorElemento('clienteNombre');
+        datos.Moneda = obtenerValorElemento('moneda');
+        
+        // ⭐ CORRECCIÓN CRÍTICA AQUÍ ⭐
+        datos.Forma_De_Pago = obtenerValorElemento('formaPago');
+        
+        datos.Direccion = obtenerValorElemento('direccion');
+        datos.Turno = obtenerValorElemento('turno');
+        datos.Ejecutivo = obtenerValorElemento('ejecutivo');
+        datos.Contacto = obtenerValorElemento('contacto');
+        datos.Estado = obtenerValorElemento('estadoCotizacion');
+        datos.fechaEjecucion = obtenerValorElemento('fechaEjecucion');
+        datos.plantillaNotas = obtenerValorElemento('plantillaNotas');
+        datos.aclaracionesServicio = obtenerValorElemento('aclaracionesServicio');
+        
+        if (estadoApp.esEdicion) {
+            datos.numPedido = estadoApp.numPedidoEdicion;
+        }
+
+        datos.Lineas = obtenerLineasDetalleCorregidas();
+        datos.Total = obtenerValorElemento('total') || '0.00';
+
+        console.log("📊 RESUMEN DE DATOS A ENVIAR:");
+        console.log(`   • Empresa: ${datos.Empresa}`);
+        console.log(`   • Cliente: ${datos.Cliente} (${datos.RUC})`);
+        console.log(`   • Forma de Pago: ${datos.Forma_De_Pago}`); // ⭐ Ahora mostrará el nombre correcto
+        console.log(`   • Total Líneas: ${datos.Lineas.length}`);
+        console.log(`   • Monto Total: ${datos.Total}`);
+        
+        return datos;
+
+    } catch (error) {
+        console.error("💥 ERROR DURANTE LA PREPARACIÓN DE DATOS:", error.message);
+        throw error;
+    }
+}
+
+/**
+ * OBTENER LÍNEAS DE DETALLE (v2 - MEJORADO CON VALIDACIÓN)
+ */
+function obtenerLineasDetalleCorregidas() {
+    const lineas = [];
+    const filasDetalle = document.querySelectorAll('#cuerpoDetalle tr');
+    
+    console.log(`🔍 PROCESANDO ${filasDetalle.length} LÍNEAS...`);
+    
+    filasDetalle.forEach((row, index) => {
+        const rowId = row.id.split('-')[1];
+        
+        // Obtener elementos
+        const codHidden = row.querySelector(`input[name="Servicio_cod_${rowId}"]`);
+        const descInput = row.querySelector(`input[name="descripcion_${rowId}"]`);
+        const cantidadInput = row.querySelector(`input[name="cantidad_${rowId}"]`);
+        const undMedidaSelect = row.querySelector(`select[name="und_medida_${rowId}"]`);
+        const precioInput = row.querySelector(`input[name="precio_unitario_${rowId}"]`);
+        const movilizacionInput = row.querySelector(`input[name="movilizacion_${rowId}"]`);
+        
+        // Validar elementos existentes
+        if (!codHidden || !cantidadInput || !precioInput) {
+            console.warn(`⚠️ Línea ${index + 1} - Elementos no encontrados`);
+            return;
+        }
+        
+        const cod = codHidden.value.trim();
+        const cantidad = parseFloat(cantidadInput.value);
+        const precio = parseFloat(precioInput.value);
+        
+        // ✅ VALIDACIÓN MEJORADA
+        if (!cod) {
+            console.warn(`⚠️ Línea ${index + 1} omitida - Código vacío`);
+            return;
+        }
+        
+        if (isNaN(cantidad) || cantidad <= 0) {
+            console.warn(`⚠️ Línea ${index + 1} omitida - Cantidad inválida: ${cantidadInput.value}`);
+            return;
+        }
+        
+        if (isNaN(precio)) {
+            console.warn(`⚠️ Línea ${index + 1} omitida - Precio inválido: ${precioInput.value}`);
+            return;
+        }
+        
+        const linea = {
+            cod: cod,
+            descripcion: descInput ? descInput.value.trim() : '',
+            cantidad: cantidad,
+            und_medida: undMedidaSelect ? undMedidaSelect.value : 'HORAS',
+            precio: precio,
+            movilizacion: movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0,
+            und_horas_minimas: row.querySelector(`select[name="und_horas_minimas_${rowId}"]`)?.value || '',
+            horas_minimas_num: row.querySelector(`input[name="horas_minimas_num_${rowId}"]`) ? 
+                parseFloat(row.querySelector(`input[name="horas_minimas_num_${rowId}"]`).value) || 0 : 0,
+            hora_segun: row.querySelector(`select[name="hora_segun_${rowId}"]`)?.value || '',
+            dias_cotizados: row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`) ? 
+                parseFloat(row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`).value) || 0 : 0,
+            subtotal: (cantidad * precio) + (movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0)
+        };
+        
+        console.log(`✅ Línea ${index + 1} procesada:`, {
+            cod: linea.cod,
+            cant: linea.cantidad,
+            precio: linea.precio,
+            subtotal: linea.subtotal
+        });
+        
+        lineas.push(linea);
+    });
+    
+    console.log(`📋 TOTAL LÍNEAS VÁLIDAS: ${lineas.length}`);
+    return lineas;
+}
+/**
+ * OBTENER LÍNEAS DE DETALLE (v2 - MEJORADO CON VALIDACIÓN)
+ */
+function obtenerLineasDetalleCorregidas() {
+    const lineas = [];
+    const filasDetalle = document.querySelectorAll('#cuerpoDetalle tr');
+    
+    console.log(`🔍 PROCESANDO ${filasDetalle.length} LÍNEAS...`);
+    
+    filasDetalle.forEach((row, index) => {
+        const rowId = row.id.split('-')[1];
+        
+        // Obtener elementos
+        const codHidden = row.querySelector(`input[name="Servicio_cod_${rowId}"]`);
+        const descInput = row.querySelector(`input[name="descripcion_${rowId}"]`);
+        const cantidadInput = row.querySelector(`input[name="cantidad_${rowId}"]`);
+        const undMedidaSelect = row.querySelector(`select[name="und_medida_${rowId}"]`);
+        const precioInput = row.querySelector(`input[name="precio_unitario_${rowId}"]`);
+        const movilizacionInput = row.querySelector(`input[name="movilizacion_${rowId}"]`);
+        
+        // Validar elementos existentes
+        if (!codHidden || !cantidadInput || !precioInput) {
+            console.warn(`⚠️ Línea ${index + 1} - Elementos no encontrados`);
+            return;
+        }
+        
+        const cod = codHidden.value.trim();
+        const cantidad = parseFloat(cantidadInput.value);
+        const precio = parseFloat(precioInput.value);
+        
+        // ✅ VALIDACIÓN MEJORADA
+        if (!cod) {
+            console.warn(`⚠️ Línea ${index + 1} omitida - Código vacío`);
+            return;
+        }
+        
+        if (isNaN(cantidad) || cantidad <= 0) {
+            console.warn(`⚠️ Línea ${index + 1} omitida - Cantidad inválida: ${cantidadInput.value}`);
+            return;
+        }
+        
+        if (isNaN(precio)) {
+            console.warn(`⚠️ Línea ${index + 1} omitida - Precio inválido: ${precioInput.value}`);
+            return;
+        }
+        
+        const linea = {
+            cod: cod,
+            descripcion: descInput ? descInput.value.trim() : '',
+            cantidad: cantidad,
+            und_medida: undMedidaSelect ? undMedidaSelect.value : 'HORAS',
+            precio: precio,
+            movilizacion: movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0,
+            und_horas_minimas: row.querySelector(`select[name="und_horas_minimas_${rowId}"]`)?.value || '',
+            horas_minimas_num: row.querySelector(`input[name="horas_minimas_num_${rowId}"]`) ? 
+                parseFloat(row.querySelector(`input[name="horas_minimas_num_${rowId}"]`).value) || 0 : 0,
+            hora_segun: row.querySelector(`select[name="hora_segun_${rowId}"]`)?.value || '',
+            dias_cotizados: row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`) ? 
+                parseFloat(row.querySelector(`input[name="dias_cotizados_val_${rowId}"]`).value) || 0 : 0,
+            subtotal: (cantidad * precio) + (movilizacionInput ? parseFloat(movilizacionInput.value) || 0 : 0)
+        };
+        
+        console.log(`✅ Línea ${index + 1} procesada:`, {
+            cod: linea.cod,
+            cant: linea.cantidad,
+            precio: linea.precio,
+            subtotal: linea.subtotal
+        });
+        
+        lineas.push(linea);
+    });
+    
+    console.log(`📋 TOTAL LÍNEAS VÁLIDAS: ${lineas.length}`);
+    return lineas;
+}
 
         function obtenerLineasDetalleCorregidas() {
             const lineas = [];
@@ -1443,7 +1600,7 @@ function precargarFormulario(datos) {
                         'empresa': datos.Empresa || '',
                         'rucCliente': datos.RUC || '',
                         'clienteNombre': datos.Cliente, // <-- Leído desde la consulta anidada
-                        'formaPago': datos.Forma_Pago || '',
+                        'formaPago': datos.Forma_De_Pago || '',
                         'direccion': datos.Direccion || '', // <-- Leído de Pedidos o Clientes.Direccion_Fiscal
                         'ejecutivo': datos.Ejecutivo || '',
                     };
