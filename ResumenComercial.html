@@ -165,65 +165,90 @@ function mostrarPagina(numeroPagina) {
         const tbody = document.getElementById("cuerpoTablaResumen");
         tbody.innerHTML = "";
 
-        const datosParaMostrar = datosFiltradosPaginacion;
+        const datosParaMostrar = datosFiltradosPaginacion; // Esta variable ya la tenías
 
-        // --- Corrección: Validar si hay datos reales ---
-        if (!datosParaMostrar || datosParaMostrar.length <= 1 || datosParaMostrar[1][0] === "Error") { // <= 1 por encabezado, o si el backend devolvió error
-            const mensaje = (datosParaMostrar && datosParaMostrar.length > 1 && datosParaMostrar[1][0] === "Error") ? datosParaMostrar[1][2] : "No hay cotizaciones para mostrar.";
+        // Validar si hay datos (datosParaMostrar[0] ya no es encabezado)
+        if (!datosParaMostrar || datosParaMostrar.length === 0 || (datosParaMostrar[0] && datosParaMostrar[0].Cot === "Error")) {
+            const mensaje = (datosParaMostrar[0] && datosParaMostrar[0].Cot === "Error") ? datosParaMostrar[0].Fecha_Creacion : "No hay cotizaciones para mostrar.";
             tbody.innerHTML = crearFilaVacia(mensaje);
             actualizarControlesPaginacion(0);
             return;
         }
-        // --- Fin Corrección ---
-
 
         paginaActual = numeroPagina;
-        const totalFilasDatos = datosParaMostrar.length - 1;
+        const totalFilasDatos = datosParaMostrar.length; // Ya no restamos 1
         const indiceInicio = (paginaActual - 1) * filasPorPagina;
         const indiceFin = indiceInicio + filasPorPagina;
-        const filasPagina = datosParaMostrar.slice(indiceInicio + 1, indiceFin + 1);
-
-         if (filasPagina.length === 0 && paginaActual > 1) { /* ... ir a pág anterior ... */ }
-         else if (filasPagina.length === 0 && paginaActual === 1) { /* ... mostrar fila vacía ... */ }
-
+        
+        // ANTES: .slice(indiceInicio + 1, indiceFin + 1);
+        // AHORA:
+        const filasPagina = datosParaMostrar.slice(indiceInicio, indiceFin); 
 
         const scriptUrl = '<?!= getScriptUrl() ?>';
 
         filasPagina.forEach((fila) => {
-            // Leer datos usando CONFIG actualizado
-            const numPedido = fila[CONFIG.columnas.NUM_PEDIDO];
-            const fecha = fila[CONFIG.columnas.FECHA];
-            const cliente = fila[CONFIG.columnas.CLIENTE];
-            const vendedor = fila[CONFIG.columnas.VENDEDOR]; // Nuevo
-            const compania = fila[CONFIG.columnas.COMPANIA]; // Nuevo
-            const monto = parseFloat(fila[CONFIG.columnas.MONTO]) || 0;
-            const moneda = String(fila[CONFIG.columnas.MONEDA] || '').toUpperCase(); // Asegurar mayúsculas
-            const estado = fila[CONFIG.columnas.ESTADO];
-            const rowIndexOriginal = fila[CONFIG.columnas.ROW_INDEX];
+            // ==========================================================
+            // === ¡EL GRAN CAMBIO ESTÁ AQUÍ! ===
+            // Ya no usamos fila[CONFIG.columnas...], usamos los nombres del JSON
+            // ==========================================================
+            
+            const numPedido = fila.Cot;
+            const fecha = formatearFechaSimple(fila.Fecha_Creacion); // Usamos una nueva función helper
+            
+            // Obtenemos el nombre del cliente desde el objeto anidado
+            const cliente = (fila.Clientes && fila.Clientes.Nombre_RazonSocial) ? fila.Clientes.Nombre_RazonSocial : (fila.RUC || 'Cliente no encontrado');
+            
+            const vendedor = fila.Ejecutivo;
+            const compania = fila.Empresa;
+            const monto = parseFloat(fila.Total_Cot) || 0;
+            const moneda = String(fila.Moneda || '').toUpperCase();
+            const estado = fila.Estado_Cot;
+            
+            // ¡IMPORTANTE! El 'rowIndex' que usábamos para PDF/Editar
+            // ahora debe ser el 'numPedido' (Cot), que es el ID único.
+            const idUnico = numPedido; 
 
-            if (!numPedido || typeof rowIndexOriginal !== 'number' || rowIndexOriginal < 2) return;
+            if (!numPedido) return;
 
-            // Formateo de Moneda
+            // (El resto de tu lógica de formato de moneda está bien)
             const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES') ? 'S/ ' : '$ ';
-            // Usar toLocaleString para formato de miles y decimales correcto
             const montoFormateado = simboloMoneda + monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
             const tr = document.createElement("tr");
-            // Añadir nuevas celdas td
             tr.innerHTML = `
                 <td>${escapeHtml(numPedido)}</td>
                 <td>${escapeHtml(fecha)}</td>
                 <td>${escapeHtml(cliente)}</td>
-                <td>${escapeHtml(vendedor)}</td>      <td>${escapeHtml(compania)}</td>      <td class="monto-col">${montoFormateado}</td> <td>${escapeHtml(moneda)}</td>
+                <td>${escapeHtml(vendedor)}</td>
+                <td>${escapeHtml(compania)}</td>
+                <td class="monto-col">${montoFormateado}</td>
+                <td>${escapeHtml(moneda)}</td>
                 <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado || 'Desconocido')}</span></td>
-                <td><button onclick="editarCotizacionSegura('${escapeHtml(numPedido)}')" class="btn-editar">✏️ Editar</button></td>
-                <td style="text-align: center;"><button onclick="generarPDF(${rowIndexOriginal})" class="btn-pdf" data-row="${rowIndexOriginal}">📄 PDF</button></td>
+                
+                <td><button onclick="editarCotizacionSegura('${escapeHtml(idUnico)}')" class="btn-editar">✏️ Editar</button></td>
+                <td style="text-align: center;"><button onclick="generarPDF('${escapeHtml(idUnico)}')" class="btn-pdf" data-row="${escapeHtml(idUnico)}">📄 PDF</button></td>
             `;
             tbody.appendChild(tr);
         });
 
         actualizarControlesPaginacion(totalFilasDatos);
-        console.log(`Página ${paginaActual} renderizada...`); // Opcional
+        console.log(`Página ${paginaActual} renderizada (Modo Supabase)...`); 
+    }
+
+    function formatearFechaSimple(fechaISO) {
+        if (!fechaISO) return '';
+        try {
+            // La fecha viene como "2025-11-10T00:00:00+00:00"
+            const fecha = new Date(fechaISO);
+            // .toLocaleDateString es la forma más segura de formatear
+            return fecha.toLocaleDateString('es-PE', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        } catch (e) {
+            return fechaISO; // Devuelve el original si falla
+        }
     }
 
 // === NUEVA FUNCIÓN para actualizar los controles de paginación ===
