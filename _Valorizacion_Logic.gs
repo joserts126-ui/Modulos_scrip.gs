@@ -1,254 +1,170 @@
 /**
- * ====================================================
- * === LÓGICA DE NEGOCIO DEL MÓDULO DE VALORIZACIÓN ===
- * ====================================================
+ * ==========================================================
+ * === LÓGICA DE VALORIZACIÓN (v2 - 100% Migrado a Supabase) ===
+ * ==========================================================
  */
 
 /**
  * Función principal llamada por Valorizacion.html al cargar.
- * Obtiene las OTs pendientes y las valorizaciones ya emitidas para un pedido.
+ * Obtiene OTs pendientes y valorizaciones emitidas desde Supabase.
  */
 function getDatosParaValorizar(numPedido) {
   try {
     if (!numPedido) throw new Error("Se requiere un número de pedido.");
-
-    const pendientes = _getOTsPendientesParaValorizar(numPedido);
-    const emitidas = _getValorizacionesEmitidas(numPedido);
+    
+    // Llama a los nuevos helpers de Supabase
+    const pendientes = _getOTsPendientesSupabase(numPedido);
+    const emitidas = _getValorizacionesEmitidasSupabase(numPedido);
 
     return {
       success: true,
       pendientes: pendientes,
       emitidas: emitidas
     };
-
   } catch (e) {
-    Logger.log(`Error en getDatosParaValorizar: ${e.message}`);
-    return manejarError('getDatosParaValorizar', e); // Asume que tienes manejarError en _Comercreal_Logic o _Core
+    Logger.log(`Error en getDatosParaValorizar (Supabase): ${e.message}`);
+    return manejarError('getDatosParaValorizar', e);
   }
 }
 
 /**
- * [HELPER INTERNO - VERSIÓN CORREGIDA]
+ * [HELPER INTERNO - Supabase]
  * Obtiene todas las OTs de un pedido que están "Pendientes" de valorizar.
- * AHORA LEE LAS COLUMNAS CORRECTAS DE 'HOJA: OT'.
  */
-function _getOTsPendientesParaValorizar(numPedido) {
-  const allDataOT = obtenerDatosHoja(HOJA_OT, false); // No usar caché para datos frescos
-  const COL_MAP_OT = getColumnMap(HOJA_OT);
+function _getOTsPendientesSupabase(numPedido) {
+  Logger.log(`Buscando OTs pendientes para: ${numPedido}`);
+  try {
+    // Esta consulta busca en Detalle_Pedidos por el 'Cot' y se une (JOIN)
+    // a las Ordenes_Trabajo que estén 'Pendiente'.
+    const consulta = `
+      select=
+        Cot_Linea_Ref,
+        Ordenes_Trabajo!inner(
+          N_OT,
+          Fecha,
+          Monto_Servicio,
+          Monto_Movilizacion,
+          Estado_Valorizacion
+        )
+      &Cot=eq.${numPedido}
+      &Ordenes_Trabajo.Estado_Valorizacion=eq.Pendiente
+    `.replace(/\s/g, '');
 
-  // --- Columnas a leer (NOMBRES CORREGIDOS) ---
-  const COT_COL = COL_MAP_OT['N°COTIZACION'];
-  const ESTADO_VAL_COL = COL_MAP_OT['ESTADO_VALORIZACION'];
-  const OT_ID_COL = COL_MAP_OT['N° OT'];
-  const FECHA_COL = COL_MAP_OT['FECHA'];
-  const HORAS_COL = COL_MAP_OT['HOROMETRO TRABAJADO']; // O 'TIEMPO TOTAL', según tu regla de negocio
-  
-  // --- ¡AQUÍ ESTÁ LA CORRECCIÓN! ---
-  // Leemos de las nuevas columnas que 'guardarOT' acaba de poblar.
-  const MONTO_SERV_COL = COL_MAP_OT['MONTO SERVICIO']; 
-  const MONTO_MOV_COL = COL_MAP_OT['MONTO MOVILIZACION'];
-  // ---------------------------------
-  
-  // Validar que todas las columnas necesarias existan
-  if ([COT_COL, ESTADO_VAL_COL, OT_ID_COL, MONTO_SERV_COL, MONTO_MOV_COL, HORAS_COL, FECHA_COL].includes(undefined)) {
-    Logger.log(`Error en _getOTsPendientes...: Faltan columnas en HOJA: OT.
-        N°COTIZACION=${COT_COL}, ESTADO_VALORIZACION=${ESTADO_VAL_COL}, N° OT=${OT_ID_COL}, 
-        FECHA=${FECHA_COL}, HOROMETRO TRABAJADO=${HORAS_COL}, 
-        MONTO SERVICIO=${MONTO_SERV_COL}, MONTO MOVILIZACION=${MONTO_MOV_COL}`);
-    throw new Error("Columnas clave (como MONTO SERVICIO, MONTO MOVILIZACION, etc.) no encontradas en la hoja OT.");
-  }
+    const lineasConOTsPendientes = supabaseFetch('Detalle_Pedidos', {
+      method: 'get',
+      params: consulta
+    });
 
-  const pendientes = [];
-  const scriptTimeZone = Session.getScriptTimeZone();
+    // Mapear el resultado anidado a la estructura plana que espera el frontend
+    const pendientes = lineasConOTsPendientes.map(linea => {
+      const ot = linea.Ordenes_Trabajo[0]; // Asumimos una OT pendiente por línea por ahora
+      if (!ot) return null; // Seguridad
 
-  for (let i = 1; i < allDataOT.length; i++) {
-    const row = allDataOT[i];
-    
-    // Filtro por Pedido y Estado
-    if (String(row[COT_COL] || '').trim() === numPedido &&
-        String(row[ESTADO_VAL_COL] || '').trim() === 'Pendiente') {
-      
-      // --- ¡AQUÍ ESTÁ LA LECTURA CORRECTA! ---
-      const montoServicio = parseFloat(row[MONTO_SERV_COL] || 0);
-      const montoMovilizacion = parseFloat(row[MONTO_MOV_COL] || 0);
-      // ------------------------------------
+      const montoServicio = parseFloat(ot.Monto_Servicio || 0);
+      const montoMovilizacion = parseFloat(ot.Monto_Movilizacion || 0);
 
-      pendientes.push({
-        otId: row[OT_ID_COL],
-        fecha: formatearFechaRapido(row[FECHA_COL], scriptTimeZone),
-        horas: parseFloat(row[HORAS_COL] || 0).toFixed(2),
+      return {
+        otId: ot.N_OT,
+        fecha: ot.Fecha, // Viene como 'YYYY-MM-DD'
         montoServicio: montoServicio,
         montoMovilizacion: montoMovilizacion,
         montoTotalOT: montoServicio + montoMovilizacion,
-        rowIndex: i + 1 // N° de fila real para la actualización
-      });
-    }
+        // ¡Importante! Necesitamos el ID numérico de la línea para la OT
+        // pero la RPC de creación de Valorización no lo usa,
+        // así que solo pasamos el ID de la OT
+      };
+    }).filter(ot => ot != null); // Filtrar nulos
+    
+    Logger.log(`Encontradas ${pendientes.length} OTs pendientes para ${numPedido}`);
+    return pendientes;
+    
+  } catch (error) {
+    Logger.log(`Error en _getOTsPendientesSupabase: ${error.message}`);
+    throw new Error(`Error al buscar OTs pendientes: ${error.message}`);
   }
-  
-  Logger.log(`Encontradas ${pendientes.length} OTs pendientes para ${numPedido}`);
-  return pendientes;
 }
 
 /**
- * [HELPER INTERNO]
+ * [HELPER INTERNO - Supabase]
  * Obtiene el historial de valorizaciones ya emitidas para este pedido.
  */
-function _getValorizacionesEmitidas(numPedido) {
-  const allDataVal = obtenerDatosHoja(HOJA_VALORIZACIONES, false);
-  const COL_MAP_VAL = getColumnMap(HOJA_VALORIZACIONES);
+function _getValorizacionesEmitidasSupabase(numPedido) {
+  Logger.log(`Buscando valorizaciones emitidas para: ${numPedido}`);
+  try {
+    const consulta = `
+      select=
+        Val_ID,
+        Fecha_Emision,
+        Monto_Total,
+        Estado
+      &Cot=eq.${numPedido}
+      &order=Fecha_Emision.desc
+    `.replace(/\s/g, '');
 
-  const PEDIDO_COL = COL_MAP_VAL['ID_PEDIDO'];
-  if (PEDIDO_COL === undefined) {
-    Logger.log("Advertencia: No se encontró 'ID_Pedido' en Hoja Valorizaciones. Creándola si no existe.");
-    // Podríamos crear la hoja aquí si no existe
-    return [];
+    const emitidas = supabaseFetch('Valorizaciones', {
+      method: 'get',
+      params: consulta
+    });
+
+    // Mapear al formato simple que espera el frontend
+    return emitidas.map(val => ({
+      valId: val.Val_ID,
+      fecha: formatearFechaRapido(val.Fecha_Emision, Session.getScriptTimeZone()),
+      montoTotal: parseFloat(val.Monto_Total || 0),
+      estado: val.Estado
+    }));
+    
+  } catch (error) {
+    Logger.log(`Error en _getValorizacionesEmitidasSupabase: ${error.message}`);
+    throw new Error(`Error al buscar valorizaciones emitidas: ${error.message}`);
   }
-
-  const emitidas = [];
-  const scriptTimeZone = Session.getScriptTimeZone();
-
-  for (let i = 1; i < allDataVal.length; i++) {
-    const row = allDataVal[i];
-    if (String(row[PEDIDO_COL] || '').trim() === numPedido) {
-      emitidas.push({
-        valId: row[COL_MAP_VAL['ID_VALORIZACION']],
-        fecha: formatearFechaRapido(row[COL_MAP_VAL['FECHA_EMISION']], scriptTimeZone),
-        montoTotal: parseFloat(row[COL_MAP_VAL['MONTO_TOTAL']] || 0),
-        estado: row[COL_MAP_VAL['ESTADO']]
-      });
-    }
-  }
-  // Ordenar por fecha, más reciente primero
-  return emitidas.sort((a, b) => new Date(b.fecha.split('/').reverse().join('-')) - new Date(a.fecha.split('/').reverse().join('-')));
 }
 
 
 /**
- * Crea una nueva Valorización (Cabecera y Detalle) y actualiza el estado de las OTs.
- * Implementa un patrón transaccional.
+ * REEMPLAZO (v2 - Supabase RPC)
+ * Llama a la RPC 'crear_nueva_valorizacion' para crear la valorización de forma segura.
  */
 function crearValorizacion(numPedido, otsSeleccionadas) {
-  // otsSeleccionadas es un array de objetos: [{otId: "OT-001", rowIndex: 5, montoServicio: 100, montoMov: 50}, ...]
-  
-  // 1. Validaciones
-  const permisos = obtenerPermisosUsuario(); // Asume que tienes esta función
-  if (!permisos.puedeEditarCotizacion) { // Reutiliza un permiso existente o crea uno nuevo
+  const permisos = obtenerPermisosUsuario();
+  if (!permisos.puedeEditarCotizacion) { // Reutiliza un permiso
     return { success: false, message: "Acceso denegado." };
   }
+
   if (!numPedido) return { success: false, message: "No se proporcionó un número de pedido." };
   if (!otsSeleccionadas || otsSeleccionadas.length === 0) {
     return { success: false, message: "Debe seleccionar al menos una OT para valorizar." };
   }
 
-  const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-  const sheetOT = ss.getSheetByName(HOJA_OT);
-  const sheetVal = ss.getSheetByName(HOJA_VALORIZACIONES);
-  const sheetValDetalle = ss.getSheetByName(HOJA_VALORIZACION_DETALLE);
+  Logger.log(`Iniciando RPC crear_nueva_valorizacion para ${numPedido} con ${otsSeleccionadas.length} OTs...`);
   
-  // Crear hojas si no existen (¡Robusto!)
-  if (!sheetVal) sheetVal = ss.insertSheet(HOJA_VALORIZACIONES).appendRow(['ID_Valorizacion', 'ID_Pedido', 'Fecha_Emision', 'Fecha_Servicio_Inicio', 'Fecha_Servicio_Fin', 'Cliente', 'Monto_Servicios_Total', 'Monto_Movilizacion_Total', 'Monto_Total', 'Estado', 'ID_Factura', 'Link_PDF']);
-  if (!sheetValDetalle) sheetValDetalle = ss.insertSheet(HOJA_VALORIZACION_DETALLE).appendRow(['ID_Detalle', 'ID_Valorizacion', 'ID_OT', 'Monto_Servicio_Hist', 'Monto_Mov_Hist']);
-
-  const COL_MAP_OT = getColumnMap(HOJA_OT);
-  const ESTADO_VAL_COL_OT = COL_MAP_OT['ESTADO_VALORIZACION'];
-  
-  if (ESTADO_VAL_COL_OT === undefined) {
-      throw new Error("No se encontró la columna 'Estado_Valorizacion' en la hoja OT.");
-  }
-
-  const nuevoValId = `VAL-${numPedido.replace(/[^a-zA-Z0-9]/g, '')}-${new Date().getTime().toString().slice(-5)}`;
-  let montoServiciosTotal = 0;
-  let montoMovilizacionTotal = 0;
-  let cliente = '';
-  let fechaInicio = new Date(8640000000000000); // Fecha muy futura
-  let fechaFin = new Date(-8640000000000000); // Fecha muy pasada
-  
-  // Para el rollback
-  let otsActualizadas = []; 
-
   try {
-    // 2. Preparar Datos y (PASO A) Actualizar OTs
-    Logger.log(`Iniciando transacción para ${nuevoValId}. Procesando ${otsSeleccionadas.length} OTs...`);
+    // 1. Preparar el payload para la RPC
+    // El frontend envía datos extra (rowIndex), los filtramos
+    const payloadOTs = otsSeleccionadas.map(ot => ({
+      "N_OT": ot.otId,
+      "Monto_Servicio": ot.montoServicio,
+      "Monto_Movilizacion": ot.montoMovilizacion,
+      "Fecha": ot.fecha.split('/').reverse().join('-') // Convertir DD/MM/YYYY a YYYY-MM-DD
+    }));
+
+    const payloadRPC = {
+      "codigo_pedido": numPedido,
+      "ots_json": payloadOTs
+    };
     
-    // Obtenemos los datos de cliente/fechas de la *primera* OT
-    const primeraOT = obtenerDatosHoja(HOJA_OT, false).find(row => row[COL_MAP_OT['N° OT']] === otsSeleccionadas[0].otId);
-    if(primeraOT) cliente = primeraOT[COL_MAP_OT['CLIENTE']]; // Asume que tienes columna CLIENTE en OT
+    // 2. Llamar a la RPC
+    const resultado = supabaseFetch('rpc/crear_nueva_valorizacion', {
+      method: 'post',
+      payload: payloadRPC
+    });
 
-    for (const ot of otsSeleccionadas) {
-      // Sumar montos
-      montoServiciosTotal += parseFloat(ot.montoServicio || 0);
-      montoMovilizacionTotal += parseFloat(ot.montoMovilizacion || 0);
-      
-      // Encontrar fechas
-      const fechaOT = new Date(ot.fecha.split('/').reverse().join('-'));
-      if (fechaOT < fechaInicio) fechaInicio = fechaOT;
-      if (fechaOT > fechaFin) fechaFin = fechaOT;
-
-      // (PASO A) Actualizar estado de la OT
-      // Columna es 1-based, COL_MAP_OT es 0-based
-      sheetOT.getRange(ot.rowIndex, ESTADO_VAL_COL_OT + 1).setValue("En Proceso");
-      otsActualizadas.push(ot.rowIndex); // Guardar para posible rollback
-    }
-    
-    // 3. (PASO B) Escribir Cabecera de Valorización
-    Logger.log(`Paso B: Creando cabecera ${nuevoValId}`);
-    sheetVal.appendRow([
-      nuevoValId,
-      numPedido,
-      new Date(), // Fecha_Emision
-      fechaInicio,
-      fechaFin,
-      cliente,
-      montoServiciosTotal,
-      montoMovilizacionTotal,
-      montoServiciosTotal + montoMovilizacionTotal, // Monto_Total
-      "Borrador", // Estado
-      "", // ID_Factura
-      ""  // Link_PDF
-    ]);
-
-    // 4. (PASO C) Escribir Detalle de Valorización
-    Logger.log(`Paso C: Creando ${otsSeleccionadas.length} detalles...`);
-    const filasDetalle = [];
-    for (const ot of otsSeleccionadas) {
-      filasDetalle.push([
-        `VALDET-${nuevoValId}-${ot.otId}`, // ID_Detalle
-        nuevoValId, // ID_Valorizacion
-        ot.otId, // ID_OT
-        ot.montoServicio, // Monto_Servicio_Hist
-        ot.montoMovilizacion // Monto_Mov_Hist
-      ]);
-    }
-    sheetValDetalle.getRange(sheetValDetalle.getLastRow() + 1, 1, filasDetalle.length, filasDetalle[0].length)
-                   .setValues(filasDetalle);
-
-    // 5. Éxito
-    Logger.log(`ÉXITO: Valorización ${nuevoValId} creada.`);
-    // Invalidar cachés
-    cache.remove(`hoja_${HOJA_OT}`);
-    cache.remove(`hoja_${HOJA_VALORIZACIONES}`);
-    cache.remove(`hoja_${HOJA_VALORIZACION_DETALLE}`);
-    
-    return { success: true, message: `Valorización ${nuevoValId} creada con ${otsSeleccionadas.length} OTs.` };
+    // 3. Devolver el resultado de la RPC (que ya tiene formato {success: true, ...})
+    Logger.log(`Resultado de la RPC: ${JSON.stringify(resultado)}`);
+    return resultado;
 
   } catch (e) {
-    Logger.log(`ERROR en crearValorizacion: ${e.message}. Iniciando ROLLBACK...`);
-    
-    // (PASO D) Rollback de OTs
-    if (otsActualizadas.length > 0) {
-      Logger.log(`Rollback: Revertiendo ${otsActualizadas.length} OTs a "Pendiente"`);
-      for (const rowIndex of otsActualizadas) {
-        try {
-          sheetOT.getRange(rowIndex, ESTADO_VAL_COL_OT + 1).setValue("Pendiente");
-        } catch (revertError) {
-          Logger.log(`ERROR CRÍTICO DE ROLLBACK en fila ${rowIndex}: ${revertError.message}`);
-          enviarNotificacionError(`ERROR CRÍTICO DE ROLLBACK: No se pudo revertir la OT en fila ${rowIndex} a "Pendiente". Revisión manual requerida.`);
-        }
-      }
-    }
-    // (Rollback de Valorizacion y Detalle no es necesario porque el error suele ocurrir antes,
-    // pero se podría añadir lógica para borrar la fila de 'sheetVal' si se creó)
-
+    Logger.log(`ERROR en crearValorizacion (RPC): ${e.message}`);
     return manejarError('crearValorizacion', e);
   }
 }
