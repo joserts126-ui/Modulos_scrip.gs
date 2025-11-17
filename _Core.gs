@@ -53,181 +53,6 @@ function include(filename) {
     return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-// ====================================================
-// === FUNCIONES NUCLEO DE DATOS (CRUD y CACHE) ===
-// ====================================================
-
-/**
- * Obtiene el mapa de columnas (encabezado -> índice) para una hoja.
- * @param {string} sheetName El nombre de la hoja.
- * @returns {Object} Un mapa de {HEADER_NAME_UPPERCASE: index}.
- */
-function getColumnMap(sheetName) {
-    const cacheKey = `header_map_V5_${sheetName}`;
-    let cachedMap = cache.get(cacheKey);
-
-    if (cachedMap) {
-        return JSON.parse(cachedMap);
-    }
-
-    try {
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(sheetName);
-
-        if (!sheet || sheet.getLastRow() < 1) {
-            Logger.log(`Advertencia: Hoja ${sheetName} vacía o no existe.`);
-            return {};
-        }
-
-        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const map = {};
-        
-        headers.forEach((header, index) => {
-            if (header) {
-                map[header.trim().toUpperCase()] = index;
-            }
-        });
-
-        cache.put(cacheKey, JSON.stringify(map), 3600); 
-        return map;
-
-    } catch (e) {
-        Logger.log(`Error creando mapa de columnas para ${sheetName}: ${e.message}`);
-        return {};
-    }
-}
-
-/**
- * Función unificada para operaciones CRUD en hojas
- */
-function crudHoja(operacion, sheetName, datos = null, filtro = null) {
-    try {
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(sheetName);
-        
-        if (!sheet) throw new Error(`Hoja '${sheetName}' no encontrada`);
-        // Invalidar cache
-        cache.remove(`hoja_${sheetName}`);
-
-        switch(operacion) {
-            case 'READ':
-                if (sheet.getLastRow() < 1) return [];
-                return sheet.getDataRange().getValues();
-
-            case 'READ_ROW': 
-                const rowIndexToRead = parseInt(datos.rowIndex);
-                if (rowIndexToRead > 1 && rowIndexToRead <= sheet.getLastRow()) {
-                    const lastCol = sheet.getLastColumn();
-                    return sheet.getRange(rowIndexToRead, 1, 1, lastCol).getValues()[0];
-                }
-                throw new Error("Índice de fila inválido o fuera de rango para lectura");
-            
-            case 'CREATE':
-                const valoresCrear = Array.isArray(datos) ? datos : datos.valores;
-                sheet.appendRow(valoresCrear);
-                return { success: true, message: "Registro creado exitosamente", tipo: 'creacion' };
-            
-            case 'UPDATE':
-                const rowIndex = parseInt(datos.rowIndex);
-                if (rowIndex > 1) {
-                    sheet.getRange(rowIndex, 1, 1, datos.valores.length)
-                         .setValues([datos.valores]);
-                    return { success: true, message: "Registro actualizado exitosamente", tipo: 'actualizacion' };
-                }
-                throw new Error("Índice de fila inválido para actualización");
-            
-            case 'FILTER':
-                const allData = sheet.getDataRange().getValues();
-                if (!filtro || Object.keys(filtro).length === 0) return allData;
-                
-                const headers = allData[0];
-                const filtered = allData.slice(1).filter(row => 
-                    Object.entries(filtro).every(([key, value]) => {
-                        const colIndex = headers.indexOf(key);
-                        return colIndex !== -1 && String(row[colIndex]).trim() === String(value).trim();
-                    })
-                );
-                return [headers].concat(filtered);
-                
-            default:
-                throw new Error(`Operación '${operacion}' no soportada`);
-        }
-    } catch (error) {
-        Logger.log(`ERROR en crudHoja(${operacion}, ${sheetName}): ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * Función unificada para obtener datos con cache OPTIMIZADA
- */
-function obtenerDatosHoja(sheetName, useCache = true, cacheMinutes = 10) {
-    const cacheKey = `hoja_${sheetName}`;
-    const startTime = new Date().getTime();
-    
-    try {
-        if (useCache) {
-            const cached = cache.get(cacheKey);
-            if (cached) {
-                const endTime = new Date().getTime();
-                Logger.log(`⚡ CACHE HIT para ${sheetName}: ${endTime - startTime}ms`);
-                return JSON.parse(cached);
-            }
-        }
-        
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(sheetName);
-        
-        if (!sheet || sheet.getLastRow() === 0) {
-            return [];
-        }
-        
-        // Limitar cantidad de filas si es muy grande (máximo 1000 filas)
-        const lastRow = Math.min(sheet.getLastRow(), 1000);
-        const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
-        if (useCache && data.length > 0) {
-            cache.put(cacheKey, JSON.stringify(data), cacheMinutes * 60);
-        }
-        
-        const endTime = new Date().getTime();
-        Logger.log(`📥 DATOS OBTENIDOS ${sheetName}: ${endTime - startTime}ms - ${data.length} filas`);
-        
-        return data;
-    } catch (error) {
-        Logger.log(`❌ ERROR en obtenerDatosHoja: ${error.message}`);
-        return [];
-    }
-}
-
-/**
- * Obtiene valores únicos de una columna optimizada con cache
- */
-function getListaValoresUnicosOptimizada(allData, columnIndex) {
-    if (!allData || allData.length <= 1) return [];
-    const listaUnica = new Set();
-    for (let i = 1; i < allData.length; i++) {
-        const valor = allData[i][columnIndex];
-        if (valor !== undefined && valor !== null) {
-            const valorLimpio = String(valor).trim();
-            if (valorLimpio) listaUnica.add(valorLimpio);
-        }
-    }
-    return Array.from(listaUnica);
-}
-
-/**
- * Obtiene lista de valores únicos de una hoja específica
- */
-function getListaValoresUnicos(sheetName, columnIndex) {
-    try {
-        const allData = obtenerDatosHoja(sheetName);
-        return getListaValoresUnicosOptimizada(allData, columnIndex - 1); 
-    } catch (e) {
-        Logger.log(`ERROR en getListaValoresUnicos para ${sheetName}: ${e.message}`);
-        return []; 
-    }
-}
-
 function forzarAutorizacion() {
   // Esta función solo existe para forzar la re-autorización
   try {
@@ -240,50 +65,55 @@ function forzarAutorizacion() {
 }
 
 /**
- * Obtiene el objeto de permisos para el usuario actual.
- * Usa caché para alto rendimiento.
+ * REFACTORIZADO (v3 - Supabase)
+ * Obtiene el objeto de permisos para el usuario actual desde la tabla "Permisos".
+ * Ya no usa caché para simplificar.
  */
 function obtenerPermisosUsuario() {
-    const email = obtenerEmailSeguro(); // Asumo que esta función ya existe en tu lógica
-    const cacheKey = 'permisos_' + email;
-    const cache = CacheService.getScriptCache();
+  const email = obtenerEmailSeguro(); //
+  Logger.log(`Obteniendo permisos para: ${email}`);
+  
+  // 1. Definir los permisos por defecto (Rol Invitado)
+  let permisosUsuario = {
+    email: email,
+    rol: 'Invitado', //
+    puedeEditarServicios: false, //
+    puedeEditarOT: false, //
+    puedeVerReportes: false, //
+    puedeEditarCotizacion: false //
+  };
+
+  try {
+    // 2. Buscar al usuario en la tabla "Permisos" de Supabase
+    // (Usamos el "traductor" de _Supabase_Client.gs)
+    const resultado = supabaseFetch('Permisos', {
+      method: 'get',
+      // Pide todas las columnas, filtrando por el email
+      params: `select=*&Email=eq.${encodeURIComponent(email)}`
+    });
+
+    // 3. Si se encuentra al usuario, mapear los permisos
+    if (resultado && resultado.length > 0) {
+      const filaUsuario = resultado[0];
+      Logger.log("Usuario encontrado en tabla Permisos.");
+      
+      // Mapeamos los nombres de tu tabla Supabase
+      permisosUsuario.rol = filaUsuario.Rol || 'Invitado';
+      permisosUsuario.puedeEditarServicios = filaUsuario.PuedeEditarServicios === true;
+      permisosUsuario.puedeEditarOT = filaUsuario.PuedeEditarOT === true;
+      permisosUsuario.puedeVerReportes = filaUsuario.PuedeVerReportes === true;
+      permisosUsuario.puedeEditarCotizacion = filaUsuario.PuedeEditarCotizacion === true;
     
-    // 1. Intentar obtener de la caché
-    const cachedPermisos = cache.get(cacheKey);
-    if (cachedPermisos) {
-        return JSON.parse(cachedPermisos);
+    } else {
+      Logger.log("Usuario no encontrado en Permisos. Usando rol 'Invitado'.");
     }
 
-    // 2. Si no está en caché, leer la hoja
-    const HOJA_PERMISOS = "Permisos"; // Asegúrate que coincida
-    const permisosData = obtenerDatosHoja(HOJA_PERMISOS, false); // false = no usar caché para leer la hoja
-    const COL_MAP = getColumnMap(HOJA_PERMISOS);
-
-    let permisosUsuario = {
-        email: email,
-        rol: 'Invitado', // Rol por defecto
-        puedeEditarServicios: false,
-        puedeEditarOT: false,
-        puedeVerReportes: false,
-        puedeEditarCotizacion: false
-    };
-
-    if (permisosData.length > 1) {
-        const filaUsuario = permisosData.slice(1).find(fila => 
-            String(fila[COL_MAP['EMAIL']] || '').trim().toLowerCase() === email.toLowerCase()
-        );
-
-        if (filaUsuario) {
-            permisosUsuario.rol = filaUsuario[COL_MAP['ROL']] || 'Invitado';
-            permisosUsuario.puedeEditarServicios = filaUsuario[COL_MAP['PUEDEEDITARSERVICIOS']] === true;
-            permisosUsuario.puedeEditarOT = filaUsuario[COL_MAP['PUEDEEDITAROT']] === true;
-            permisosUsuario.puedeVerReportes = filaUsuario[COL_MAP['PUEDEVERREPORTES']] === true;
-            permisosUsuario.puedeEditarCotizacion = filaUsuario[COL_MAP['PUEDEEDITARCOTIZACION']] === true;
-        }
-    }
-    
-    // 3. Guardar en caché por 1 hora (3600 segundos)
-    cache.put(cacheKey, JSON.stringify(permisosUsuario), 3600);
-    
-    return permisosUsuario;
+  } catch (e) {
+    Logger.log(`ERROR al buscar permisos en Supabase: ${e.message}. Usando rol 'Invitado'.`);
+    // Si hay un error de BD, se queda con los permisos de 'Invitado' por seguridad
+  }
+  
+  // 4. Devolver el objeto de permisos
+  Logger.log(`Permisos finales: ${JSON.stringify(permisosUsuario)}`);
+  return permisosUsuario;
 }
