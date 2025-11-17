@@ -71,31 +71,29 @@
         </div>
     </div>
 
-    <script>
-        let datosOTGlobal = []; // Para el modo global
+<script>
+        let datosOTGlobal = []; // Para el modo global (ahora será un array de objetos JSON)
         let modoPedido = false;
         let numPedidoFiltrado = null;
         let scriptUrlBase = '<?!= getScriptUrl() ?>';
 
         document.addEventListener("DOMContentLoaded", function() {
-            console.log("🔄 OT.html CARGADO (v2 con parámetros inyectados)");
+            console.log("🔄 OT.html CARGADO (v3 - Migrado a Supabase)");
 
-            // --- LÓGICA CORREGIDA PARA LEER PARÁMETROS ---
-            // Ya no leemos 'window.location.search'. Leemos la variable 'parametros'
-            // que fue inyectada por doGet en _Core.gs
             const parametrosServidor = <?!= JSON.stringify(parametros) ?>;
-            numPedidoFiltrado = parametrosServidor.pedido || null; // Busca el parámetro 'pedido'
-            // --- FIN DE LA CORRECCIÓN ---
+            numPedidoFiltrado = parametrosServidor.pedido || null;
 
             if (numPedidoFiltrado) {
                 modoPedido = true;
                 console.log("Modo detectado: Pedido Aislado (" + numPedidoFiltrado + ")");
                 configurarModoPedido(numPedidoFiltrado);
-                cargarDatosOTPorPedido(numPedidoFiltrado); // <-- Esta función ahora SÍ se llamará
+                // Llama a la nueva función v2 de Supabase
+                cargarDatosOTPorPedido(numPedidoFiltrado);
             } else {
                 modoPedido = false;
                 console.log("Modo detectado: Global");
                 configurarModoGlobal();
+                // Llama a la nueva función v2 de Supabase
                 cargarDatosOTGlobal();
             }
             
@@ -115,11 +113,9 @@
             document.getElementById("subtituloCard").textContent = `Líneas de Servicio del Pedido`;
             document.getElementById("subtituloCliente").style.display = 'block';
             
-            // Ocultar filtro global y botón de registrar global
             document.getElementById("filtroOT").style.display = 'none';
             document.getElementById("btnRegistrarGlobal").style.display = 'none';
             
-            // Cambiar encabezados de la tabla
             document.getElementById("aotHeaders").innerHTML = `
                 <tr>
                     <th>Línea</th>
@@ -140,6 +136,7 @@
                     mostrarLoading(false);
                     if (resultado.success) {
                         document.getElementById("subtituloCliente").textContent = `Cliente: ${resultado.cliente}`;
+                        // Esta función no cambia, ya esperaba el formato JSON correcto
                         renderizarTablaModoPedido(resultado.lineas);
                     } else {
                         mostrarError(resultado.message);
@@ -149,7 +146,7 @@
                     mostrarLoading(false);
                     mostrarError(error.message);
                 })
-                .getResumenOTPorPedido(numPedido); // <- Llama a la función del backend
+                .getResumenOTPorPedido(numPedido); // <- Llama a la nueva función v2
         }
         
         function renderizarTablaModoPedido(lineas) {
@@ -164,7 +161,8 @@
 
             lineas.forEach(linea => {
                 const saldo = linea.horasPedidas - linea.horasDespachadas;
-                const saldoClase = saldo <= 0 ? 'saldo-negativo' : 'saldo-positivo';
+                // Definir clase CSS para el saldo (puedes añadirla en Estilos.css)
+                const saldoClase = saldo <= 0 ? 'saldo-negativo' : 'saldo-positivo'; 
                 
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
@@ -177,62 +175,77 @@
                         <button onclick="navegarARegistrarOT('${escapeHTML(linea.lineaID)}')" class="boton-nuevo-pedido btn-success">
                             ➕ Nueva OT
                         </button>
-                        </td>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
             actualizarContador(lineas.length);
         }
 
-        // --- LÓGICA DE MODO GLOBAL (TU CÓDIGO ORIGINAL) ---
+        // --- LÓGICA DE MODO GLOBAL (ACTUALIZADA) ---
 
         function configurarModoGlobal() {
-            // Ya está configurado por defecto en el HTML
+            // Sin cambios
         }
 
         function cargarDatosOTGlobal() {
             mostrarLoading(true, "Cargando órdenes de trabajo...");
             
             google.script.run
-                .withSuccessHandler(function(datos) {
+                .withSuccessHandler(function(datosJSON) { // Ahora recibe JSON
                     mostrarLoading(false);
-                    if (datos && datos.success === false) {
-                         mostrarError("Error al cargar OT: " + datos.message);
+                    if (datosJSON && datosJSON.success === false) {
+                         mostrarError("Error al cargar OT: " + datosJSON.message);
                          return;
                     }
-                    datosOTGlobal = datos; 
-                    renderizarTablaGlobal(datos);
-                    actualizarContador(datos.length - 1);
+                    datosOTGlobal = datosJSON || []; // Guarda el array de objetos JSON
+                    renderizarTablaGlobal(datosOTGlobal);
+                    actualizarContador(datosOTGlobal.length); // Ya no se resta 1 (no hay encabezado)
                 })
                 .withFailureHandler(function(error) {
                     mostrarLoading(false);
                     mostrarError("Error al cargar las órdenes de trabajo: " + error.message);
                 })
-                .getListaOT(); // <- Llama a la función global
+                .getListaOT(); // <- Llama a la nueva función v2
         }
         
+        /**
+         * FUNCIÓN ACTUALIZADA: Lee JSON en lugar de un Array 2D
+         */
         function renderizarTablaGlobal(datos) {
             const tbody = document.getElementById("cuerpoTablaOT");
             tbody.innerHTML = "";
 
-            if (!datos || datos.length <= 1) {
+            if (!datos || datos.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7">No hay órdenes de trabajo registradas.</td></tr>`;
                 return;
             }
             
-            const datosOrdenados = [datos[0], ...datos.slice(1).sort((a, b) => {
-                const fechaA = new Date(a[1] || 0); // Asume Col 1 es Fecha
-                const fechaB = new Date(b[1] || 0);
-                return fechaB - fechaA; // Más reciente primero
-            })];
+            // Ya no necesitamos ordenar por fecha, la consulta SQL lo hace
+            // Ya no usamos slice(1), 'datos' es un array de OTs puro
 
-            datosOrdenados.slice(1).forEach((fila, index) => {
-                const numOT = fila[0]; // Asume Col 0 es N° OT
-                const fecha = formatearFecha(fila[1]); // Asume Col 1 es Fecha
-                const cliente = fila[2]; // Asume Col 2 es Cliente
-                const servicio = fila[3]; // Asume Col 3 es Servicio
-                const pedido = fila[4]; // Asume Col 4 es Pedido
-                const horasTrabajo = fila[5]; // Asume Col 5 es Horas
+            datos.forEach((fila, index) => {
+                // Leemos por nombre de propiedad, no por índice
+                const numOT = fila.N_OT;
+                const fecha = formatearFecha(fila.Fecha);
+                const horasTrabajo = fila.Horometro_Trabajado_Horas;
+                
+                // Leemos los datos anidados
+                // Es crucial añadir 'try...catch' o validaciones aquí por si
+                // algún dato anidado viniera nulo
+                let cliente = "Error de datos";
+                let servicio = "Error de datos";
+                let pedido = "Error de datos";
+
+                if (fila.Detalle_Pedidos && fila.Detalle_Pedidos.Pedidos && fila.Detalle_Pedidos.Pedidos.Clientes) {
+                    cliente = fila.Detalle_Pedidos.Pedidos.Clientes.Nombre_RazonSocial;
+                }
+                if (fila.Detalle_Pedidos && fila.Detalle_Pedidos.Servicios) {
+                    servicio = fila.Detalle_Pedidos.Servicios.Nombre_Servicio;
+                }
+                if (fila.Detalle_Pedidos) {
+                    pedido = fila.Detalle_Pedidos.Cot;
+                }
 
                 if (!numOT) return;
 
@@ -248,38 +261,43 @@
                         <button onclick="editarOT('${escapeHTML(numOT)}')" class="btn-editar" title="Editar OT">
                             ✏️ Editar
                         </button>
-                        </td>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
+        /**
+         * FUNCIÓN ACTUALIZADA: Filtra el array de objetos JSON
+         */
         function filtrarOT() {
-            if (modoPedido) return; // No filtrar en modo pedido
+            if (modoPedido) return;
             
             const filtro = document.getElementById("filtroOT").value.toLowerCase().trim();
             if (!filtro) {
                 renderizarTablaGlobal(datosOTGlobal);
-                actualizarContador(datosOTGlobal.length - 1);
+                actualizarContador(datosOTGlobal.length);
                 return;
             }
 
-            const datosFiltrados = [datosOTGlobal[0]]; // Mantener encabezados
-            datosOTGlobal.slice(1).forEach(fila => {
-                const numOT = String(fila[0] || '').toLowerCase();
-                const cliente = String(fila[2] || '').toLowerCase();
-                const servicio = String(fila[3] || '').toLowerCase();
-                const pedido = String(fila[4] || '').toLowerCase();
+            const datosFiltrados = datosOTGlobal.filter(fila => {
+                // Lectura segura de datos anidados
+                const numOT = String(fila.N_OT || '').toLowerCase();
+                const cliente = String(fila.Detalle_Pedidos?.Pedidos?.Clientes?.Nombre_RazonSocial || '').toLowerCase();
+                const servicio = String(fila.Detalle_Pedidos?.Servicios?.Nombre_Servicio || '').toLowerCase();
+                const pedido = String(fila.Detalle_Pedidos?.Cot || '').toLowerCase();
                 
-                if (numOT.includes(filtro) || cliente.includes(filtro) || 
-                    servicio.includes(filtro) || pedido.includes(filtro)) {
-                    datosFiltrados.push(fila);
-                }
+                return numOT.includes(filtro) || cliente.includes(filtro) || 
+                       servicio.includes(filtro) || pedido.includes(filtro);
             });
+            
             renderizarTablaGlobal(datosFiltrados);
-            actualizarContador(datosFiltrados.length - 1, true);
+            actualizarContador(datosFiltrados.length, true);
         }
 
+        /**
+         * FUNCIÓN ACTUALIZADA: Lee el .length del array de objetos
+         */
         function actualizarContador(total = 0, esFiltrado = false) {
             const contador = document.getElementById("contadorOT");
             if (modoPedido) {
@@ -288,7 +306,7 @@
                 return;
             }
 
-            const totalGlobal = datosOTGlobal.length - 1;
+            const totalGlobal = datosOTGlobal.length; // Ya no se resta 1
             if (esFiltrado) {
                 contador.textContent = `${total} de ${totalGlobal} registros`;
                 contador.style.color = '#e67e22';
@@ -298,16 +316,14 @@
             }
         }
 
-        // --- FUNCIONES COMUNES ---
+        // --- FUNCIONES COMUNES (Sin cambios) ---
         
         function navegarARegistrarOT(lineaID = null) {
             let urlDestino = '';
             if (lineaID) {
-                // Modo Aislado
                 console.log(`🔗 Navegando a Registrar OT para Línea: ${lineaID}`);
                 urlDestino = `${scriptUrlBase}?page=RegistrarOT&linea=${encodeURIComponent(lineaID)}`;
             } else {
-                // Modo Global
                 console.log("🔗 Navegando a Registrar OT (Global)");
                 urlDestino = `${scriptUrlBase}?page=RegistrarOT`;
             }
@@ -329,10 +345,16 @@
             }
         }
 
-        // ... (resto de tus funciones auxiliares: formatearFecha, escapeHTML, mostrarLoading, mostrarError) ...
         function formatearFecha(fechaStr) {
             if (!fechaStr) return '-';
             try {
+                // Las fechas de Supabase (tipo DATE) vienen como 'YYYY-MM-DD'
+                const partes = fechaStr.split('-');
+                if (partes.length === 3) {
+                    // Reordenar a DD/MM/YYYY
+                    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+                }
+                // Fallback para fechas completas (TIMESTAMPTZ)
                 const fecha = new Date(fechaStr);
                 if (isNaN(fecha.getTime())) return fechaStr;
                 return fecha.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
