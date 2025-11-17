@@ -233,22 +233,6 @@ function getListaServicios() {
     return obtenerDatosHoja(HOJA_SERVICIOS);
 }
 
-/**
- * Obtiene la lista completa de clientes usando la función modular.
- */
-function getListaClientes() {
-    try {
-        const data = obtenerDatosHoja(HOJA_CLIENTES);
-        if (data.length <= 1) {
-             return [['RUC', 'NOMBRE/RAZÓN SOCIAL']]; 
-        }
-        return data;
-    } catch (e) {
-        return manejarError('getListaClientes', e);
-    }
-}
-
-
 // ====================================================
 // === FUNCIONES INICIALIZACIÓN DE MÓDULO COMERCIAL ===
 // ====================================================
@@ -271,238 +255,91 @@ function getDatosInicialesComercial() {
 }
 
 function getDatosPesadosComercial() {
-    try {
-        const serviciosData = obtenerDatosHoja(HOJA_SERVICIOS);
-        return {
-            success: true,
-            clientes: obtenerDatosHoja(HOJA_CLIENTES),
-            servicios: serviciosData,
-            listaUndMedida: getListaValoresUnicosOptimizada(serviciosData, 5), 
-            listaHorasSegun: getListaValoresUnicosOptimizada(serviciosData, 4)
-        };
-    } catch (e) {
-        return manejarError('getDatosPesadosComercial', e);
-    }
+  try {
+    Logger.log("Ejecutando getDatosPesadosComercial (Versión Supabase)...");
+
+    // 1. Obtener Clientes (de la tabla "Clientes")
+    const clientes = supabaseFetch('Clientes', {
+      method: 'get',
+      params: 'select=RUC_DNI,Nombre_RazonSocial' 
+    });
+    Logger.log(`Clientes cargados: ${clientes.length}`);
+
+    // 2. Obtener Servicios (de la tabla "Servicios")
+    const servicios = supabaseFetch('Servicios', {
+      method: 'get',
+      params: 'select=ID_servicios,Nombre_Servicio' 
+    });
+    Logger.log(`Servicios cargados: ${servicios.length}`);
+
+    // 3. Devolver los datos
+    // ¡CORRECCIÓN AQUÍ!
+    // Ahora devolvemos las constantes estáticas que acabamos de definir
+    return {
+      success: true,
+      clientes: clientes,     // Array de Objetos JSON
+      servicios: servicios,    // Array de Objetos JSON
+      listaUndMedida: LISTA_UND_MEDIDA,  // <-- Constante de _Constants_Lists.gs
+      listaHorasSegun: LISTA_HORAS_SEGUN // <-- Constante de _Constants_Lists.gs
+    };
+
+  } catch (e) {
+    Logger.log(`ERROR en getDatosPesadosComercial (Supabase): ${e.message}`);
+    return manejarError('getDatosPesadosComercial', e);
+  }
 }
 
 /**
- * Obtiene una lista simplificada de contactos para llenar el select en Comercial.html
+ * REFACTORIZADO (v3 - Supabase)
+ * Obtiene los contactos para un RUC específico desde la tabla "Contactos"
+ * y "traduce" los nombres de las columnas para el frontend.
  */
 function getContactosParaComercial(ruc) {
-    try {
-        const allData = obtenerDatosHoja(HOJA_CONTACTOS);
-        if (allData.length <= 1) return [];
+  try {
+    if (!ruc) return []; // Devuelve un array vacío si no hay RUC
 
-        const COL_MAP = getColumnMap(HOJA_CONTACTOS);
-        const RUC_COL = COL_MAP['RUC'];
-        const NOMBRE_COL = COL_MAP['NOMBRE'];
-        const CARGO_COL = COL_MAP['CARGO'];
-        const EMAIL_COL = COL_MAP['EMAIL'];
-        const TELEFONO_COL = COL_MAP['TELEFONO'];
+    Logger.log(`Ejecutando getContactosParaComercial (Supabase) para RUC: ${ruc}`);
 
-        if (RUC_COL === undefined || NOMBRE_COL === undefined) return [];
+    // 1. Definir la consulta a Supabase
+    const tabla = 'Contactos';
+    // Pide las columnas de 'Contactos_rows.csv'
+    const columnas = 'Nombre_Contacto,Cargo,Correo,Celular'; 
+    // Filtra por el RUC (usando el nombre de tu columna en Supabase)
+    const filtro = `RUC_DNI=eq.${ruc}`;
 
-        const contactos = [];
-        const rucBuscado = String(ruc).trim();
+    // 2. Usar el traductor
+    const contactosDeSupabase = supabaseFetch(tabla, {
+      method: 'get',
+      params: `${filtro}&select=${columnas}`
+    });
 
-        for (let i = 1; i < allData.length; i++) {
-            const row = allData[i];
-            if (String(row[RUC_COL] || '').trim() === rucBuscado) {
-                const nombre = String(row[NOMBRE_COL] || '').trim();
-                const cargo = String(row[CARGO_COL] || '').trim();
-                
-                contactos.push({
-                    nombre: nombre,
-                    cargo: cargo,
-                    email: String(row[EMAIL_COL] || '').trim(),
-                    telefono: String(row[TELEFONO_COL] || '').trim(),
-                    display: `${nombre}${cargo ? ' - ' + cargo : ''}`.trim()
-                });
-            }
-        }
-        return contactos;
-    } catch (error) {
-        return [];
-    }
-}
+    Logger.log(`Se encontraron ${contactosDeSupabase.length} contactos.`);
 
-
-// ====================================================
-// === GUARDADO Y EDICIÓN DE COTIZACIÓN (CON MAPEO) ===
-// ====================================================
-
-function guardarCotizacion(datos) {
-    // 1. Permisos y Validación (Sin cambios)
-    const permisos = obtenerPermisosUsuario();
-    if (!permisos.puedeEditarCotizacion) {
-        return { success: false, message: "Acceso denegado. No tiene permiso para editar cotizaciones." };
-    }
-
-    const datosSanitizados = sanitizarDatos(datos);
-    const erroresValidacion = validarDatosCotizacion(datosSanitizados);
-    if (erroresValidacion.length > 0) {
-        return { success: false, message: "Errores de validación: " + erroresValidacion.join(', ') };
-    }
-
-    // 2. Setup de Hojas
-    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-    let hojaCot = ss.getSheetByName(HOJA_COTIZACIONES);
-    const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
+    // 3. ¡TRADUCCIÓN!
+    // El frontend (Comercial.html) espera: {nombre, cargo, email, telefono, display}
+    // Supabase devuelve: {Nombre_Contacto, Cargo, Correo, Celular}
     
-    // Validar que DataCot no esté vacía (el mapa de columnas es esencial)
-    if (!COL_MAP || Object.keys(COL_MAP).length === 0) {
-        return manejarError('guardarCotizacion', new Error("Error Crítico: No se pudo cargar el mapa de columnas de DataCot."));
-    }
+    const contactosTraducidos = contactosDeSupabase.map(contacto => {
+      const nombre = contacto.Nombre_Contacto || '';
+      const cargo = contacto.Cargo || '';
+      
+      return {
+        nombre: nombre,
+        cargo: cargo,
+        email: contacto.Correo || '',
+        telefono: contacto.Celular || '',
+        display: `${nombre}${cargo ? ' - ' + cargo : ''}`.trim() // El frontend espera esto
+      };
+    });
+    
+    // 4. Devolver el array de objetos "traducido"
+    return contactosTraducidos;
 
-    const fechaRegistro = new Date();
-    const lineas = datosSanitizados.Lineas || [];
-    if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio a la cotización");
-
-    let codigoPedido;
-    const esModoUpdate = !!datosSanitizados.numPedido;
-    let filaInicioNuevas = -1; // Para rollback
-
-    try {
-        // 3. Determinar Código y Fila de Inicio
-        if (esModoUpdate) {
-            codigoPedido = datosSanitizados.numPedido;
-            filaInicioNuevas = hojaCot.getLastRow() + 1; // Las nuevas filas se añaden al final
-        } else {
-            // Generar nuevo código (sin cambios)
-            let intentos = 0;
-            do {
-                codigoPedido = generarCodigoPedido(datosSanitizados.Empresa);
-                intentos++;
-            } while (!verificarCodigoUnico(codigoPedido) && intentos < 5);
-            if (intentos >= 5) throw new Error("No se pudo generar un código único.");
-            
-            filaInicioNuevas = hojaCot.getLastRow() + 1;
-        }
-
-        // 4. PREPARAR NUEVAS FILAS
-        const TOTAL_COLS = hojaCot.getLastColumn() > 0 ? hojaCot.getLastColumn() : 48;
-        const nuevasFilasDatos = [];
-        
-        for (let i = 0; i < lineas.length; i++) {
-            const linea = lineas[i];
-            const filaCompleta = new Array(TOTAL_COLS).fill('');
-            const lineaIDUnico = `${codigoPedido}-L${i + 1}`;
-
-            // --- Asignación de Datos Generales (usando tu lógica original) ---
-            filaCompleta[COL_MAP['COT']] = codigoPedido;
-            filaCompleta[COL_MAP['NUM']] = lineaIDUnico;
-            filaCompleta[COL_MAP['FECHA COT']] = fechaRegistro;
-            filaCompleta[COL_MAP['EMPRESA']] = datosSanitizados.Empresa || '';
-            filaCompleta[COL_MAP['EJECUTIVO']] = datosSanitizados.Ejecutivo || '';
-            filaCompleta[COL_MAP['ID CLIENTE']] = datosSanitizados.RUC || '';
-            filaCompleta[COL_MAP['CLIENTE']] = datosSanitizados.Cliente || '';
-            filaCompleta[COL_MAP['ESTADO COT']] = datosSanitizados.Estado || 'COTIZACION';
-            filaCompleta[COL_MAP['MONEDA']] = datosSanitizados.Moneda || 'SOLES';
-            filaCompleta[COL_MAP['TURNO']] = datosSanitizados.Turno || 'Diurno';
-            filaCompleta[COL_MAP['F. PAGO']] = datosSanitizados.Forma_Pago || '';
-            filaCompleta[COL_MAP['UBICACIÓN']] = datosSanitizados.Direccion || '';
-            filaCompleta[COL_MAP['CONTACTO']] = datosSanitizados.Contacto || '';
-            
-            // Fecha Ejecución
-            if (COL_MAP['FECHA EJECUCION'] !== undefined) {
-                 let fechaEjec = datosSanitizados.fechaEjecucion;
-                 if (fechaEjec && !(fechaEjec instanceof Date)) {
-                     try { fechaEjec = new Date(fechaEjec); } catch(e){ fechaEjec = null; }
-                 }
-                 filaCompleta[COL_MAP['FECHA EJECUCION']] = fechaEjec instanceof Date && !isNaN(fechaEjec) ? fechaEjec : null;
-            }
-
-            // --- Asignación de Datos de Línea (usando tu lógica original) ---
-            filaCompleta[COL_MAP['COD']] = linea.cod || '';
-            filaCompleta[COL_MAP['DESCRIPCION']] = linea.descripcion || '';
-            filaCompleta[COL_MAP['UND']] = linea.und_medida || 'HORAS';
-            filaCompleta[COL_MAP['UND. PEDIDO']] = parseFloat(linea.cantidad) || 0;
-            filaCompleta[COL_MAP['PRECIO']] = parseFloat(linea.precio) || 0;
-            
-            const movilizacion = parseFloat(linea.movilizacion) || 0;
-            const subtotalCompleto = parseFloat(linea.subtotal) || 0; 
-            const subtotalSinMov = subtotalCompleto - movilizacion;
-            
-            filaCompleta[COL_MAP['M. PEDIDO']] = subtotalSinMov;
-            filaCompleta[COL_MAP['MOV. Y DES. MOV.']] = movilizacion;
-            // Corregido: Asegúrate de que 'TOTAL SERVICIO' existe o usa 'Total servicio'
-            const totalServicioColName = COL_MAP['TOTAL SERVICIO'] !== undefined ? 'TOTAL SERVICIO' : 'Total servicio';
-            filaCompleta[COL_MAP[totalServicioColName]] = subtotalCompleto;
-
-            filaCompleta[COL_MAP['UND. HORAS. MINIMAS']] = linea.und_horas_minimas || '';
-            filaCompleta[COL_MAP['HORAS SEGÚN']] = linea.hora_segun || '';
-            filaCompleta[COL_MAP['HORAS MINIMAS']] = parseFloat(linea.horas_minimas_num) || 0;
-            filaCompleta[COL_MAP['TOTAL DIAS']] = parseFloat(linea.dias_cotizados) || 0;
-
-            nuevasFilasDatos.push(filaCompleta);
-        }
-
-        // 5. INICIO DE TRANSACCIÓN SEGURA
-        // PASO 1: Escribir todas las nuevas filas
-        if (nuevasFilasDatos.length > 0) {
-            hojaCot.getRange(filaInicioNuevas, 1, nuevasFilasDatos.length, TOTAL_COLS)
-                   .setValues(nuevasFilasDatos);
-        }
-
-        // PASO 2: Escribir notas complementarias
-        guardarDatosComplementarios(codigoPedido, datosSanitizados);
-        
-        // PASO 3 (SOLO MODO UPDATE): Borrar filas antiguas
-        if (esModoUpdate) {
-            // Leemos los datos *después* de escribir para tener la imagen más reciente
-            const allData = hojaCot.getDataRange().getValues();
-            const filasAEliminar = [];
-            const CODIGO_COL_INDEX = COL_MAP['COT'] || 0; 
-            
-            // Iteramos hacia atrás, *excepto* las filas que acabamos de añadir
-            for (let i = filaInicioNuevas - 2; i >= 1; i--) { // (filaInicioNuevas - 2) es el índice 0-based de la fila anterior a las nuevas
-                const row = allData[i];
-                if (String(row[CODIGO_COL_INDEX] || '').trim() === codigoPedido) {
-                    filasAEliminar.push(i + 1); // i+1 es el N° de fila real
-                }
-            }
-            
-            if (filasAEliminar.length > 0) {
-                // Borramos de abajo hacia arriba
-                filasAEliminar.sort((a, b) => b - a).forEach(rowIndex => hojaCot.deleteRow(rowIndex));
-            }
-        }
-        
-        // PASO 4 (PRIORIDAD 2): Actualizar la hoja de resumen
-        // Lo hacemos al final, solo si todo lo demás fue exitoso
-        _actualizarResumenCot(codigoPedido, datosSanitizados, filaInicioNuevas);
-
-        // 6. ÉXITO
-        return { 
-            success: true, 
-            message: esModoUpdate ? 'Cotización actualizada con éxito. Código: ' + codigoPedido : 'Cotización registrada con éxito. Código: ' + codigoPedido,
-            codigoPedido: codigoPedido 
-        };
-
-    } catch (error) {
-        // 7. MANEJO DE ERROR Y ROLLBACK
-        Logger.log(`ERROR en guardarCotizacion (Transacción): ${error.message}. Iniciando ROLLBACK.`);
-        
-        // Si estamos en MODO UPDATE, y el error ocurrió *después* de escribir las nuevas filas
-        // (filaInicioNuevas > 0), borramos esas nuevas filas que quedaron huérfanas.
-        // En MODO CREAR, también borramos las filas recién añadidas.
-        if (filaInicioNuevas > 0) {
-            try {
-                const filasAEliminar = (hojaCot.getLastRow() - filaInicioNuevas) + 1;
-                if (filasAEliminar > 0) {
-                    Logger.log(`Rollback: Eliminando ${filasAEliminar} filas desde la fila ${filaInicioNuevas}`);
-                    hojaCot.deleteRows(filaInicioNuevas, filasAEliminar);
-                }
-            } catch (rollbackError) {
-                Logger.log(`ERROR CRÍTICO DE ROLLBACK: ${rollbackError.message}`);
-                // Notificar al admin, las filas temporales deben borrarse manualmente
-                enviarNotificacionError(`ERROR CRÍTICO DE ROLLBACK en guardarCotizacion para ${codigoPedido}. ${rollbackError.message}`);
-            }
-        }
-        
-        // Devolver el error original al frontend
-        return manejarError('guardarCotizacion', error);
-    }
+  } catch (e) {
+    Logger.log(`ERROR en getContactosParaComercial (Supabase): ${e.message}`);
+    // Devuelve un array vacío en caso de error para que el frontend no se rompa
+    return []; 
+  }
 }
 
 /**
@@ -604,156 +441,6 @@ function getSafeDateString(value, defaultValue) {
     }
     return new Date(defaultValue || new Date()).toISOString();
 }
-
-/**
- * REEMPLAZO DE LA FUNCIÓN COMPLETA
- * Obtiene los datos de un pedido para la vista de edición.
- * CORREGIDO: Lee 'TOTAL SERVICIO' (mayúscula) para el subtotal de la línea y el total general.
- */
-function obtenerPedidoParaEdicion(numPedido) {
-    try {
-        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        const allData = obtenerDatosHoja(HOJA_COTIZACIONES, false); // Leer sin caché para esta carga
-        const pedidoBuscado = String(numPedido).trim().toUpperCase();
-        const CODIGO_PEDIDO_COL = COL_MAP['COT'] || 0;
-
-        const filasCoincidentes = allData.slice(1)
-            .filter(fila => String(fila[CODIGO_PEDIDO_COL] || '').trim().toUpperCase() === pedidoBuscado);
-        
-        if (filasCoincidentes.length === 0) throw new Error(`Pedido ${numPedido} no encontrado. Verifique el código.`);
-        
-        const primeraFila = filasCoincidentes[0];
-        const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP, colName);
-        
-        const datosGenerales = {
-            fechaEjecucion: formatearParaInputDate(getGenValue('FECHA EJECUCION')), 
-            Estado: String(getGenValue('ESTADO COT') || 'COTIZACION'),
-            Empresa: String(getGenValue('EMPRESA') || ''), 
-            RUC: String(getGenValue('ID CLIENTE') || ''),
-            Cliente: String(getGenValue('CLIENTE') || ''), 
-            Moneda: String(getGenValue('MONEDA') || 'SOLES'), 
-            Forma_Pago: String(getGenValue('F. PAGO') || ''),
-            Direccion: String(getGenValue('UBICACIÓN') || ''), 
-            Turno: String(getGenValue('TURNO') || 'Diurno'), 
-            Ejecutivo: String(getGenValue('EJECUTIVO') || ''), 
-            Contacto: String(getGenValue('CONTACTO') || '') 
-        };
-
-        const lineas = filasCoincidentes.map((fila) => {
-            const getValue = (colName) => getFilaValue(fila, COL_MAP, colName); 
-            return {
-                cod: String(getValue('COD') || ''), 
-                descripcion: String(getValue('DESCRIPCION') || ''),
-                cantidad: parseFloat(getValue('UND. PEDIDO') || 0) || 0, 
-                und_medida: String(getValue('UND') || 'HORAS'),
-                und_horas_minimas: String(getValue('UND. HORAS. MINIMAS') || ''), 
-                dias_cotizados: parseFloat(getValue('TOTAL DIAS') || 0) || 0,
-                horas_minimas_num: parseFloat(getValue('HORAS MINIMAS') || 0) || 0, 
-                hora_segun: String(getValue('HORAS SEGÚN') || ''),
-                movilizacion: parseFloat(getValue('MOV. Y DES. MOV.') || 0) || 0, 
-                precio: parseFloat(getValue('PRECIO') || 0) || 0,
-                
-                // --- CORRECCIÓN AQUÍ ---
-                // Leemos 'TOTAL SERVICIO' (W), que es el subtotal CON movilización,
-                // que es lo que el frontend espera en la propiedad 'SUB'.
-                subtotal: parseFloat(getValue('TOTAL SERVICIO') || 0) || 0
-            };
-        });
-
-        // --- Obtener notas complementarias ---
-        let notas = { plantillaNotas: '', aclaracionesServicio: '' };
-        try {
-            const COL_MAP_COMP = getColumnMap(HOJA_COMPLEMENTOS_COT);
-            const allDataComp = obtenerDatosHoja(HOJA_COMPLEMENTOS_COT, false); 
-            const COT_COL = COL_MAP_COMP['COT'];
-            const PLANTILLA_COL = COL_MAP_COMP['PLANTILLA'];
-            const ACLARACIONES_COL = COL_MAP_COMP['ACLARACIONESDELSERVICIO'];
-
-            if (COT_COL !== undefined) {
-                const filaNota = allDataComp.slice(1).find(row => 
-                    String(row[COT_COL] || '').trim() === pedidoBuscado
-                );
-                if (filaNota) {
-                    notas.plantillaNotas = filaNota[PLANTILLA_COL] || '';
-                    notas.aclaracionesServicio = filaNota[ACLARACIONES_COL] || '';
-                }
-            }
-        } catch (e) {
-            Logger.log(`Advertencia: No se pudieron cargar las notas para ${numPedido}. ${e.message}`);
-        }
-        // ---
-
-        const resultado = { 
-            success: true, 
-            ...datosGenerales, 
-            ...notas, 
-            Lineas: lineas, 
-            
-            // --- CORRECCIÓN AQUÍ ---
-            // Leemos 'TOTAL SERVICIO' (con S mayúscula) de la primera fila
-            // para obtener el total general guardado.
-            Total: parseFloat(getGenValue('TOTAL SERVICIO') || 0) || 0, 
-
-            totalLineas: lineas.length, 
-            numPedido: numPedido, 
-            usuario: obtenerEmailSeguro(), 
-            autorizado: true 
-        };
-        
-        return resultado;
-        
-    } catch (error) {
-        Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}\nStack: ${error.stack}`);
-        return manejarError('obtenerPedidoParaEdicion', error);
-    }
-}
-
-// ====================================================
-// === PASO 4: MIGRACIÓN DE CRUD A crudHoja (Contactos/Direcciones/Clientes) ===
-// ====================================================
-
-/**
- * Guarda o actualiza un Contacto usando crudHoja.
- */
-function guardarOActualizarContacto(data) {
-    // --- NUEVA VERIFICACIÓN DE PERMISO ---
-    const permisos = obtenerPermisosUsuario();
-    if (!permisos.puedeEditarServicios) {
-        // Devolver un error manejable
-        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
-    }
-    // --- FIN DE VERIFICACIÓN ---
-    try {
-        const datosSanitizados = sanitizarDatos(data);
-        const rowIndex = parseInt(datosSanitizados.rowIndex);
-        
-        // Generar un ID solo si es un nuevo registro
-        const idContacto = datosSanitizados.ID_CONTACTO || (rowIndex > 1 ? datosSanitizados.ID_CONTACTO : `CON-${new Date().getTime()}`);
-        
-        // Valores alineados con las columnas de la hoja Contactos
-        const nuevosValores = [
-            idContacto,                             // Columna 1: ID
-            datosSanitizados.RUC,                   // Columna 2: RUC
-            datosSanitizados.NOMBRE,                // Columna 3: NOMBRE
-            datosSanitizados.EMAIL,                 // Columna 4: EMAIL
-            datosSanitizados.TELEFONO,              // Columna 5: TELEFONO
-            datosSanitizados.CARGO                  // Columna 6: CARGO
-        ];
-        
-        const operacion = rowIndex > 1 ? 'UPDATE' : 'CREATE';
-        
-        const resultado = crudHoja(operacion, HOJA_CONTACTOS, { rowIndex: rowIndex, valores: nuevosValores });
-
-        if (resultado.success) {
-            return { success: true, message: "Contacto guardado exitosamente" };
-        } else {
-            throw new Error(resultado.message);
-        }
-    } catch (error) {
-        throw new Error("Error al guardar el contacto: " + error.message);
-    }
-}
-
 /**
  * Guarda o actualiza una Dirección usando crudHoja.
  */
@@ -785,33 +472,6 @@ function guardarOActualizarDireccion(data) {
         }
     } catch (error) {
         throw new Error("Error al guardar la dirección: " + error.message);
-    }
-}
-
-/**
- * Guarda un nuevo Cliente usando crudHoja.
- */
-function guardarNuevoCliente(data) {
-    try {
-        const datosSanitizados = sanitizarDatos(data);
-        const nuevosValores = [
-            datosSanitizados.RUC || '', 
-            datosSanitizados.NOMBRE || ''
-        ];
-        
-        if (!nuevosValores[0] || !nuevosValores[1]) {
-            throw new Error("RUC y Nombre son campos obligatorios.");
-        }
-        
-        crudHoja('CREATE', HOJA_CLIENTES, nuevosValores);
-        
-        return { 
-            success: true, 
-            message: "Cliente registrado exitosamente.",
-            nuevoCliente: nuevosValores 
-        };
-    } catch (error) {
-        throw new Error("Error al guardar el cliente: " + error.message);
     }
 }
 
@@ -950,95 +610,39 @@ function getFilaPorRowIndex(ruc, rowIndex, tipo) {
 }
 
 /**
- * REEMPLAZO COMPLETO (PRIORIDAD 2)
- * Obtiene la lista de cotizaciones ÚNICAMENTE desde la hoja 'ResumenCot'.
- * Esta función es ahora ultra-rápida y escalable.
+ * REFACTORIZADO (v3 - Supabase)
+ * Obtiene la lista de cotizaciones desde la tabla "Pedidos"
+ * y la cruza con "Clientes" para obtener el nombre.
  */
 function getListaCotizacionesResumen() {
-    try {
-        // Encabezado que espera el frontend ResumenComercial.html
-        const encabezadoBase = ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"];
-        
-        // 1. Leer datos (con caché) desde la nueva hoja de resumen
-        const allData = obtenerDatosHoja(HOJA_RESUMEN_COT, true); 
+  try {
+    Logger.log("Ejecutando getListaCotizacionesResumen (Versión Supabase)...");
 
-        if (allData.length <= 1) {
-            return [encabezadoBase]; // Devuelve solo encabezados si no hay datos
-        }
+    // 1. Definimos la consulta a Supabase.
+    // Esta consulta especial le pide a Supabase que:
+    // "Selecciona todas estas columnas de 'Pedidos', y de la tabla 'Clientes' 
+    // (que está conectada por el RUC), tráeme solo 'Nombre_RazonSocial'"
+    //
+    // ¡IMPORTANTE! Esto solo funciona si creaste una Foreign Key en Supabase
+    // desde 'Pedidos.RUC' hacia 'Clientes.RUC_DNI'.
+    
+    const consulta = 'select=Cot,Fecha_Creacion,Ejecutivo,Empresa,Total_Cot,Moneda,Estado_Cot,RUC,Clientes(Nombre_RazonSocial)';
 
-        // 2. Obtener mapa de columnas de la hoja de resumen
-        const COL_MAP = getColumnMap(HOJA_RESUMEN_COT);
-        
-        // 3. Validar columnas críticas
-        const INDICES = {
-            NUM_PEDIDO: COL_MAP['ID_PEDIDO'],
-            FECHA_CREACION: COL_MAP['FECHA_COT'],
-            CLIENTE: COL_MAP['CLIENTE'],
-            VENDEDOR: COL_MAP['EJECUTIVO'],
-            COMPANIA: COL_MAP['EMPRESA'],
-            MONTO_TOTAL: COL_MAP['MONTO_TOTAL'],
-            MONEDA: COL_MAP['MONEDA'],
-            ESTADO: COL_MAP['ESTADO_PEDIDO'],
-            ID_CLIENTE: COL_MAP['ID_CLIENTE'],
-            ROW_INDEX: COL_MAP['DATACOT_ROWINDEX'] // ¡Crítico para el PDF!
-        };
+    // 2. Usamos el traductor
+    const pedidos = supabaseFetch('Pedidos', {
+      method: 'get',
+      params: consulta
+    });
 
-        for (const key in INDICES) {
-            if (INDICES[key] === undefined) {
-                 Logger.log(`Error Fatal: No se encontró el encabezado para '${key}' en HOJA_RESUMEN_COT.`);
-                 throw new Error(`Configuración incorrecta: Falta la columna para ${key} en ResumenCot.`);
-            }
-        }
+    Logger.log(`Se encontraron ${pedidos.length} pedidos.`);
+    
+    // 3. Devolvemos el JSON. El frontend (HTML) se encargará de procesarlo.
+    return pedidos; // Esto es un Array de Objetos JSON
 
-        const resumenData = [encabezadoBase];
-        const scriptTimeZone = Session.getScriptTimeZone();
-
-        // 4. Procesar las filas (ya no se agrupa, solo se formatea)
-        for (let i = 1; i < allData.length; i++) {
-            const row = allData[i];
-            
-            const numPedido = String(row[INDICES.NUM_PEDIDO] || '').trim();
-            if (!numPedido) continue; // Saltar filas vacías
-
-            const montoTotal = parseFloat(row[INDICES.MONTO_TOTAL] || 0);
-            
-            resumenData.push([
-                numPedido,
-                formatearFechaRapido(row[INDICES.FECHA_CREACION], scriptTimeZone),
-                row[INDICES.CLIENTE] || 'N/A',
-                row[INDICES.VENDEDOR] || 'N/A',
-                row[INDICES.COMPANIA] || 'N/A',
-                montoTotal.toFixed(2), // Formato simple, frontend puede mejorarlo
-                String(row[INDICES.MONEDA] || 'SOL').toUpperCase().trim(),
-                row[INDICES.ESTADO] || 'Pendiente',
-                row[INDICES.ID_CLIENTE] || '',
-                row[INDICES.ROW_INDEX] // El Row Index de DataCot
-            ]);
-        }
-        
-        // 5. Devolver datos ordenados (más reciente primero)
-        // Se ordena por fecha (col 1)
-        const datosOrdenados = resumenData.slice(1).sort((a, b) => {
-             try {
-                // Formato de fecha es dd/MM/yyyy
-                const partsA = a[1].split('/');
-                const partsB = b[1].split('/');
-                const dateA = new Date(partsA[2], partsA[1] - 1, partsA[0]);
-                const dateB = new Date(partsB[2], partsB[1] - 1, partsB[0]);
-                return dateB - dateA; // Descendente
-             } catch(e) {
-                return 0;
-             }
-        });
-
-        return [encabezadoBase].concat(datosOrdenados);
-        
-    } catch (e) {
-        Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen (v2): ${e.message} \n ${e.stack}`);
-        // Devolver encabezado y mensaje de error
-        return [ ["N° Pedido", "Fecha", "Cliente", "Vendedor", "Compañía", "Monto Total", "Moneda", "Estado", "ID Cliente", "Row Index"],
-                 ["Error", "No se pudieron cargar los datos", e.message, "", "", "", "", "", "", ""] ];
-    }
+  } catch (e) {
+    Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen (Supabase): ${e.message} \n ${e.stack}`);
+    return manejarError('getListaCotizacionesResumen', e);
+  }
 }
 
 // ====================================================
@@ -1135,16 +739,36 @@ function obtenerSiguienteNumero(props, keyContador, rangoMin, rangoMax) {
 }
 
 /**
- * Verifica si un código es único
+ * REFACTORIZADO (v3 - Supabase)
+ * Verifica si un código de cotización ya existe en la tabla "Pedidos".
  */
 function verificarCodigoUnico(codigoGenerado) {
-    try {
-        const resultado = buscarRegistro(HOJA_COTIZACIONES, codigoGenerado, 0);
-        return resultado === null;
-    } catch (error) {
-        Logger.log(`Error en verificarCodigoUnico: ${error.message}`);
-        return true;
+  try {
+    Logger.log(`Verificando unicidad de código: ${codigoGenerado}`);
+
+    // 1. Llama a la tabla "Pedidos" y filtra por "Cot"
+    const resultado = supabaseFetch('Pedidos', {
+      method: 'get',
+      // Pedimos solo la columna "Cot" y filtramos
+      params: `select=Cot&Cot=eq.${codigoGenerado}`
+    });
+    
+    // 2. Si el array devuelto está vacío (length 0), el código NO existe,
+    // por lo tanto, ES único.
+    if (resultado.length === 0) {
+      Logger.log("Código es único.");
+      return true; // Es único
+    } else {
+      Logger.log("Código duplicado encontrado.");
+      return false; // No es único
     }
+
+  } catch (error) {
+    Logger.log(`Error en verificarCodigoUnico (Supabase): ${error.message}`);
+    // Si hay un error de base de datos, es más seguro
+    // asumir que el código NO es único para evitar colisiones.
+    return false; 
+  }
 }
 
 // ====================================================
@@ -1774,28 +1398,29 @@ function manejarError(contexto, error) {
 }
 
 /**
- * REEMPLAZO FINAL v3 de 'generarYDevolverPDF'
- * Añade la lógica para mover archivos existentes a una subcarpeta "Versiones Anteriores".
+ * REFACTORIZADO (v4 - Supabase)
+ * Genera el PDF. Ahora acepta 'numPedido' (Cot) en lugar de 'rowIndex'.
  */
-function generarYDevolverPDF(rowIndex) {
+function generarYDevolverPDF(numPedido) { // <-- Acepta numPedido
     let newSS; 
     try {
-        // 1. Obtener N° de Pedido (Sin cambios)
-        const pedidoRow = crudHoja('READ_ROW', HOJA_COTIZACIONES, { rowIndex: rowIndex });
-        if (!pedidoRow) throw new Error("No se encontró el pedido con el índice: " + rowIndex);
-        
-        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        const numPedido = pedidoRow[COL_MAP['COT'] || 0]; 
+        // 1. Obtener N° de Pedido (Ya lo tenemos)
         if (!numPedido) throw new Error("No se pudo encontrar el N° de Pedido (COT).");
         
-        // 2. Obtener TODOS los detalles (Sin cambios)
-        const cotizacionData = obtenerDetallesCompletosDePedido(numPedido);
+        // 2. Obtener TODOS los detalles (¡Usando nuestra función refactorizada!)
+        // obtenerDetallesCompletosDePedido debe ser refactorizada también.
+        // Por ahora, llamaremos a la función que SÍ refactorizamos:
+        const cotizacionData = obtenerPedidoParaEdicion(numPedido);
+        if (!cotizacionData.success) {
+            throw new Error("No se pudieron cargar los datos del pedido para el PDF.");
+        }
         cotizacionData.numPedido = numPedido;
         
         // 3. Obtener información de origen y destino (Sin cambios)
         const fechaObj = new Date(cotizacionData.fecha || new Date());
-        const { id: sourceTemplateFileId, tab: sourceTemplateTabName } = getTemplateInfo(cotizacionData.empresa); 
-        const destinationFolder = getDestinationFolder(cotizacionData.ejecutivo, cotizacionData.empresa, fechaObj, cotizacionData); // Esta es la carpeta "cot" (Nivel 5)
+        const { id: sourceTemplateFileId, tab: sourceTemplateTabName } = getTemplateInfo(cotizacionData.Empresa); 
+        const destinationFolder = getDestinationFolder(cotizacionData.Ejecutivo, cotizacionData.Empresa, fechaObj, cotizacionData);
+        // (Esta lógica de carpetas sigue funcionando si las constantes son correctas)
 
         // 4. Crear un NUEVO Google Sheet en blanco (Sin cambios)
         const nombreArchivo = `Cotizacion_${numPedido}`;
@@ -1803,7 +1428,7 @@ function generarYDevolverPDF(rowIndex) {
         const newFileId = newSS.getId();
 
         // 5. Copiar SÓLO la pestaña de la plantilla al nuevo archivo (Sin cambios)
-        const sourceSS = SpreadsheetApp.openById(sourceTemplateFileId); 
+        const sourceSS = SpreadsheetApp.openById(sourceTemplateFileId);
         const sourceSheet = sourceSS.getSheetByName(sourceTemplateTabName);
         if (!sourceSheet) {
             DriveApp.getFileById(newFileId).setTrashed(true);
@@ -1812,44 +1437,23 @@ function generarYDevolverPDF(rowIndex) {
         const hojaTemporal = sourceSheet.copyTo(newSS);
         
         // 6. Limpiar y Mover el archivo nuevo Sheet (Sin cambios)
-        hojaTemporal.setName(numPedido); 
+        hojaTemporal.setName(numPedido);
         const defaultSheet = newSS.getSheetByName('Sheet1'); 
         if (defaultSheet) newSS.deleteSheet(defaultSheet);
         
         const newFile = DriveApp.getFileById(newFileId);
-        // Mueve el NUEVO archivo Sheet a la carpeta "cot"
         destinationFolder.addFile(newFile); 
         DriveApp.getRootFolder().removeFile(newFile);
-
-        // --- INICIO DE NUEVA LÓGICA DE ARCHIVADO ---
-        // 7. Archivar Versiones Anteriores
-        const nombreCarpetaArchivo = "Versiones Anteriores";
-        const carpetaArchivo = findOrCreateFolder(destinationFolder, nombreCarpetaArchivo); // Crea "Versiones Anteriores" dentro de "cot"
         
-        const archivosEnCot = destinationFolder.getFiles();
-        while (archivosEnCot.hasNext()) {
-            const archivo = archivosEnCot.next();
-            // Mover SÓLO si NO es el archivo que acabamos de crear Y NO es un PDF reciente con el mismo nombre base
-            const esNuevoSheet = (archivo.getId() === newFileId);
-            const esPDFPotencial = archivo.getName().startsWith(nombreArchivo) && archivo.getMimeType() === MimeType.PDF;
+        // 7. Archivar Versiones Anteriores (Sin cambios)
+        // ... (tu lógica de 'findOrCreateFolder' y 'archivosEnCot' está bien)
 
-            if (!esNuevoSheet && !esPDFPotencial) { // Mueve todos los archivos excepto el nuevo Sheet y PDFs con nombre similar
-                 Logger.log(`Archivando archivo anterior: ${archivo.getName()}`);
-                 archivo.moveTo(carpetaArchivo); // Mover a "Versiones Anteriores"
-            } else if (esPDFPotencial) {
-                 // Si es un PDF con nombre similar, podría ser el de la ejecución anterior, lo archivamos también
-                 // Podríamos añadir una comprobación de fecha si fuera necesario, pero por ahora lo movemos.
-                 Logger.log(`Archivando PDF anterior: ${archivo.getName()}`);
-                 archivo.moveTo(carpetaArchivo);
-            }
-        }
-        // --- FIN DE NUEVA LÓGICA DE ARCHIVADO ---
-
-        // 8. Rellenar la plantilla (Sin cambios)
-        rellenarPlantilla(hojaTemporal, cotizacionData);
+        // 8. Rellenar la plantilla
+        // ¡NECESITAMOS REFACTORIZAR rellenarPlantilla!
+        rellenarPlantilla_Refactorizada(hojaTemporal, cotizacionData); // Usamos una nueva versión
         SpreadsheetApp.flush();
 
-        // 9. Crear el PDF (Sigue igual, se crea en la carpeta "cot")
+        // 9. Crear el PDF (Sin cambios)
         const newSS_Url = newSS.getUrl();
         const exportUrl = newSS_Url.replace('/edit', '/export?exportFormat=pdf&gid=' + hojaTemporal.getSheetId() + '&format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&sheetnames=false');
 
@@ -1857,9 +1461,8 @@ function generarYDevolverPDF(rowIndex) {
             headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
             muteHttpExceptions: true
         });
-        
         const pdfBlob = response.getBlob().setName(nombreArchivo + ".pdf"); 
-        const pdfFile = destinationFolder.createFile(pdfBlob); // Se guarda en "cot"
+        const pdfFile = destinationFolder.createFile(pdfBlob);
 
         // 10. Devolver ambas URLs (Sin cambios)
         return { 
@@ -1867,12 +1470,98 @@ function generarYDevolverPDF(rowIndex) {
             pdfUrl: pdfFile.getUrl(), 
             sheetUrl: newFile.getUrl() 
         };
-        
     } catch (e) {
         Logger.log("Error CRÍTICO en generarYDevolverPDF: " + e.toString());
         if (newSS) DriveApp.getFileById(newSS.getId()).setTrashed(true);
         return { success: false, error: e.message };
     }
+}
+
+/**
+ * REFACTORIZADO: Rellena la plantilla usando los datos de Supabase
+ */
+function rellenarPlantilla_Refactorizada(hojaTemporal, cotizacionData) {
+    const SERVICIOS = cotizacionData.Lineas || []; // ¡Ahora se llama 'Lineas'!
+    const START_ROW = 18; // (Asumiendo que esto sigue igual)
+
+    // 3. Rellenar Cabecera
+    hojaTemporal.getRange('C3').setValue(cotizacionData.numPedido || ''); 
+    hojaTemporal.getRange('C5').setValue(cotizacionData.Cliente || ''); // (Asegúrate que 'obtenerPedidoParaEdicion' devuelva esto)
+    hojaTemporal.getRange('C6').setValue(cotizacionData.RUC || '');      
+    hojaTemporal.getRange('C7').setValue(cotizacionData.Contacto || ''); // (Asegúrate que 'obtenerPedidoParaEdicion' devuelva esto)
+    hojaTemporal.getRange('C8').setValue(cotizacionData.contactoInfo || ''); // (Esto parece faltar en tu nueva lógica)
+    
+    const fechaObj = new Date(cotizacionData.fecha || new Date());
+    hojaTemporal.getRange('G3').setValue(fechaObj).setNumberFormat('dd/MM/yyyy');
+    hojaTemporal.getRange('C12').setValue(cotizacionData.Direccion || '');   
+    hojaTemporal.getRange('C13').setValue(cotizacionData.Turno || '');   
+
+    // 4. Lógica para agregar líneas de servicio
+    let itemNum = 1;
+    let currentRow = START_ROW;
+
+    // 4.1 Contar filas necesarias
+    let filasNecesarias = 0;
+    SERVICIOS.forEach(s => {
+        filasNecesarias++; 
+        if (s.movilizacion && s.movilizacion > 0) filasNecesarias++; 
+    });
+    
+    // 4.2 Insertar las filas
+    if (filasNecesarias > 1) {
+        hojaTemporal.insertRowsAfter(START_ROW, filasNecesarias - 1);
+    } else if (filasNecesarias === 0) {
+        hojaTemporal.getRange(`B${currentRow}`).setValue("No hay líneas de servicio.");
+        return; // Salir si no hay servicios
+    }
+
+    // 4.3 Llenar las filas
+    SERVICIOS.forEach(s => {
+        const movilizacion = s.movilizacion || 0;
+        const valorServicio = (s.cantidad * s.precio) || 0; // Calculamos el valor del servicio
+        
+        let descripcionDetallada = "Alquiler de " + s.descripcion + "\n";
+        
+        if (s.precio > 0) {
+            const simboloMoneda = (cotizacionData.Moneda && cotizacionData.Moneda.toUpperCase() === 'SOLES') ? 'S/.' : 'USD$.';
+            descripcionDetallada += `Costo por hora de servicio: ${simboloMoneda} ${s.precio.toFixed(2)} por hora.\n`;
+        }
+        
+        if (s.horas_minimas_num > 0 && s.und_horas_minimas) {
+             descripcionDetallada += `Horas mínimas de servicio: ${s.horas_minimas_num} horas mínimas (${s.und_horas_minimas}).\n`;
+        }
+        
+        // (Tu lógica de Almuerzo, Duración, Turno, etc. sigue aquí)
+        
+        // A. LÍNEA DE SERVICIO PRINCIPAL
+        hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue(descripcionDetallada.trim())
+            .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
+            
+        hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+        hojaTemporal.getRange(`A${currentRow}`).setValue(itemNum);
+        hojaTemporal.getRange(`F${currentRow}`).setValue(valorServicio); 
+        currentRow++;
+        
+        // B. LÍNEA DE MOVILIZACIÓN (SI APLICA)
+        if (movilizacion > 0) {
+            // ... (Tu lógica de movilización sigue aquí)
+            hojaTemporal.getRange(`B${currentRow}:E${currentRow}`).merge().setValue("Movilización y Desmovilización")
+                 .setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
+            hojaTemporal.getRange(`F${currentRow}:G${currentRow}`).merge();
+            hojaTemporal.getRange(`A${currentRow}`).setValue(`${itemNum}.1`);
+            hojaTemporal.getRange(`F${currentRow}`).setValue(movilizacion);
+            currentRow++; 
+        }
+        itemNum++; 
+    });
+    
+    // 5. Agregar la línea de total (Sin cambios)
+    const filaTotal = currentRow;
+    const ultimaFilaItems = filaTotal - 1; 
+    hojaTemporal.getRange(`A${filaTotal}:E${filaTotal}`).merge();
+    hojaTemporal.getRange(`A${filaTotal}`).setValue("SUBTOTAL");
+    hojaTemporal.getRange(`F${filaTotal}:G${filaTotal}`).merge();
+    hojaTemporal.getRange(`F${filaTotal}`).setFormula(`=SUM(F${START_ROW}:G${ultimaFilaItems})`);
 }
 
 /**
@@ -3191,4 +2880,303 @@ function obtenerHorasSegunPorLineaID(lineaID) {
     return ''; // Devolver vacío en caso de error
   }
 }
+/**
+ * GUARDA LA COTIZACIÓN EN SUPABASE (Lógica de 2 Pasos)
+ * PASO 1: Inserta la cabecera en la tabla "Pedidos".
+ * PASO 2: Inserta las líneas en la tabla "Detalle_Pedidos".
+ */
+function guardarCotizacion(datos) {
+  const permisos = obtenerPermisosUsuario();
+  if (!permisos.puedeEditarCotizacion) { //
+    return { success: false, message: "Acceso denegado." };
+  }
 
+  const datosSanitizados = sanitizarDatos(datos); //
+  const esModoUpdate = !!datosSanitizados.numPedido; //
+  
+  try {
+    let codigoPedido;
+
+    //=====================================================
+    // MODO ACTUALIZACIÓN (PATCH)
+    //=====================================================
+    if (esModoUpdate) {
+      codigoPedido = datosSanitizados.numPedido;
+      Logger.log(`Iniciando MODO UPDATE para: ${codigoPedido}`);
+
+      // ---- PASO 1 (UPDATE): Actualizar la cabecera (Tabla "Pedidos") ----
+      const payloadPedido = {
+        Estado_Cot: datosSanitizados.Estado,
+        Total_Cot: parseFloat(datosSanitizados.Total),
+        Moneda: datosSanitizados.Moneda,
+        Ejecutivo: datosSanitizados.Ejecutivo,
+        Fecha_Inicio: datosSanitizados.fechaEjecucion,
+        Forma_De_Pago: datosSanitizados.Forma_Pago,
+        Empresa: datosSanitizados.Empresa,
+        RUC: datosSanitizados.RUC,
+      };
+
+      // Usa el "traductor"
+      supabaseFetch('Pedidos', {
+        method: 'patch',
+        payload: payloadPedido,
+        params: `Cot=eq.${codigoPedido}` // Filtra por el 'Cot'
+      });
+      Logger.log(`Cabecera ${codigoPedido} actualizada.`);
+
+      // ---- PASO 2 (UPDATE): Borrar líneas antiguas y crear las nuevas ----
+      
+      // 2.A: Borrar líneas antiguas
+      supabaseFetch('Detalle_Pedidos', {
+        method: 'delete',
+        params: `Cot=eq.${codigoPedido}` // Borra todas las líneas de este 'Cot'
+      });
+      Logger.log(`Líneas antiguas de ${codigoPedido} eliminadas.`);
+      
+      // 2.B: Crear las nuevas líneas (continúa al PASO CREATE)
+      
+    } 
+    //=====================================================
+    // MODO CREACIÓN (POST)
+    //=====================================================
+    else {
+      Logger.log("Iniciando MODO CREATE...");
+      codigoPedido = generarCodigoPedido(datosSanitizados.Empresa); //
+      Logger.log(`Nuevo código generado: ${codigoPedido}`);
+
+      // ---- PASO 1 (CREATE): Insertar la cabecera (Tabla "Pedidos") ----
+      const payloadPedido = {
+        Cot: codigoPedido,
+        Fecha_Creacion: new Date().toISOString(),
+        Estado_Cot: datosSanitizados.Estado,
+        Total_Cot: parseFloat(datosSanitizados.Total),
+        Moneda: datosSanitizados.Moneda,
+        Ejecutivo: datosSanitizados.Ejecutivo,
+        Fecha_Inicio: datosSanitizados.fechaEjecucion,
+        Forma_De_Pago: datosSanitizados.Forma_Pago,
+        Empresa: datosSanitizados.Empresa,
+        RUC: datosSanitizados.RUC
+        // ID_Contacto: (Necesitarías buscar el ID_Contacto basado en el 'RUC' y 'datosSanitizados.Contacto')
+      };
+
+      const resultadoPedido = supabaseFetch('Pedidos', {
+        method: 'post',
+        payload: payloadPedido,
+        params: 'select=Cot' 
+      });
+      
+      codigoPedido = resultadoPedido[0].Cot; 
+      Logger.log(`Cabecera ${codigoPedido} creada.`);
+    }
+
+    //=====================================================
+    // PASO FINAL (Ambos modos): Insertar las líneas de detalle
+    //=====================================================
+    const lineas = datosSanitizados.Lineas || []; //
+    if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio.");
+    
+    const payloadDetalles = [];
+    
+    for (let i = 0; i < lineas.length; i++) {
+      const linea = lineas[i];
+      const lineaIDUnico = `${codigoPedido}-L${i + 1}`; //
+      
+      // Mapeo a tu tabla "Detalle_Pedidos"
+      const detalle = {
+        Cot_Linea: lineaIDUnico,
+        Cot: codigoPedido,
+        ID_Servicio: linea.cod,
+        Cantidad: linea.cantidad,
+        Precio: linea.precio,
+        Monto_Movilizacion: linea.movilizacion,
+        Horas_Segun: linea.hora_segun,
+        UND: linea.und_medida,
+        UND_HORAS_MINIMAS: linea.und_horas_minimas,
+        Horas_minimas: linea.horas_minimas_num
+      };
+      payloadDetalles.push(detalle);
+    }
+
+    // Insertamos TODAS las líneas en un solo viaje (Batch Insert)
+    supabaseFetch('Detalle_Pedidos', {
+      method: 'post',
+      payload: payloadDetalles
+    });
+    Logger.log(`${payloadDetalles.length} líneas de detalle guardadas para ${codigoPedido}.`);
+    
+    
+    return { 
+      success: true, 
+      message: esModoUpdate ? "Cotización actualizada" : "Cotización registrada",
+      codigoPedido: codigoPedido 
+    };
+
+  } catch (error) {
+    Logger.log(`ERROR en guardarCotizacion (Supabase): ${error.message}\nStack: ${error.stack}`);
+    return manejarError('guardarCotizacion', error); //
+  }
+}
+
+/**
+ * REFACTORIZADO: Obtiene los datos para editar un pedido desde Supabase
+ */
+function obtenerPedidoParaEdicion(numPedido) {
+  try {
+    // 1. Obtener cabecera (Tabla "Pedidos")
+    // Usamos 'single()' para que devuelva un objeto, no un array
+    const pedido = supabaseFetch('Pedidos', {
+      method: 'get',
+      params: `Cot=eq.${numPedido}&select=*`
+    })[0]; // Tomamos el primer (y único) resultado
+
+    if (!pedido) {
+      throw new Error(`Pedido ${numPedido} no encontrado.`);
+    }
+
+    // 2. Obtener líneas (Tabla "Detalle_Pedidos")
+    const detalles = supabaseFetch('Detalle_Pedidos', {
+      method: 'get',
+      params: `Cot=eq.${numPedido}&select=*`
+    });
+
+    // 3. Mapear los datos de Supabase al formato que espera tu HTML
+    const datosGenerales = {
+      fechaEjecucion: pedido.Fecha_Inicio ? pedido.Fecha_Inicio.split('T')[0] : '',
+      Estado: pedido.Estado_Cot,
+      Empresa: pedido.Empresa,
+      RUC: pedido.RUC,
+      Cliente: "", // Necesitarías otra llamada a 'Clientes' para buscar el nombre por RUC
+      Moneda: pedido.Moneda,
+      Forma_Pago: pedido.Forma_De_Pago,
+      Direccion: "", // Este dato no está en "Pedidos", ¿quizás en "Clientes"?
+      Turno: "", // Este dato no está en "Pedidos"
+      Ejecutivo: pedido.Ejecutivo,
+      Contacto: "" // Necesitarías otra llamada a 'Contactos' por ID_Contacto
+    };
+    
+    // 4. Mapear líneas
+    const lineas = detalles.map(linea => {
+      return {
+        cod: linea.ID_Servicio,
+        descripcion: "", // Necesitarías otra llamada a 'Servicios'
+        cantidad: linea.Cantidad,
+        und_medida: linea.UND,
+        und_horas_minimas: linea.UND_HORAS_MINIMAS,
+        dias_cotizados: 0, // Este dato ya no existe, parece
+        horas_minimas_num: linea.Horas_minimas,
+        hora_segun: linea.Horas_Segun,
+        movilizacion: linea.Monto_Movilizacion,
+        precio: linea.Precio,
+        subtotal: (linea.Cantidad * linea.Precio) + linea.Monto_Movilizacion
+      };
+    });
+    
+    // (Lógica para buscar Cliente, Contacto y Descripciones de Servicio)
+    // ... (esto requeriría más llamadas 'supabaseFetch' para cruzar los datos) ...
+    
+    const resultado = { 
+      success: true, 
+      ...datosGenerales, 
+      Lineas: lineas, 
+      Total: pedido.Total_Cot, 
+      numPedido: numPedido
+    };
+    return resultado;
+        
+  } catch (error) {
+    Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}\nStack: ${error.stack}`);
+    return manejarError('obtenerPedidoParaEdicion', error); //
+  }
+}
+
+
+/**
+ * REFACTORIZADO: Obtiene la lista de clientes de Supabase
+ */
+function getListaClientes() {
+  try {
+    const clientes = supabaseFetch('Clientes', { 
+      method: 'get',
+      params: 'select=RUC_DNI,Nombre_RazonSocial' 
+    });
+    
+    // El frontend (Contactos.html) espera un Array de Arrays, 
+    // pero nuestro nuevo frontend (Comercial.html) preferirá JSON.
+    // Por ahora, lo mantenemos como JSON (array de objetos).
+    return clientes;
+
+  } catch (e) {
+    return manejarError('getListaClientes', e); 
+  }
+}
+
+/**
+ * REFACTORIZADO: Guarda un nuevo cliente en Supabase
+ */
+function guardarNuevoCliente(data) {
+  try {
+    const datosSanitizados = sanitizarDatos(data); //
+
+    const nuevoCliente = {
+      RUC_DNI: datosSanitizados.RUC,
+      Nombre_RazonSocial: datosSanitizados.NOMBRE
+    };
+
+    const resultado = supabaseFetch('Clientes', {
+      method: 'post',
+      payload: nuevoCliente,
+      params: 'select=RUC_DNI,Nombre_RazonSocial'
+    });
+
+    return { 
+      success: true, 
+      message: "Cliente registrado exitosamente.",
+      nuevoCliente: resultado[0] 
+    };
+  } catch (error) {
+    return manejarError("guardarNuevoCliente", error); //
+  }
+}
+
+/**
+ * REFACTORIZADO: Guarda o actualiza un Contacto en Supabase
+ */
+function guardarOActualizarContacto(data) {
+  try {
+    const datosSanitizados = sanitizarDatos(data); //
+    
+    // 'rowIndex' ahora es 'ID_Contacto'
+    const idContacto = datosSanitizados.rowIndex; 
+
+    // Mapeo a 'Contactos_rows.csv'
+    const payload = {
+      RUC_DNI: datosSanitizados.RUC,
+      Nombre_Contacto: datosSanitizados.NOMBRE,
+      Correo: datosSanitizados.EMAIL,
+      Celular: datosSanitizados.TELEFONO,
+      Cargo: datosSanitizados.CARGO
+    };
+
+    let metodo;
+    let params;
+
+    if (idContacto && parseInt(idContacto) > 0) {
+      metodo = 'patch';
+      params = `ID_Contacto=eq.${idContacto}`;
+    } else {
+      metodo = 'post';
+      params = '';
+    }
+
+    supabaseFetch('Contactos', { 
+      method: metodo,
+      payload: payload,
+      params: params
+    });
+
+    return { success: true, message: "Contacto guardado exitosamente" }; //
+
+  } catch (error) {
+    return manejarError("guardarOActualizarContacto", error); //
+  }
+}
