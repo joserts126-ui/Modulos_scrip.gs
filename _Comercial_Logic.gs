@@ -889,15 +889,40 @@ function enviarNotificacionError(mensaje) {
 // ====================================================
 
 /**
- * Obtiene la lista completa de Órdenes de Trabajo para la tabla de resumen (OT.html).
+ * REEMPLAZO (v2 - Supabase): Obtiene la lista COMPLETA de Órdenes de Trabajo.
+ * Realiza JOINs anidados para obtener los nombres de Cliente, Servicio y Pedido.
  */
 function getListaOT() {
-    try {
-        // Usamos obtenerDatosHoja para lectura con cache
-        return obtenerDatosHoja(HOJA_OT); 
-    } catch (e) {
-        return manejarError('getListaOT', e);
-    }
+  try {
+    Logger.log("Ejecutando getListaOT (v2 - Supabase)...");
+
+    // Esta consulta anidada trae los datos relacionados que necesitamos para la tabla
+    const consulta = `
+      select=
+        N_OT,
+        Fecha,
+        Horometro_Trabajado_Horas,
+        Detalle_Pedidos!inner (
+          Cot,
+          Servicios!inner (Nombre_Servicio),
+          Pedidos!inner (
+            Clientes!inner (Nombre_RazonSocial)
+          )
+        )
+      &order=Fecha.desc
+    `.replace(/\s/g, ''); // Limpiar espacios
+
+    const ordenesDeTrabajo = supabaseFetch('Ordenes_Trabajo', {
+      method: 'get',
+      params: consulta
+    });
+
+    Logger.log(`Se encontraron ${ordenesDeTrabajo.length} OTs en Supabase.`);
+    return ordenesDeTrabajo; // Devuelve el JSON de objetos
+
+  } catch (e) {
+    return manejarError('getListaOT', e);
+  }
 }
 
 /**
@@ -1041,153 +1066,128 @@ function _getDetallesDeLineaCot(lineaID) {
 
 
 /**
- * REEMPLAZO TOTAL de guardarOT (v6 - Con Cálculo Backend)
- * Esta función ahora busca en DataCot para calcular el Monto Servicio.
+ * REEMPLAZO TOTAL de guardarOT (v7.1 - Corregido con ID Híbrido)
+ * Escribe en la tabla "Ordenes_Trabajo" de Supabase
+ * y actualiza "Detalle_Pedidos" usando el ID numérico.
  */
 function guardarOT(data) {
-    // 1. Verificación de Permisos
     const permisos = obtenerPermisosUsuario();
-    if (!permisos.puedeEditarServicios) { // O un permiso 'puedeEditarOT'
-        return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
+    if (!permisos.puedeEditarOT) {
+        return { success: false, message: "Acceso denegado. No tiene permiso para editar OTs." };
     }
 
-    Logger.log("INICIO guardarOT (v6 - Con Cálculo Backend). Datos recibidos: " + JSON.stringify(data));
+    Logger.log("INICIO guardarOT (v7.1 - Supabase). Datos recibidos: " + JSON.stringify(data));
     
     try {
-        const OT_SHEET = HOJA_OT;
         const datos = sanitizarDatos(data);
-        
-        // --- PASO 1: Validar datos de entrada ---
-        const lineaID = datos.lineaID;
-        if (!lineaID) {
-            return manejarError('guardarOT', new Error("Error Crítico: No se proporcionó un lineaID. No se puede enlazar a DataCot."));
-        }
-        
-        // --- PASO 2: Obtener datos de DataCot usando el helper ---
-        const detallesLinea = _getDetallesDeLineaCot(lineaID);
-        if (!detallesLinea.success) {
-            return manejarError('guardarOT', new Error(detallesLinea.message));
-        }
+        // Este es el ID de TEXTO (ej. "COT...-L1")
+        const lineaIDRef = datos.lineaID; 
+        const esModoUpdate = (datos.modo === 'editar' || datos.modo === 'editarGlobal');
 
-        // --- PASO 3: Calcular Montos ---
-        const horasSegun = detallesLinea.horasSegun;
+        if (!lineaIDRef) {
+            return manejarError('guardarOT', new Error("Error Crítico: No se proporcionó un lineaID (referencia). No se puede enlazar al pedido."));
+        }
+        
+        // --- PASO 1: Obtener detalles del Pedido (Precio y ID REAL) ---
+        // Usamos la RPC que busca por texto
+        Logger.log(`Buscando detalles de línea para: ${lineaIDRef}`);
+        const detallesLinea = supabaseFetch('rpc/get_detalles_linea_para_ot', {
+            method: 'post',
+            payload: { "linea_ref_param": lineaIDRef }
+        })[0]; 
+        
+        if (!detallesLinea || !detallesLinea.success) {
+            throw new Error(detallesLinea.message || `No se encontraron detalles para la línea ${lineaIDRef}.`);
+        }
+        
+        // ¡ESTE ES EL ID REAL (el número)!
+        const lineaIdRealNumerico = detallesLinea.linea_id_real;
+        Logger.log(`ID real (numérico) encontrado: ${lineaIdRealNumerico}`);
+
+        // --- PASO 2: Calcular Montos (Sin cambios) ---
+        const horasSegun = (detallesLinea.horas_segun || '').toUpperCase();
         let horasParaActualizar = 0;
         
-        // Determinar qué horas usar (basado en la lógica anterior de 'obtenerHorasSegunPorLineaID')
         if (horasSegun.includes("HORÓMETRO") || horasSegun.includes("HOROMETRO")) {
             horasParaActualizar = parseFloat(datos.horometroTrabajado || 0);
-            Logger.log(`Lógica de horas: Usando Horómetro (${horasParaActualizar} hrs).`);
         } else {
-            // Usar Tiempo Total (Inicio/Fin) como default
             horasParaActualizar = parseFloat(datos.tiempoTotal || 0);
-            Logger.log(`Lógica de horas: Usando Tiempo Total (${horasParaActualizar} hrs).`);
         }
 
-        const precioUnitario = detallesLinea.precio;
-        
-        // --- ¡CÁLCULO CLAVE! ---
+        const precioUnitario = parseFloat(detallesLinea.precio || 0);
         const montoServicioCalculado = horasParaActualizar * precioUnitario;
-        // --- Lectura de Movilización (del formulario) ---
         const montoMovilizacionForm = parseFloat(datos.montoMovilizacion || 0);
-
-        Logger.log(`Cálculo: ${horasParaActualizar} hrs * S/ ${precioUnitario} (precio) = S/ ${montoServicioCalculado} (Monto Servicio)`);
-        Logger.log(`Movilización (Form): S/ ${montoMovilizacionForm}`);
-
-        // --- PASO 4: Preparar fila para HOJA: OT ---
-        const COL_MAP_OT = getColumnMap(HOJA_OT);
-        if (Object.keys(COL_MAP_OT).length === 0) throw new Error("Mapa de columnas de HOJA: OT está vacío o no se cargó.");
         
-        const filaCompleta = new Array(Object.keys(COL_MAP_OT).length).fill('');
-        
-        const mapAndSet = (colName, value) => {
-            const index = COL_MAP_OT[colName.toUpperCase()];
-            if (index !== undefined) {
-                filaCompleta[index] = value;
-            } else {
-                Logger.log(`ADVERTENCIA (guardarOT v6): La columna '${colName}' no se encontró en el mapa de HOJA: OT.`);
-            }
+        // --- PASO 3: Preparar el payload para la tabla "Ordenes_Trabajo" ---
+        const payloadOT = {
+            "N_OT": datos.numeroOT,
+            "Cot_Linea": lineaIdRealNumerico, // <-- Usamos el ID NUMÉRICO
+            "Fecha": datos.fecha,
+            "Hora_Inicio": datos.horaInicio || null,
+            "Hora_Fin": datos.horaFin || null,
+            "Tiempo_Refrigerio": parseFloat(datos.tiempoRefrigerio || 0),
+            "Horometro_Inicio": parseFloat(datos.horometroInicio || 0),
+            "Horometro_Fin": parseFloat(datos.horometroFin || 0),
+            "Tiempo_Total_Horas": parseFloat(datos.tiempoTotal || 0),
+            "Horometro_Trabajado_Horas": parseFloat(datos.horometroTrabajado || 0),
+            "Monto_Servicio": montoServicioCalculado,
+            "Monto_Movilizacion": montoMovilizacionForm,
+            "Estado_Valorizacion": 'Pendiente'
         };
 
-        // --- Mapeo de datos ---
-        mapAndSet('N° OT', datos.numeroOT);
-        mapAndSet('FECHA', datos.fecha);
-        mapAndSet('N°COTIZACION', datos.pedido);
-        mapAndSet('LINEAID', lineaID);
-        mapAndSet('CLIENTE RUC', detallesLinea.ruc); // <-- DE DATACOT
-        mapAndSet('CLIENTE', detallesLinea.cliente); // <-- DE DATACOT (NUEVO)
-        mapAndSet('SERVICIO ID', datos.servicio);
-        mapAndSet('HORA INICIO', datos.horaInicio);
-        mapAndSet('HORA FIN', datos.horaFin);
-        mapAndSet('TIEMPO REFRIGERIO', parseFloat(datos.tiempoRefrigerio || 0));
-        mapAndSet('TIEMPO TOTAL', parseFloat(datos.tiempoTotal || 0));
-        mapAndSet('HOROMETRO INICIO', parseFloat(datos.horometroInicio || 0));
-        mapAndSet('HOROMETRO FIN', parseFloat(datos.horometroFin || 0));
-        mapAndSet('HOROMETRO TRABAJADO', parseFloat(datos.horometroTrabajado || 0));
-
-        // --- Mapeo de Montos (NUEVO) ---
-        mapAndSet('MONTO SERVICIO', montoServicioCalculado);     // <-- CALCULADO (NUEVO)
-        mapAndSet('MONTO MOVILIZACION', montoMovilizacionForm); // <-- DEL FORM (NUEVO)
-
-        // Mapeo de campos de Camión Grúa
-        mapAndSet('ES CAMION GRUA', datos.esCamionGrua ? 'SI' : 'NO');
-        mapAndSet('HOROMETRO INICIO CAMION', datos.horometroInicioCamion || 0);
-        mapAndSet('HOROMETRO FIN CAMION', datos.horometroFinCamion || 0);
-        mapAndSet('HOROMETRO INICIO GRUA', datos.horometroInicioGrua || 0);
-        mapAndSet('HOROMETRO FIN GRUA', datos.horometroFinGrua || 0);
-
-        // --- PASO 5: Guardar en HOJA: OT ---
-        let modo = 'CREATE';
-        let rowIndex = 0;
-        
-        if (datos.modo === 'editar' || datos.modo === 'editarGlobal') {
-            const resultado = buscarRegistro(OT_SHEET, datos.otIDExistente, COL_MAP_OT['N° OT'] || 0);
-            if (!resultado) throw new Error(`OT a editar ${datos.otIDExistente} no encontrada.`); 
-            rowIndex = resultado.indiceFila;
-            modo = 'UPDATE';
-        }
-
-        let resultadoCRUD;
-        if (modo === 'UPDATE') {
-            // Nota: Al editar una OT, los montos calculados se basan en las horas *editadas*.
-            // Esto es correcto.
-            resultadoCRUD = crudHoja('UPDATE', OT_SHEET, { rowIndex: rowIndex, valores: filaCompleta });
+        // --- PASO 4: Guardar en Supabase (Crear o Actualizar) ---
+        if (esModoUpdate) {
+            // --- MODO ACTUALIZAR (PATCH) ---
+            const otIDExistente = datos.otIDExistente;
+            Logger.log(`Modo UPDATE para OT: ${otIDExistente}`);
             
-            // ADVERTENCIA: La lógica para "revertir" los montos antiguos en DataCot
-            // y sumar los nuevos es compleja y no está implementada aquí.
-            // Por ahora, la edición de una OT NO actualiza DataCot.
-            Logger.log(`OT ${datos.numeroOT} actualizada. La actualización de DataCot en modo edición no está implementada.`);
-            return { success: true, message: `OT ${datos.numeroOT} actualizada.` };
+            delete payloadOT.Estado_Valorizacion; 
+            
+            supabaseFetch('Ordenes_Trabajo', {
+                method: 'patch',
+                payload: payloadOT,
+                params: `N_OT=eq.${otIDExistente}`
+            });
+            
+            Logger.log(`OT ${otIDExistente} actualizada. La actualización de Detalle_Pedidos en modo edición no está implementada.`);
+            return { success: true, message: `OT ${otIDExistente} actualizada.` };
 
         } else {
-            // Modo CREACIÓN
-            mapAndSet('FECHA REGISTRO', new Date());
-            mapAndSet('USUARIO', obtenerEmailSeguro());
-            mapAndSet('ESTADO_VALORIZACION', 'Pendiente'); // <- Dato clave para Módulo Valorización
+            // --- MODO CREAR (POST) ---
+            Logger.log(`Modo CREATE para OT: ${datos.numeroOT}`);
             
-            resultadoCRUD = crudHoja('CREATE', OT_SHEET, filaCompleta);
-        }
+            payloadOT.Usuario_Registro = obtenerEmailSeguro();
+            payloadOT.Fecha_Registro = new Date().toISOString();
 
-        // --- PASO 6: Actualizar DataCot (Solo en modo CREACIÓN) ---
-        if (resultadoCRUD.success) {
-            Logger.log(`Llamando a actualizarDataCotDesdeOT con: LineaID=${lineaID}, Horas=${horasParaActualizar}, MontoServicio=${montoServicioCalculado}, MontoMov=${montoMovilizacionForm}`);
+            supabaseFetch('Ordenes_Trabajo', {
+                method: 'post',
+                payload: payloadOT
+            });
+
+            // --- PASO 5: Actualizar (ACUMULAR) en "Detalle_Pedidos" ---
+            // Usamos la RPC que actualiza por el ID numérico
+            Logger.log(`Llamando a RPC 'actualizar_despacho_detalle' para ${lineaIdRealNumerico}...`);
+            const payloadAcumular = {
+                "linea_id_real_param": lineaIdRealNumerico, // <-- Usamos el ID NUMÉRICO
+                "horas_sumar": horasParaActualizar,
+                "monto_sumar": montoServicioCalculado,
+                "movilizacion_sumar": montoMovilizacionForm
+            };
             
-            const actualizacionExitosa = actualizarDataCotDesdeOT(
-                lineaID,
-                horasParaActualizar,     // <-- Horas (de horómetro o tiempo total)
-                montoServicioCalculado,  // <-- Monto de servicio (calculado)
-                montoMovilizacionForm    // <-- Monto de movilización (del form)
-            );
-            
-            if (!actualizacionExitosa) {
-                Logger.log(`ADVERTENCIA: OT ${datos.numeroOT} registrada, pero HUBO UN ERROR al actualizar DataCot (LineaID: ${lineaID}).`);
-                return { success: true, message: `OT ${datos.numeroOT} registrada, pero ¡Advertencia! No se pudo actualizar el resumen del pedido.` };
-            }
+            supabaseFetch('rpc/actualizar_despacho_detalle', {
+                method: 'post',
+                payload: payloadAcumular
+            });
+
+            Logger.log(`OT ${datos.numeroOT} creada y Detalle_Pedidos actualizado.`);
+            return { success: true, message: `OT ${datos.numeroOT} registrada y Pedido actualizado.` };
         }
         
-        return { success: true, message: `OT ${datos.numeroOT} registrada y DataCot actualizada.` };
-
     } catch (e) {
-        Logger.log(`ERROR FATAL en guardarOT (v6): ${e.message} \n Stack: ${e.stack}`);
+        Logger.log(`ERROR FATAL en guardarOT (v7.1): ${e.message} \n Stack: ${e.stack}`);
+        if (e.message.includes('duplicate key value violates unique constraint "Ordenes_Trabajo_pkey"')) {
+            return manejarError('guardarOT', new Error(`El número de OT '${datos.numeroOT}' ya existe. Por favor, ingrese un número único.`));
+        }
         return manejarError('guardarOT', e);
     }
 }
@@ -2547,121 +2547,65 @@ function actualizarDataCotDesdeOT(lineaID, horasDespachadas, montoDespachado, mo
 }
 
 /**
- * Obtiene las líneas de una cotización y suma las OTs existentes para CADA LÍNEA.
- * (VERSIÓN DE DIAGNÓSTICO COMPLETA)
+ * REEMPLAZO (v2 - Supabase): Obtiene el resumen de líneas de un pedido.
+ * Lee directamente de 'Detalle_Pedidos' y sus tablas relacionadas.
+ * Es mucho más rápido porque los totales (UND_DESPACHO) ya están calculados.
  */
 function getResumenOTPorPedido(numPedido) {
-  // Log de inicio
-  Logger.log(`INICIO getResumenOTPorPedido para: ${numPedido}`);
-  
+  Logger.log(`INICIO getResumenOTPorPedido (v2 - Supabase) para: ${numPedido}`);
   try {
-    // 1. Validar el parámetro de entrada
-    if (!numPedido) {
-       Logger.log("ERROR FATAL: El 'numPedido' llegó nulo o vacío.");
-       throw new Error("Número de pedido no proporcionado.");
-    }
-    
-    Logger.log("Paso 1: Abriendo Spreadsheet... (ID: " + HOJA_ID_PRINCIPAL + ")");
-    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-    
-    // 2. Abrir hoja DataCot
-    Logger.log("Paso 2: Abriendo hoja DataCot (Nombre: " + HOJA_COTIZACIONES + ")");
-    const sheetCot = ss.getSheetByName(HOJA_COTIZACIONES);
-    if (!sheetCot) {
-      Logger.log("ERROR FATAL: No se pudo encontrar la hoja con el nombre: " + HOJA_COTIZACIONES);
-      throw new Error(`La hoja ${HOJA_COTIZACIONES} no existe.`);
-    }
+    if (!numPedido) throw new Error("Número de pedido no proporcionado.");
 
-    // 3. Abrir hoja OT
-    Logger.log("Paso 3: Abriendo hoja OT (Nombre: " + HOJA_OT + ")");
-    const sheetOT = ss.getSheetByName(HOJA_OT);
-    if (!sheetOT) {
-      Logger.log("ERROR FATAL: No se pudo encontrar la hoja con el nombre: " + HOJA_OT);
-      throw new Error(`La hoja ${HOJA_OT} no existe.`);
-    }
+    // 1. Construir la consulta anidada
+    const consulta = `
+      select=
+        Cot,
+        Cot_Linea_Ref,
+        Cantidad,
+        UND,
+        UND_DESPACHO,
+        Servicios!inner(ID_servicios, Nombre_Servicio),
+        Pedidos!inner(RUC_DNI, Clientes!inner(Nombre_RazonSocial))
+      &Cot=eq.${numPedido}
+    `.replace(/\s/g, '');
 
-    // 4. Obtener mapa de columnas de DataCot
-    Logger.log("Paso 4: Obteniendo mapa de columnas para DataCot...");
-    const mapCot = getColumnMap(HOJA_COTIZACIONES);
-    Logger.log("Mapa DataCot OK: " + JSON.stringify(mapCot));
+    // 2. Obtener los detalles
+    const lineasDetalle = supabaseFetch('Detalle_Pedidos', {
+      method: 'get',
+      params: consulta
+    });
 
-    // 5. Obtener mapa de columnas de OT
-    Logger.log("Paso 5: Obteniendo mapa de columnas para OT...");
-    const mapOT = getColumnMap(HOJA_OT);
-    Logger.log("Mapa OT OK: " + JSON.stringify(mapOT));
-
-    // 6. Leer datos de DataCot
-    Logger.log("Paso 6: Leyendo todos los datos de DataCot...");
-    const allDataCot = sheetCot.getDataRange().getValues();
-    Logger.log(`Leídas ${allDataCot.length} filas de DataCot.`);
-    
-    // 7. Leer datos de OT
-    Logger.log("Paso 7: Leyendo todos los datos de OT...");
-    const allDataOT = sheetOT.getDataRange().getValues();
-    Logger.log(`Leídas ${allDataOT.length} filas de OT.`);
-
-    // 8. Verificar índices de columnas necesarios
-    const COT_COL_COT = mapCot['COT'];
-    const LINEAID_COL_COT = mapCot['NUM']; // ID Único
-    const COD_COL_COT = mapCot['COD'];
-    const DESC_COL_COT = mapCot['DESCRIPCION'] || mapCot['DESCRIPCIÓN']; // Soporta ambos
-    const UND_PEDIDO_COL_COT = mapCot['UND. PEDIDO'];
-    const UND_DESPACHO_COL_COT = mapCot['UND. DESPACHO'];
-    const CLIENTE_COL_COT = mapCot['CLIENTE'];
-
-    Logger.log(`Índices DataCot a usar: COT=${COT_COL_COT}, NUM=${LINEAID_COL_COT}, COD=${COD_COL_COT}, DESC=${DESC_COL_COT ? 'Encontrada' : 'NO Encontrada'}, CLIENTE=${CLIENTE_COL_COT}`);
-    
-    // VALIDACIÓN CRÍTICA
-    if (LINEAID_COL_COT === undefined) {
-      Logger.log("ERROR FATAL: No se encontró la columna 'NUM' en el mapa de DataCot. Verifica el encabezado en la Fila 1 de la hoja 'DataCot'.");
-      throw new Error("¡CRÍTICO! No se encontró la columna 'NUM' en el mapa de DataCot.");
-    }
-    if (COT_COL_COT === undefined) {
-      throw new Error("¡CRÍTICO! No se encontró la columna 'COT' en el mapa de DataCot.");
-    }
-
-    // 9. Buscar líneas
-    const lineasDelPedido = [];
-    let clienteNombre = '';
-    Logger.log("Paso 8: Iniciando bucle para buscar líneas del pedido: " + numPedido);
-    
-    for (let i = 1; i < allDataCot.length; i++) { // Empezar en 1 para saltar encabezado
-      const row = allDataCot[i];
-      const cotEnFila = String(row[COT_COL_COT] || '').trim();
-      
-      if (cotEnFila === numPedido) {
-        if (!clienteNombre) clienteNombre = String(row[CLIENTE_COL_COT] || '');
-        
-        const lineaIDLeido = String(row[LINEAID_COL_COT] || '');
-        Logger.log(`Fila ${i+1} coincide. Leyendo LineaID (Col ${LINEAID_COL_COT}): '${lineaIDLeido}'`);
-        
-        lineasDelPedido.push({
-          lineaID: lineaIDLeido,
-          cod: String(row[COD_COL_COT] || ''),
-          descripcion: String(row[DESC_COL_COT] || ''),
-          horasPedidas: parseFloat(row[UND_PEDIDO_COL_COT] || 0),
-          horasDespachadas: parseFloat(row[UND_DESPACHO_COL_COT] || 0)
-        });
-      }
-    }
-
-    // 10. Validar resultado
-    if (lineasDelPedido.length === 0) {
-      Logger.log("ADVERTENCIA: No se encontraron líneas para el pedido: " + numPedido + ". Revisa si el N° de Pedido es correcto y si la columna 'COT' coincide.");
+    if (!lineasDetalle || lineasDetalle.length === 0) {
       throw new Error("No se encontraron líneas para el pedido: " + numPedido);
     }
-    
-    Logger.log(`ÉXITO: Se encontraron ${lineasDelPedido.length} líneas.`);
+
+    // 3. Mapear los datos al formato que espera el frontend
+    // Obtenemos el nombre del cliente desde la *primera* línea
+    let clienteNombre = lineasDetalle[0].Pedidos.Clientes.Nombre_RazonSocial;
+
+    const lineasMapeadas = lineasDetalle.map((linea, index) => {
+      // Asumimos que 'horasPedidas' es 'Cantidad' si la unidad es HORAS o DÍAS
+      let horasPedidas = (linea.UND === 'HORAS' || linea.UND === 'DÍAS') ? linea.Cantidad : 0;
+
+      return {
+        lineaID: linea.Cot_Linea_Ref, // El ID de texto (COT...-L1)
+        cod: linea.Servicios.ID_servicios,
+        descripcion: linea.Servicios.Nombre_Servicio,
+        horasPedidas: horasPedidas,
+        horasDespachadas: parseFloat(linea.UND_DESPACHO || 0)
+      };
+    });
+
+    Logger.log(`ÉXITO: Se encontraron ${lineasMapeadas.length} líneas.`);
     return { 
       success: true, 
       pedido: numPedido,
       cliente: clienteNombre,
-      lineas: lineasDelPedido 
+      lineas: lineasMapeadas
     };
-    
+
   } catch (e) {
-    // --- ESTE ES EL LOG MÁS IMPORTANTE ---
-    Logger.log(`ERROR FATAL en getResumenOTPorPedido: ${e.message} \n Stack: ${e.stack}`);
+    Logger.log(`ERROR FATAL en getResumenOTPorPedido (v2): ${e.message} \n Stack: ${e.stack}`);
     return manejarError('getResumenOTPorPedido', e);
   }
 }
@@ -2881,70 +2825,92 @@ function obtenerHorasSegunPorLineaID(lineaID) {
   }
 }
 /**
- * GUARDA LA COTIZACIÓN EN SUPABASE (Lógica de 2 Pasos)
- * PASO 1: Inserta la cabecera en la tabla "Pedidos".
- * PASO 2: Inserta las líneas en la tabla "Detalle_Pedidos".
+ * GUARDA LA COTIZACIÓN EN SUPABASE (v1.1 - CORREGIDA CON Cot_Linea_Ref)
+ * PASO 1 (Crear): Inserta la cabecera y luego las líneas.
+ * PASO 1 (Actualizar): Llama a la RPC 'actualizar_cotizacion_y_detalles'
  */
 function guardarCotizacion(datos) {
   const permisos = obtenerPermisosUsuario();
-  if (!permisos.puedeEditarCotizacion) { //
+  if (!permisos.puedeEditarCotizacion) {
     return { success: false, message: "Acceso denegado." };
   }
 
-  const datosSanitizados = sanitizarDatos(datos); //
-  const esModoUpdate = !!datosSanitizados.numPedido; //
+  const datosSanitizados = sanitizarDatos(datos);
+  const esModoUpdate = !!datosSanitizados.numPedido;
   
   try {
     let codigoPedido;
-
+    
+    // --- Preparar las líneas PRIMERO ---
+    const lineas = datosSanitizados.Lineas || [];
+    if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio.");
+    
     //=====================================================
-    // MODO ACTUALIZACIÓN (PATCH)
+    // MODO ACTUALIZACIÓN (PATCH) - ¡RPC!
     //=====================================================
     if (esModoUpdate) {
       codigoPedido = datosSanitizados.numPedido;
-      Logger.log(`Iniciando MODO UPDATE para: ${codigoPedido}`);
+      Logger.log(`Iniciando MODO UPDATE (RPC) para: ${codigoPedido}`);
 
-      // ---- PASO 1 (UPDATE): Actualizar la cabecera (Tabla "Pedidos") ----
-      const payloadPedido = {
+      // ---- PASO 1: Preparar la cabecera (JSON) ----
+      const payloadCabecera = {
         Estado_Cot: datosSanitizados.Estado,
         Total_Cot: parseFloat(datosSanitizados.Total),
         Moneda: datosSanitizados.Moneda,
         Ejecutivo: datosSanitizados.Ejecutivo,
-        Fecha_Inicio: datosSanitizados.fechaEjecucion,
+        Fecha_Inicio: datosSanitizados.fechaEjecucion, 
         Forma_De_Pago: datosSanitizados.Forma_Pago,
         Empresa: datosSanitizados.Empresa,
-        RUC: datosSanitizados.RUC,
+        RUC_DNI: datosSanitizados.RUC, // <-- CORREGIDO A RUC_DNI
+        Direccion: datosSanitizados.Direccion, // <-- Columna nueva
+        Turno: datosSanitizados.Turno         // <-- Columna nueva
       };
 
-      // Usa el "traductor"
-      supabaseFetch('Pedidos', {
-        method: 'patch',
-        payload: payloadPedido,
-        params: `Cot=eq.${codigoPedido}` // Filtra por el 'Cot'
-      });
-      Logger.log(`Cabecera ${codigoPedido} actualizada.`);
+      // ---- PASO 2: Preparar las líneas (JSON) ----
+      const payloadDetalles = [];
+      for (let i = 0; i < lineas.length; i++) {
+        const linea = lineas[i];
+        const lineaIDRef = `${codigoPedido}-L${i + 1}`; // ID de Texto
+        
+        const detalle = {
+          "Cot_Linea_Ref": lineaIDRef, // <-- NUEVA COLUMNA DE TEXTO
+          "Cot": codigoPedido,
+          "ID_Servicio": linea.cod,
+          "Cantidad": linea.cantidad,
+          "Precio": linea.precio,
+          "Monto_Movilizacion": linea.movilizacion,
+          "Horas_Segun": linea.hora_segun,
+          "UND": linea.und_medida,
+          "UND_HORAS_MINIMAS": linea.und_horas_minimas,
+          "Horas_minimas": linea.horas_minimas_num
+        };
+        payloadDetalles.push(detalle);
+      }
 
-      // ---- PASO 2 (UPDATE): Borrar líneas antiguas y crear las nuevas ----
+      // ---- PASO 3: Llamar a la función RPC ----
+      const payloadRPC = {
+        "codigo_pedido": codigoPedido,
+        "datos_cabecera": payloadCabecera,
+        "nuevas_lineas": payloadDetalles
+      };
       
-      // 2.A: Borrar líneas antiguas
-      supabaseFetch('Detalle_Pedidos', {
-        method: 'delete',
-        params: `Cot=eq.${codigoPedido}` // Borra todas las líneas de este 'Cot'
+      Logger.log("Llamando a RPC 'actualizar_cotizacion_y_detalles'...");
+      supabaseFetch('rpc/actualizar_cotizacion_y_detalles', {
+        method: 'post',
+        payload: payloadRPC
       });
-      Logger.log(`Líneas antiguas de ${codigoPedido} eliminadas.`);
-      
-      // 2.B: Crear las nuevas líneas (continúa al PASO CREATE)
-      
+      Logger.log(`Cotización ${codigoPedido} actualizada vía RPC.`);
+
     } 
     //=====================================================
     // MODO CREACIÓN (POST)
     //=====================================================
     else {
       Logger.log("Iniciando MODO CREATE...");
-      codigoPedido = generarCodigoPedido(datosSanitizados.Empresa); //
+      codigoPedido = generarCodigoPedido(datosSanitizados.Empresa);
       Logger.log(`Nuevo código generado: ${codigoPedido}`);
-
-      // ---- PASO 1 (CREATE): Insertar la cabecera (Tabla "Pedidos") ----
+      
+      // ---- PASO 1 (CREATE): Insertar la cabecera ----
       const payloadPedido = {
         Cot: codigoPedido,
         Fecha_Creacion: new Date().toISOString(),
@@ -2953,142 +2919,150 @@ function guardarCotizacion(datos) {
         Moneda: datosSanitizados.Moneda,
         Ejecutivo: datosSanitizados.Ejecutivo,
         Fecha_Inicio: datosSanitizados.fechaEjecucion,
-        Forma_De_Pago: datosSanitizados.Forma_Pago,
+        Forma_De_Pago: datosSanitizados.Forma_De_Pago,
         Empresa: datosSanitizados.Empresa,
-        RUC: datosSanitizados.RUC
-        // ID_Contacto: (Necesitarías buscar el ID_Contacto basado en el 'RUC' y 'datosSanitizados.Contacto')
+        RUC_DNI: datosSanitizados.RUC, // <-- CORREGIDO A RUC_DNI
+        Direccion: datosSanitizados.Direccion, // <-- Columna nueva
+        Turno: datosSanitizados.Turno         // <-- Columna nueva
       };
-
-      const resultadoPedido = supabaseFetch('Pedidos', {
+      
+      supabaseFetch('Pedidos', {
         method: 'post',
-        payload: payloadPedido,
-        params: 'select=Cot' 
+        payload: payloadPedido
       });
-      
-      codigoPedido = resultadoPedido[0].Cot; 
       Logger.log(`Cabecera ${codigoPedido} creada.`);
-    }
 
-    //=====================================================
-    // PASO FINAL (Ambos modos): Insertar las líneas de detalle
-    //=====================================================
-    const lineas = datosSanitizados.Lineas || []; //
-    if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio.");
-    
-    const payloadDetalles = [];
-    
-    for (let i = 0; i < lineas.length; i++) {
-      const linea = lineas[i];
-      const lineaIDUnico = `${codigoPedido}-L${i + 1}`; //
+      // ---- PASO 2 (CREATE): Preparar e Insertar líneas ----
+      const payloadDetalles = [];
+      for (let i = 0; i < lineas.length; i++) {
+        const linea = lineas[i];
+        const lineaIDRef = `${codigoPedido}-L${i + 1}`; // ID de Texto
+        
+        const detalle = {
+          "Cot_Linea_Ref": lineaIDRef, // <-- NUEVA COLUMNA DE TEXTO
+          "Cot": codigoPedido,
+          "ID_Servicio": linea.cod,
+          "Cantidad": linea.cantidad,
+          "Precio": linea.precio,
+          "Monto_Movilizacion": linea.movilizacion,
+          "Horas_Segun": linea.hora_segun,
+          "UND": linea.und_medida,
+          "UND_HORAS_MINIMAS": linea.und_horas_minimas,
+          "Horas_minimas": linea.horas_minimas_num
+        };
+        payloadDetalles.push(detalle);
+      }
       
-      // Mapeo a tu tabla "Detalle_Pedidos"
-      const detalle = {
-        Cot_Linea: lineaIDUnico,
-        Cot: codigoPedido,
-        ID_Servicio: linea.cod,
-        Cantidad: linea.cantidad,
-        Precio: linea.precio,
-        Monto_Movilizacion: linea.movilizacion,
-        Horas_Segun: linea.hora_segun,
-        UND: linea.und_medida,
-        UND_HORAS_MINIMAS: linea.und_horas_minimas,
-        Horas_minimas: linea.horas_minimas_num
-      };
-      payloadDetalles.push(detalle);
+      supabaseFetch('Detalle_Pedidos', {
+        method: 'post',
+        payload: payloadDetalles
+      });
+      Logger.log(`${payloadDetalles.length} líneas de detalle guardadas para ${codigoPedido}.`);
     }
-
-    // Insertamos TODAS las líneas en un solo viaje (Batch Insert)
-    supabaseFetch('Detalle_Pedidos', {
-      method: 'post',
-      payload: payloadDetalles
-    });
-    Logger.log(`${payloadDetalles.length} líneas de detalle guardadas para ${codigoPedido}.`);
-    
     
     return { 
       success: true, 
       message: esModoUpdate ? "Cotización actualizada" : "Cotización registrada",
       codigoPedido: codigoPedido 
     };
-
+    
   } catch (error) {
-    Logger.log(`ERROR en guardarCotizacion (Supabase): ${error.message}\nStack: ${error.stack}`);
-    return manejarError('guardarCotizacion', error); //
+    Logger.log(`ERROR en guardarCotizacion (v1.1): ${error.message}\nStack: ${error.stack}`);
+    return manejarError('guardarCotizacion', error);
   }
 }
 
 /**
- * REFACTORIZADO: Obtiene los datos para editar un pedido desde Supabase
+ * REFACTORIZADO (v2.1 - CORREGIDO CON RUC_DNI): Obtiene los datos para editar un pedido
+ * en UNA SOLA LLAMADA a Supabase, usando joins anidados basados en el esquema real.
  */
 function obtenerPedidoParaEdicion(numPedido) {
+  Logger.log(`Iniciando obtenerPedidoParaEdicion (v2.1) para: ${numPedido}`);
   try {
-    // 1. Obtener cabecera (Tabla "Pedidos")
-    // Usamos 'single()' para que devuelva un objeto, no un array
-    const pedido = supabaseFetch('Pedidos', {
-      method: 'get',
-      params: `Cot=eq.${numPedido}&select=*`
-    })[0]; // Tomamos el primer (y único) resultado
+    // 1. Construir la consulta anidada.
+    // La magia ocurre gracias a las Foreign Keys que creaste.
+    // Pedimos todo de 'Pedidos', y Supabase sabe cómo "unir"
+    // Clientes, Contactos, y Detalle_Pedidos (con sus Servicios).
+    const consulta = `
+      select=
+        *,
+        Clientes!inner(RUC_DNI, Nombre_RazonSocial, Direccion_Fiscal),
+        Contactos(ID_Contacto, Nombre_Contacto),
+        Detalle_Pedidos (
+          *,
+          Servicios!inner(ID_servicios, Nombre_Servicio)
+        )
+      &Cot=eq.${numPedido}
+    `.replace(/\s/g, ''); // Limpiar espacios y saltos de línea para la URL
 
-    if (!pedido) {
+    Logger.log(`Ejecutando consulta anidada: ${consulta}`);
+
+    // 2. Ejecutar la llamada ÚNICA a Supabase
+    const resultado = supabaseFetch('Pedidos', {
+      method: 'get',
+      params: consulta
+    });
+    
+    if (!resultado || resultado.length === 0) {
       throw new Error(`Pedido ${numPedido} no encontrado.`);
     }
-
-    // 2. Obtener líneas (Tabla "Detalle_Pedidos")
-    const detalles = supabaseFetch('Detalle_Pedidos', {
-      method: 'get',
-      params: `Cot=eq.${numPedido}&select=*`
-    });
+    
+    const pedido = resultado[0]; // Solo esperamos un resultado
 
     // 3. Mapear los datos de Supabase al formato que espera tu HTML
     const datosGenerales = {
       fechaEjecucion: pedido.Fecha_Inicio ? pedido.Fecha_Inicio.split('T')[0] : '',
       Estado: pedido.Estado_Cot,
       Empresa: pedido.Empresa,
-      RUC: pedido.RUC,
-      Cliente: "", // Necesitarías otra llamada a 'Clientes' para buscar el nombre por RUC
+      RUC: pedido.RUC_DNI, // <-- Usamos el nombre de columna correcto
+      Cliente: pedido.Clientes.Nombre_RazonSocial, // Usamos !inner, así que 'Clientes' siempre existirá
       Moneda: pedido.Moneda,
-      Forma_Pago: pedido.Forma_De_Pago,
-      Direccion: "", // Este dato no está en "Pedidos", ¿quizás en "Clientes"?
-      Turno: "", // Este dato no está en "Pedidos"
+      Forma_De_Pago: pedido.Forma_De_Pago,
+      // Usamos la 'Direccion' del pedido (que añadiste) o la 'Direccion_Fiscal' del cliente como fallback
+      Direccion: pedido.Direccion || (pedido.Clientes ? pedido.Clientes.Direccion_Fiscal : ''),
+      Turno: pedido.Turno || '', // Leerá la nueva columna 'Turno' que añadiste
       Ejecutivo: pedido.Ejecutivo,
-      Contacto: "" // Necesitarías otra llamada a 'Contactos' por ID_Contacto
+      Contacto: pedido.Contactos ? pedido.Contactos.Nombre_Contacto : '' // Contactos puede ser nulo
     };
-    
-    // 4. Mapear líneas
-    const lineas = detalles.map(linea => {
+
+    // 4. Mapear líneas de detalle
+    const lineas = pedido.Detalle_Pedidos.map(linea => {
+      const subtotal = (linea.Cantidad * linea.Precio) + linea.Monto_Movilizacion;
       return {
         cod: linea.ID_Servicio,
-        descripcion: "", // Necesitarías otra llamada a 'Servicios'
+        descripcion: linea.Servicios.Nombre_Servicio, // Usamos !inner, 'Servicios' siempre existirá
         cantidad: linea.Cantidad,
         und_medida: linea.UND,
         und_horas_minimas: linea.UND_HORAS_MINIMAS,
-        dias_cotizados: 0, // Este dato ya no existe, parece
+        dias_cotizados: 0, // Calculado en frontend, no se almacena
         horas_minimas_num: linea.Horas_minimas,
         hora_segun: linea.Horas_Segun,
         movilizacion: linea.Monto_Movilizacion,
         precio: linea.Precio,
-        subtotal: (linea.Cantidad * linea.Precio) + linea.Monto_Movilizacion
+        subtotal: subtotal
       };
     });
     
-    // (Lógica para buscar Cliente, Contacto y Descripciones de Servicio)
-    // ... (esto requeriría más llamadas 'supabaseFetch' para cruzar los datos) ...
-    
-    const resultado = { 
+    // 5. Devolver el objeto combinado
+    const resultadoFinal = { 
       success: true, 
       ...datosGenerales, 
       Lineas: lineas, 
       Total: pedido.Total_Cot, 
-      numPedido: numPedido
+      numPedido: numPedido,
+      // (Opcional) Leer las notas si las añadiste a la tabla Pedidos
+      plantillaNotas: pedido.plantillaNotas || '',
+      aclaracionesServicio: pedido.aclaracionesServicio || ''
     };
-    return resultado;
+    
+    Logger.log(`Éxito: Pedido ${numPedido} cargado en una sola llamada.`);
+    return resultadoFinal;
         
   } catch (error) {
-    Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}\nStack: ${error.stack}`);
-    return manejarError('obtenerPedidoParaEdicion', error); //
+    Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido} (v2.1): ${error.message}\nStack: ${error.stack}`);
+    return manejarError('obtenerPedidoParaEdicion', error); // Llama a tu manejador de errores
   }
 }
-
 
 /**
  * REFACTORIZADO: Obtiene la lista de clientes de Supabase
