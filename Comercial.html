@@ -396,9 +396,45 @@ const estadoApp = {
             if (modal) modal.style.display = 'none';
         }
 
-        function mostrarExito(respuesta) {
-            alert(respuesta.message || "Cotización guardada exitosamente");
-            window.top.location.href = '<?!= getScriptUrl() ?>?page=ResumenComercial'; 
+function mostrarExito(respuesta) {
+            // 1. Mostrar el mensaje de éxito
+            const mensaje = respuesta.message || "Cotización guardada exitosamente";
+            alert(mensaje);
+            
+            // 2. NO REDIRIGIR AUTOMÁTICAMENTE.
+            // En su lugar, actualizamos el estado de la app a "modo edición".
+            
+            // Si la respuesta del servidor incluye el nuevo codigoPedido 
+            // y aún no estábamos en modo edición...
+            if (respuesta.codigoPedido && !estadoApp.esEdicion) {
+                console.log(`Guardado exitoso. Cambiando a modo edición para: ${respuesta.codigoPedido}`);
+                estadoApp.esEdicion = true;
+                estadoApp.numPedidoEdicion = respuesta.codigoPedido;
+
+                // Actualizar la UI para reflejar el modo edición
+                const tituloContenido = document.getElementById('tituloPrincipalContenido');
+                if (tituloContenido) {
+                     tituloContenido.textContent = `Pedido: ${respuesta.codigoPedido}`;
+                     tituloContenido.style.color = '#e74c3c'; // Color rojo para indicar "edición"
+                }
+                
+                // Mostrar los botones de acción que estaban ocultos
+                document.getElementById('btnGenerarPDF').style.display = 'inline-block';
+                document.getElementById('btnGestionarActa').style.display = 'inline-block';
+                document.getElementById('btnGestionarOT').style.display = 'inline-block';
+                document.getElementById('btnGestionarValorizacion').style.display = 'inline-block';
+
+                // Deshabilitar el campo RUC
+                document.getElementById('rucCliente').readOnly = true;
+                document.getElementById('rucCliente').style.backgroundColor = '#f5f5f5';
+
+            } else {
+                 // Si ya estábamos en modo edición, solo mostramos el alert de "Actualizado"
+                 console.log("Actualización completada.");
+            }
+
+            // El usuario ahora puede usar los botones "Resumen", "OTs", "PDF", etc.
+            // NO USAR: window.top.location.href = ...;
         }
 
         function puedeRealizarAccion(accion) {
@@ -433,7 +469,7 @@ const estadoApp = {
             const turnoElem = document.getElementById('turno');
             const empresaElem = document.getElementById('empresa');
             const clienteElem = document.getElementById('clienteNombre');
-            const fechaElem = document.getElementById('fechaRegistro');
+            const fechaElem = document.getElementById('fechaEjecucion');
             const monedaElem = document.getElementById('moneda');
             const formaPagoElem = document.getElementById('formaPago');
             const ejecutivoElem = document.getElementById('ejecutivo');
@@ -1388,151 +1424,133 @@ function procesarDatosInicialesComercial(data) {
                 .obtenerPedidoParaEdicion(numPedido);
         }
 
-        function precargarFormulario(datos) {
-            console.log("🎨 INICIANDO PRECARGA DE FORMULARIO");
+function precargarFormulario(datos) {
+            console.log("🎨 INICIANDO PRECARGA DE FORMULARIO (v2 - Anidado)");
+            
+            // Tus logs de depuración
             console.log("📍 Datos recibidos - Dirección:", datos.Direccion);
             console.log("📞 Datos recibidos - Contacto:", datos.Contacto);
             console.log("👨‍💼 Datos recibidos - Ejecutivo:", datos.Ejecutivo);
-            console.log("🏢 Datos recibidos - Empresa:", datos.Empresa);
-            console.log("👤 Datos recibidos - Cliente:", datos.Cliente);
-            console.log("💰 Datos recibidos - Moneda:", datos.Moneda);
-            console.log("📅 Datos recibidos - Fecha Ejecución:", datos.fechaEjecucion); // Log para verificar
-            console.log("🏷️ Datos recibidos - Estado:", datos.Estado); // Log para verificar
-            
-            // Pequeño delay para asegurar que el DOM esté listo Y que llenarSelect haya corrido
+
+            // Pequeño delay para asegurar que el DOM esté listo
             setTimeout(() => {
                 try {
                     // 1. Rellenar campos generales
                     console.log("📝 Llenando campos generales...");
                     
                     const campos = {
-                        // Usar el valor directo (ya viene formateado yyyy-MM-dd o es null)
                         'fechaEjecucion': datos.fechaEjecucion || '', 
-                        // 'estadoCotizacion': datos.Estado || 'COTIZACION', // Se maneja por separado abajo
                         'empresa': datos.Empresa || '',
                         'rucCliente': datos.RUC || '',
-                        'clienteNombre': datos.Cliente || '',
+                        'clienteNombre': datos.Cliente, // <-- Leído desde la consulta anidada
                         'formaPago': datos.Forma_Pago || '',
-                        'direccion': datos.Direccion || '', 
+                        'direccion': datos.Direccion || '', // <-- Leído de Pedidos o Clientes.Direccion_Fiscal
                         'ejecutivo': datos.Ejecutivo || '',
-                        'moneda': datos.Moneda || 'Soles' // Moneda se maneja abajo con lógica especial
                     };
                     
                     Object.keys(campos).forEach(campoId => {
                         const elemento = document.getElementById(campoId);
                         if (elemento) {
-                            // Validar específicamente para fechaEjecucion si es null
-                            if (campoId === 'fechaEjecucion' && campos[campoId] === null) {
-                                elemento.value = ''; // Asegurar que quede vacío si es null
-                                console.log(`✅ Campo ${campoId}: "" (valor era null)`);
-                            } else {
-                                elemento.value = campos[campoId];
-                                console.log(`✅ Campo ${campoId}: "${campos[campoId]}"`);
-                            }
+                            elemento.value = campos[campoId];
+                            console.log(`✅ Campo ${campoId}: "${campos[campoId]}"`);
                         } else {
                             console.warn(`⚠️ Campo no encontrado: ${campoId}`);
                         }
                     });
 
-                    // --- CORRECCIÓN MEJORADA PARA ESTADO (maneja mayúsculas/minúsculas) ---
+                    // --- LÓGICA DE SELECTS (Estado, Turno, Moneda, Ejecutivo) ---
+
+                    // Lógica de ESTADO
                     const estadoSelect = document.getElementById('estadoCotizacion');
                     if (estadoSelect) {
                          const estadoASeleccionar = datos.Estado || 'COTIZACION';
-                         console.log(`🔍 Intentando seleccionar Estado: "${estadoASeleccionar}"`);
-                         
-                         // Buscar opción comparando en minúsculas
                          const opcionEncontrada = [...estadoSelect.options].find(option => 
                              option.value.toLowerCase() === estadoASeleccionar.toLowerCase()
                          );
-
                          if (opcionEncontrada) {
-                              estadoSelect.value = opcionEncontrada.value; // Usar el valor original de la opción
+                              estadoSelect.value = opcionEncontrada.value;
                               console.log(`✅ Estado seleccionado: "${estadoSelect.value}"`);
-                         } else {
-                              console.warn(`⚠️ Estado "${estadoASeleccionar}" (o equivalente) no encontrado en las opciones.`);
-                              // Opcional: seleccionar el primer valor válido
-                              if (estadoSelect.options.length > 1) { // >1 para ignorar el "-- Seleccione --"
-                                   estadoSelect.value = estadoSelect.options[1].value;
-                                   console.log(`ℹ️ Seleccionado estado por defecto: "${estadoSelect.value}"`);
-                              }
+                         } else if (estadoSelect.options.length > 1) {
+                              estadoSelect.value = estadoSelect.options[1].value;
+                              console.warn(`⚠️ Estado "${estadoASeleccionar}" no encontrado, usando por defecto.`);
                          }
-                    } else {
-                         console.warn(`⚠️ Select 'estadoCotizacion' no encontrado.`);
-                    }
-                    // --- FIN CORRECCIÓN ESTADO ---
-                    
-                    // ✅ Cargar contactos si hay RUC (VERSIÓN CORREGIDA)
-                    if (datos.RUC) {
-                        console.log("📞 Cargando contactos para RUC:", datos.RUC);
-                        google.script.run
-                            .withSuccessHandler(function(contactosData) {
-                                console.log("✅ Contactos recibidos para edición:", contactosData);
-                                listaContactos = contactosData || [];
-                                llenarDatalistContactos(); // Llena el select
-                                // Ahora selecciona el contacto DESPUÉS de llenar
-                                if (datos.Contacto) {
-                                    seleccionarContactoEspecifico(datos.Contacto);
-                                }
-                            })
-                            .withFailureHandler(function(error) {
-                                console.error("❌ Error cargando contactos en modo edición:", error);
-                                // Asegurar que la lista quede vacía si falla
-                                listaContactos = [];
-                                llenarDatalistContactos();
-                            })
-                            .getContactosParaComercial(datos.RUC);
-                    } else {
-                         // Si no hay RUC, asegurar que la lista de contactos esté vacía
-                         listaContactos = [];
-                         llenarDatalistContactos();
                     }
 
-
-                    // ✅ CORRECCIÓN CRÍTICA: Manejar el SELECT de TURNO especial
+                    // Lógica de TURNO
                     const turnoSelect = document.getElementById('turno');
                     if (turnoSelect && datos.Turno) {
                         const mapeoTurnos = { 'DIURNO': 'Diurno', 'NOCTURNO': 'Nocturno', 'DOBLE TURNO': 'Doble Turno', 'DOBLETURNO': 'Doble Turno', 'DOBLE': 'Doble Turno', 'DIURNA': 'Diurno', 'NOCTURNA': 'Nocturno' };
                         const turnoRecibido = String(datos.Turno).toUpperCase().trim();
                         const turnoNormalizado = mapeoTurnos[turnoRecibido] || (turnoRecibido.charAt(0) + turnoRecibido.slice(1).toLowerCase());
-                        let opcionEncontrada = [...turnoSelect.options].find(opt => opt.value.toLowerCase() === turnoNormalizado.toLowerCase());
-                        if (!opcionEncontrada) { 
-                           // Buscar coincidencia parcial si falla exacta
-                           opcionEncontrada = [...turnoSelect.options].find(opt => opt.value.toLowerCase().includes(turnoNormalizado.toLowerCase()) || turnoNormalizado.toLowerCase().includes(opt.value.toLowerCase()));
+                        
+                        let opcionTurno = [...turnoSelect.options].find(opt => opt.value.toLowerCase() === turnoNormalizado.toLowerCase());
+                        if (opcionTurno) {
+                           turnoSelect.value = opcionTurno.value;
+                           console.log(`✅ Turno seleccionado: "${opcionTurno.value}"`);
+                        } else { 
+                           console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`); 
                         }
-                        if (opcionEncontrada) { turnoSelect.value = opcionEncontrada.value; console.log(`✅ Turno seleccionado: "${opcionEncontrada.value}"`); } 
-                        else { console.warn(`⚠️ No se pudo encontrar turno: "${datos.Turno}"`); }
                     }
-                    
-                    // Moneda - manejar conversión especial
+
+                    // Lógica de MONEDA
                     let monedaValue = datos.Moneda || 'Soles';
                     if (monedaValue === 'SOL') monedaValue = 'Soles';
                     if (monedaValue === 'USD') monedaValue = 'Dolares';
                     const monedaSelect = document.getElementById('moneda');
                     if (monedaSelect) {
-                        monedaSelect.value = monedaValue; // Asume que 'Soles' y 'Dolares' son los values en el HTML
+                        monedaSelect.value = monedaValue;
                         console.log(`✅ Moneda: "${monedaValue}"`);
                     }
                     
-                    // ✅ Manejar el SELECT de EJECUTIVO
+                    // Lógica de EJECUTIVO
                     const ejecutivoSelect = document.getElementById('ejecutivo');
                     if (ejecutivoSelect && datos.Ejecutivo) {
                         const ejecutivoNormalizado = String(datos.Ejecutivo).toUpperCase().trim();
                         const opcionEjecutivo = [...ejecutivoSelect.options].find(opt => opt.value.toUpperCase() === ejecutivoNormalizado);
-                        if (opcionEjecutivo) { ejecutivoSelect.value = opcionEjecutivo.value; console.log(`✅ Ejecutivo seleccionado: "${opcionEjecutivo.value}"`); } 
-                        else { console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`); }
+                        if (opcionEjecutivo) { 
+                           ejecutivoSelect.value = opcionEjecutivo.value;
+                           console.log(`✅ Ejecutivo seleccionado: "${opcionEjecutivo.value}"`); 
+                        } else { 
+                           console.warn(`⚠️ No se pudo encontrar ejecutivo: "${datos.Ejecutivo}"`); 
+                        }
                     }
-                    
-                    // Llenar notas
+
+                    // --- LÓGICA DE CONTACTOS ---
+                    if (datos.RUC) {
+                        console.log("📞 Cargando lista de contactos para RUC:", datos.RUC);
+                        google.script.run
+                            .withSuccessHandler(function(contactosData) {
+                                console.log("✅ Lista de contactos recibida:", contactosData);
+                                listaContactos = contactosData || [];
+                                llenarDatalistContactos(); // Llena el select con TODOS los contactos
+                                
+                                // Ahora selecciona el contacto específico que vino de la carga
+                                if (datos.Contacto) {
+                                    seleccionarContactoEspecifico(datos.Contacto);
+                                }
+                            })
+                            .withFailureHandler(function(error) {
+                                console.error("❌ Error cargando lista de contactos en modo edición:", error);
+                                listaContactos = [];
+                                llenarDatalistContactos();
+                            })
+                            .getContactosParaComercial(datos.RUC);
+                    } else {
+                         listaContactos = [];
+                         llenarDatalistContactos();
+                    }
+
+                    // Llenar notas (si las añadiste a la tabla Pedidos)
                     document.getElementById('plantillaNotas').value = datos.plantillaNotas || '';
                     document.getElementById('aclaracionesServicio').value = datos.aclaracionesServicio || '';
                     
-                    // Deshabilitar RUC en edición
+                    // Deshabilitar RUC (Sin cambios)
                     document.getElementById('rucCliente').readOnly = true;
                     document.getElementById('rucCliente').style.backgroundColor = '#f5f5f5';
 
-                    console.log("✅✅✅ TODOS los campos generales llenados (excepto tabla)");
+                    console.log("✅✅✅ TODOS los campos generales llenados.");
 
-                    // 2. Limpiar tabla y resetear contador
+                    // 2. Limpiar tabla (Sin cambios)
                     const tbody = document.getElementById('cuerpoDetalle');
                     if (tbody) {
                         tbody.innerHTML = '';
@@ -1547,14 +1565,19 @@ function procesarDatosInicialesComercial(data) {
                     if (servicios.length > 0) {
                         servicios.forEach((servicio, index) => {
                             const lineaData = {
-                                COD: servicio.cod || '', DESC: servicio.descripcion || '', UND: servicio.und_medida || 'HORAS', 
-                                CANTIDAD: servicio.cantidad || 1, UND_H_MIN: servicio.und_horas_minimas || '', 
-                                DIAS_COT: servicio.dias_cotizados || 0, H_MIN_NUM: servicio.horas_minimas_num || 0, 
-                                H_SEGUN: servicio.hora_segun || '', MOV: servicio.movilizacion || 0, 
-                                PRECIO: servicio.precio || 0, SUB: servicio.subtotal || 0
+                                COD: servicio.cod || '',
+                                DESC: servicio.descripcion || '', // <-- ¡Esto ahora viene resuelto!
+                                UND: servicio.und_medida || 'HORAS', 
+                                CANTIDAD: servicio.cantidad || 1, 
+                                UND_H_MIN: servicio.und_horas_minimas || '', 
+                                DIAS_COT: servicio.dias_cotizados || 0, 
+                                H_MIN_NUM: servicio.horas_minimas_num || 0, 
+                                H_SEGUN: servicio.hora_segun || '', 
+                                MOV: servicio.movilizacion || 0, 
+                                PRECIO: servicio.precio || 0, 
+                                SUB: servicio.subtotal || 0
                             };
                             agregarLineaDetalle(lineaData);
-                            // console.log(`✅ Línea ${index + 1} agregada - ${lineaData.COD}: ${lineaData.DESC}`); 
                         });
                     } else {
                         console.warn("⚠️ No hay líneas de servicio para cargar");
@@ -1564,16 +1587,16 @@ function procesarDatosInicialesComercial(data) {
                     // 4. Calcular total y finalizar
                     setTimeout(() => {
                         calcularTotalGeneral();
-                        console.log("🎉🎉🎉 PRECARGA COMPLETADA EXITOSAMENTE 🎉🎉🎉");
-                    }, 500); // Un pequeño delay extra para asegurar renderizado de la tabla
+                        console.log("🎉🎉🎉 PRECARGA (v2) COMPLETADA EXITOSAMENTE 🎉🎉🎉");
+                    }, 500); // Delay extra para renderizado
                     
                 } catch (error) {
-                    console.error("💥 ERROR en precargarFormulario:", error);
+                    console.error("💥 ERROR en precargarFormulario (v2):", error);
                     console.error("Stack trace:", error.stack);
-                    mostrarError(error, 'precargar formulario');
+                    mostrarError(error, 'precargar formulario v2');
                 }
-            }, 300); // Delay inicial para asegurar que selects básicos estén listos
-        } 
+            }, 300);
+        }
 
         function formatDateForInput(dateString) {
             if (!dateString) return '';
