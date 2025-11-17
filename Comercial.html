@@ -791,86 +791,100 @@ function procesarDatosInicialesComercial(data) {
         // FUNCIONES DE GESTIÓN DE CLIENTES
         // =============================================================================
         function llenarDatalistsClientes() {
-            const rucsDatalist = document.getElementById('datalist-rucs-clientes');
-            const nombresDatalist = document.getElementById('datalist-nombres-clientes');
-            if (!rucsDatalist || !nombresDatalist) return;
+    const rucsDatalist = document.getElementById('datalist-rucs-clientes');
+    const nombresDatalist = document.getElementById('datalist-nombres-clientes');
+    if (!rucsDatalist || !nombresDatalist) return;
 
-            rucsDatalist.innerHTML = '';
-            nombresDatalist.innerHTML = '';
+    rucsDatalist.innerHTML = '';
+    nombresDatalist.innerHTML = '';
 
-            listaClientes.slice(1).forEach(cliente => {
-                const ruc = cliente[0];
-                const nombre = cliente[1];
-                if (ruc && nombre) {
-                    const optRuc = document.createElement('option');
-                    optRuc.value = ruc;
-                    optRuc.label = nombre;
-                    rucsDatalist.appendChild(optRuc);
+    // ANTES: listaClientes.slice(1).forEach(cliente => { ... cliente[0], cliente[1] })
+    // AHORA:
+    listaClientes.forEach(cliente => {
+        // Usamos los nombres de columna de tu CSV/Supabase
+        const ruc = cliente.RUC_DNI; 
+        const nombre = cliente.Nombre_RazonSocial;
 
-                    const optNom = document.createElement('option');
-                    optNom.value = nombre;
-                    optNom.label = ruc;
-                    nombresDatalist.appendChild(optNom);
-                }
-            });
+        if (ruc && nombre) {
+            const optRuc = document.createElement('option');
+            optRuc.value = ruc;
+            optRuc.label = nombre;
+            rucsDatalist.appendChild(optRuc);
 
-            const optNuevoRuc = document.createElement('option');
-            optNuevoRuc.value = "-- CLIENTE NUEVO --";
-            optNuevoRuc.label = "Registrar nuevo RUC/DNI";
-            rucsDatalist.appendChild(optNuevoRuc);
-
-            const optNuevoNom = document.createElement('option');
-            optNuevoNom.value = "-- CLIENTE NUEVO --";
-            optNuevoNom.label = "Registrar nuevo Nombre/Razón Social";
-            nombresDatalist.appendChild(optNuevoNom);
+            const optNom = document.createElement('option');
+            optNom.value = nombre;
+            optNom.label = ruc;
+            nombresDatalist.appendChild(optNom);
         }
+    });
+
+    // (La lógica de "-- CLIENTE NUEVO --" sigue igual)
+    const optNuevoRuc = document.createElement('option');
+    optNuevoRuc.value = "-- CLIENTE NUEVO --";
+    optNuevoRuc.label = "Registrar nuevo RUC/DNI";
+    rucsDatalist.appendChild(optNuevoRuc);
+
+    const optNuevoNom = document.createElement('option');
+    optNuevoNom.value = "-- CLIENTE NUEVO --";
+    optNuevoNom.label = "Registrar nuevo Nombre/Razón Social";
+    nombresDatalist.appendChild(optNuevoNom);
+}
 
         function manejarSeleccionCliente(inputElement, targetId) {
-            if (!puedeRealizarAccion('seleccionar cliente')) return;
-            
-            const selectedValue = inputElement.value.trim();
-            const targetInput = document.getElementById(targetId);
+    if (!puedeRealizarAccion('seleccionar cliente')) return;
 
-            if (selectedValue === "-- CLIENTE NUEVO --") {
-                abrirModalNuevoCliente();
-                inputElement.value = '';
-                return;
-            }
+    const selectedValue = inputElement.value.trim();
+    const targetInput = document.getElementById(targetId);
 
-            if (!selectedValue) {
-                targetInput.value = "";
-                return;
-            }
+    if (selectedValue === "-- CLIENTE NUEVO --") {
+        abrirModalNuevoCliente();
+        inputElement.value = '';
+        return;
+    }
 
-            const esRucInput = (inputElement.id === 'rucCliente');
-            const columnIndexToMatch = esRucInput ? 0 : 1;
-            const columnIndexToSet = esRucInput ? 1 : 0;
+    if (!selectedValue) {
+        targetInput.value = "";
+        return;
+    }
 
-            const clienteEncontrado = listaClientes.slice(1).find(fila =>
-                String(fila[columnIndexToMatch]).trim().toUpperCase() === selectedValue.toUpperCase()
-            );
+    const esRucInput = (inputElement.id === 'rucCliente');
 
-            if (clienteEncontrado) {
-                targetInput.value = clienteEncontrado[columnIndexToSet];
-                
-                // ✅ CORRECCIÓN: Obtener el RUC y cargar contactos SIEMPRE
-                // Determinar el RUC final, sin importar qué campo se cambió
-                const rucFinal = esRucInput ? selectedValue : clienteEncontrado[columnIndexToSet];
-                
-                if (rucFinal) {
-                    cargarContactosPorRUC(rucFinal);
-                }
-                
-            } else {
-                const rucActual = document.getElementById('rucCliente').value.trim();
-                const nombreActual = document.getElementById('clienteNombre').value.trim();
-                if (rucActual && nombreActual && rucActual !== "-- CLIENTE NUEVO --" && nombreActual !== "-- CLIENTE NUEVO --") {
-                    const confirmar = confirm(`El dato '${selectedValue}' no está registrado. ¿Desea registrar al nuevo cliente con RUC: ${rucActual} y Nombre: ${nombreActual}?`);
-                    if (confirmar) abrirModalNuevoCliente(rucActual, nombreActual);
-                    else inputElement.value = targetInput.value = '';
-                }
-            }
+    // ANTES: Buscaba en un array de arrays
+    // AHORA: Busca en un array de objetos
+    let clienteEncontrado;
+    if (esRucInput) {
+        clienteEncontrado = listaClientes.find(c => 
+            String(c.RUC_DNI).trim().toUpperCase() === selectedValue.toUpperCase()
+        );
+    } else {
+        clienteEncontrado = listaClientes.find(c => 
+            String(c.Nombre_RazonSocial).trim().toUpperCase() === selectedValue.toUpperCase()
+        );
+    }
+
+    if (clienteEncontrado) {
+        if (esRucInput) {
+            targetInput.value = clienteEncontrado.Nombre_RazonSocial;
+        } else {
+            targetInput.value = clienteEncontrado.RUC_DNI;
         }
+
+        const rucFinal = clienteEncontrado.RUC_DNI;
+        if (rucFinal) {
+            cargarContactosPorRUC(rucFinal); // Esta función ya está bien
+        }
+
+    } else {
+        // (La lógica de "Cliente no registrado" sigue igual)
+        const rucActual = document.getElementById('rucCliente').value.trim();
+        const nombreActual = document.getElementById('clienteNombre').value.trim();
+        if (rucActual && nombreActual && rucActual !== "-- CLIENTE NUEVO --" && nombreActual !== "-- CLIENTE NUEVO --") {
+            const confirmar = confirm(`El dato '${selectedValue}' no está registrado. ¿Desea registrar al nuevo cliente con RUC: ${rucActual} y Nombre: ${nombreActual}?`);
+            if (confirmar) abrirModalNuevoCliente(rucActual, nombreActual);
+            else inputElement.value = targetInput.value = '';
+        }
+    }
+}
 
         function abrirModalNuevoCliente(ruc = '', nombre = '') {
             const modal = document.getElementById('modalNuevoCliente');
@@ -929,20 +943,22 @@ function procesarDatosInicialesComercial(data) {
         // FUNCIONES DE GESTIÓN DE DETALLES Y SERVICIOS
         // =============================================================================
         function llenarDatalistsServicios() {
-            const codigosDatalist = document.getElementById('datalist-codigos-servicio');
-            if (!codigosDatalist) return;
-            codigosDatalist.innerHTML = '';
+    const codigosDatalist = document.getElementById('datalist-codigos-servicio');
+    if (!codigosDatalist) return;
+    codigosDatalist.innerHTML = '';
 
-            listaServicios.slice(1).forEach(servicio => {
-                const codigo = servicio[0];
-                const descripcion = servicio[1];
-                if (codigo && descripcion) {
-                    const optCod = document.createElement('option');
-                    optCod.value = `${codigo} - ${descripcion}`;
-                    codigosDatalist.appendChild(optCod);
-                }
-            });
+    // ANTES: listaServicios.slice(1).forEach(servicio => { ... servicio[0], servicio[1] })
+    // AHORA:
+    listaServicios.forEach(servicio => {
+        const codigo = servicio.ID_servicios; // De tu CSV
+        const descripcion = servicio.Nombre_Servicio; // De tu CSV
+        if (codigo && descripcion) {
+            const optCod = document.createElement('option');
+            optCod.value = `${codigo} - ${descripcion}`;
+            codigosDatalist.appendChild(optCod);
         }
+    });
+}
 
         function generarOpcionesSelect(opciones, valorSeleccionado = '') {
             let html = '<option value="" disabled>Seleccione</option>';
@@ -1039,53 +1055,47 @@ function procesarDatosInicialesComercial(data) {
         }
 
         function cargarDatosServicio(inputElement) {
-            if (!puedeRealizarAccion('cargar servicio')) return;
-            
-            const row = inputElement.closest('tr');
-            const valorBusqueda = inputElement.value.trim();
-            const servicioCod = valorBusqueda.split(' - ')[0].trim();
-            const rowId = row.id.split('-')[1];
+    if (!puedeRealizarAccion('cargar servicio')) return;
 
-            const servicio = listaServicios.slice(1).find(s => 
-                String(s[0]).trim().toUpperCase() === servicioCod.toUpperCase()
-            );
+    const row = inputElement.closest('tr');
+    const valorBusqueda = inputElement.value.trim();
+    const servicioCod = valorBusqueda.split(' - ')[0].trim();
+    const rowId = row.id.split('-')[1];
 
-            const selectores = optimizarSelectoresFila(row, rowId);
-            const descInput = row.querySelector(`input[name="descripcion_${rowId}"]`);
-            const codHidden = row.querySelector(`input[name="Servicio_cod_${rowId}"]`);
-            const undSelect = row.querySelector(`select[name="und_medida_${rowId}"]`);
-            const hMinSelect = row.querySelector(`select[name="und_horas_minimas_${rowId}"]`);
-            const hSegunSelect = row.querySelector(`select[name="hora_segun_${rowId}"]`);
+    // ANTES: Buscaba en array de arrays: listaServicios.slice(1).find(s => ...)
+    // AHORA:
+    const servicio = listaServicios.find(s => 
+        String(s.ID_servicios).trim().toUpperCase() === servicioCod.toUpperCase()
+    );
 
-            if (servicio) {
-                codHidden.value = servicio[0];
-                descInput.value = servicio[1];
-                selectores.precio.value = parseFloat(servicio[2] || 0).toFixed(2);
-                selectores.hMinNum.value = servicio[6] || 0;
-                selectores.movilizacion.value = parseFloat(servicio[7] || 0).toFixed(2);
+    const descInput = row.querySelector(`input[name="descripcion_${rowId}"]`);
+    const codHidden = row.querySelector(`input[name="Servicio_cod_${rowId}"]`);
 
-                undSelect.innerHTML = generarOpcionesSelect(listaUndMedida, servicio[5] || '');
-                hMinSelect.innerHTML = generarOpcionesSelect(listaHorasMinimas, servicio[3] || '');
-                hSegunSelect.innerHTML = generarOpcionesSelect(listaHorasSegun, servicio[4] || '');
+    if (servicio) {
+        // 1. Rellena el ID y la Descripción
+        codHidden.value = servicio.ID_servicios;
+        descInput.value = servicio.Nombre_Servicio;
 
-                manejarUnidadMedida(undSelect);
-                calcularTodo(selectores.cantidad);
-            } else {
-                alert("Servicio no encontrado. Por favor, ingrese un código válido de la lista.");
-                codHidden.value = '';
-                descInput.value = '';
-                selectores.precio.value = '0.00';
-                selectores.hMinNum.value = '0';
-                selectores.movilizacion.value = '0.00';
-                
-                undSelect.innerHTML = generarOpcionesSelect(listaUndMedida, 'HORAS');
-                hMinSelect.innerHTML = generarOpcionesSelect(listaHorasMinimas);
-                hSegunSelect.innerHTML = generarOpcionesSelect(listaHorasSegun);
-                
-                manejarUnidadMedida(undSelect);
-                calcularTodo(selectores.cantidad);
-            }
-        }
+        // 2. Limpia los campos que el usuario debe llenar (porque ya no están en 'Servicios')
+        const selectores = optimizarSelectoresFila(row, rowId);
+        selectores.precio.value = '0.00';
+        selectores.hMinNum.value = '0';
+        selectores.movilizacion.value = '0.00';
+
+        // 3. Poner foco en el siguiente campo (Cantidad o Precio)
+        selectores.cantidad.focus();
+
+    } else {
+        // Limpia todo si el servicio no es válido
+        alert("Servicio no encontrado. Por favor, ingrese un código válido de la lista.");
+        codHidden.value = '';
+        descInput.value = '';
+        const selectores = optimizarSelectoresFila(row, rowId);
+        selectores.precio.value = '0.00';
+        selectores.hMinNum.value = '0';
+        selectores.movilizacion.value = '0.00';
+    }
+}
 
         function manejarUnidadMedida(selectElement) {
             const row = selectElement.closest('tr');
