@@ -2,9 +2,6 @@
 // === CORE: MANEJO DE VISTAS (doGet) Y UTILIDADES ===
 // ====================================================
 
-// Cache para optimización
-const cache = CacheService.getScriptCache();
-
 /**
  * Maneja las solicitudes GET y sirve las páginas correspondientes
  */
@@ -116,4 +113,12 @@ function obtenerPermisosUsuario() {
   // 4. Devolver el objeto de permisos
   Logger.log(`Permisos finales: ${JSON.stringify(permisosUsuario)}`);
   return permisosUsuario;
+}
+function manejarError(contexto, error) {
+    Logger.log(`❌ ERROR en ${contexto}: ${error.message}`);
+    return {
+        success: false,
+        message: `Ocurrió un error en ${contexto}.`,
+        error: error.message
+    };
 }
