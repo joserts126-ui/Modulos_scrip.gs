@@ -1,295 +1,612 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <base target="_top">
-    <title>Administrar Servicios</title>
+    <title>Resumen Comercial</title>
     <?!= HtmlService.createHtmlOutputFromFile("Estilos").getContent(); ?>
 </head>
 
 <body>
-
-    <div id="modalOverlay" class="modal-overlay" style="display: none;" onclick="ocultarModal('modalServicio')"></div>
-
     <div class="barraTopComercial">
         <div class="topBarra-izquierda">
             <? var url = getScriptUrl(); ?>
-            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Modulos</a>
-            <h1>Administración de Servicios</h1>
+            <a href='<?= url ?>?page=Modulos' class="retornarModulos iconoTopBarra">Módulos</a>
+            <h1>Resumen de Cotizaciones</h1>
         </div>
-    </div>
-
-    <div class="contenido-servicios">
-
-        <div style="margin-bottom: 20px;">
-            <button onclick="mostrarFormularioServicio('nuevo')" class="btn-guardar-top">➕ Añadir Nuevo Servicio</button>
-            <button onclick="navegarAOT()" class="boton-nuevo-pedido">🔧 Órdenes de Trabajo</button>
         </div>
 
-        <h2>Lista de Servicios Registrados</h2>
-        
-        <div style="overflow-x: auto;">
-            <table id="tablaServicios" class="tabla-listado servicios-tabla">
-                <thead>
-                    <tr>
-                        <th style="width: 50px;">ID</th>
-                        <th style="min-width: 250px;">DESCRIPCIÓN</th>
-                        <th style="width: 120px;">H. SEGÚN</th>
-                        <th style="width: 100px;">UND. MEDIDA</th>
-                        <th style="width: 100px;">ACCIÓN</th>
-                    </tr>
-                </thead>
-                <tbody id="cuerpoTablaServicios">
-                    <tr><td colspan="5" style="text-align: center;">Cargando datos...</td></tr>
-                </tbody>
-            </table>
-        </div>
+    <div class="contenedorModulos">
+        <div class="card">
 
-        <div id="modalServicio" class="card modal-flotante modal-pequeno" style="display:none;">
-            <button class="modal-close-btn" onclick="ocultarModal('modalServicio')">✖</button>
-            
-            <h3 id="tituloModalServicio">Añadir Nuevo Servicio</h3>
-            
-            <form id="formServicio" class="formulario-campos">
-                <input type="hidden" id="servicioRowIndex" name="rowIndex" value="0"> 
+            <div class="header-resumen-con-paginacion">
                 
-                <h2>ID SERVICIO (COD)</h2>
-                <input type="text" id="servicioID" name="ID Servicio" placeholder="S001" required>
-
-                <h2>DESCRIPCIÓN DEL SERVICIO</h2>
-                <textarea id="servicioDescripcion" name="Descripción del Servicio" placeholder="Instalación de tuberías de 4 pulgadas..." rows="3" required></textarea>
-
-                <h2>HORA SEGÚN</h2>
-                <select id="servicioHoraSegun" name="Hora según">
-                </select>
-
-                <h2>UND. MEDIDA</h2>
-                <select id="servicioUndMedida" name="Und. Medida">
-                </select>
-                
-                <div style="width: 100%; display: flex; justify-content: space-between; margin-top: 20px;">
-                    <button type="button" onclick="guardarServicio()" class="btn-guardar-top">Guardar Servicio</button>
-                    <button type="button" onclick="ocultarModal('modalServicio')">Cancelar</button>
+                <div class="header-fila-superior">
+                     <button onclick="abrirNuevoPedido()" class="boton-nuevo-pedido btn-base btn-success">
+                        ➕ Nueva Cotización
+                     </button>
+                     <div class="search-container">
+                         <input type="text" id="filtroPedidos" placeholder="Buscar..."
+                                style="padding: 6px 10px; width: 300px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em;">
+                     </div>
                 </div>
-            </form>
+
+                <div class="header-fila-inferior">
+                    <h2>Lista de Cotizaciones Registradas</h2>
+                    <div class="paginacion-controles-simple">
+                         <select id="filasPorPagina" onchange="cambiarFilasPorPagina()" title="Filas por página" style="padding: 4px; font-size: 0.9em; margin-right: 15px;">
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="80" selected>80</option>
+                            <option value="100">100</option>
+                         </select>
+                         <span id="infoPagina" class="info-pagina-simple"></span>
+                         <button id="btnAnterior" onclick="cambiarPagina(-1)" class="btn-paginacion" title="Anterior" disabled>&lt;</button>
+                         <button id="btnSiguiente" onclick="cambiarPagina(1)" class="btn-paginacion" title="Siguiente" disabled>&gt;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="tabla-contenedor-scroll">
+                <table id="tablaResumen" class="tabla-resumen tabla-scroll">
+                    <thead>
+                        <tr>
+                            <th onclick="ordenarTabla(0, 'texto')">N° PEDIDO <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(1, 'fecha')">FECHA <span class="sort-icon"></span></th>
+                            <th style="min-width: 150px;" onclick="ordenarTabla(2, 'texto')">CLIENTE <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(3, 'texto')">VENDEDOR <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(4, 'texto')">COMPAÑÍA <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(5, 'numero')">MONTO TOTAL <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(6, 'texto')">MONEDA <span class="sort-icon"></span></th>
+                            <th onclick="ordenarTabla(7, 'texto')">ESTADO <span class="sort-icon"></span></th>
+                            <th>ACCIÓN</th>
+                            <th class="col-pdf">PDF</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoTablaResumen">
+                        <tr>
+                            <td colspan="10" style="text-align: center; padding: 20px;"> Cargando datos...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            </div> </div> <div id="loadingOverlay" class="loading-overlay" style="display: none;">
         </div>
 
-    </div>
+<script>
+    console.log("🔗 Script URL obtenida:", '<?!= getScriptUrl() ?>');
+    // Variables globales
+    let datosCotizaciones = [];
 
-    <script>
-    let dataServicios = [];
-    let listaHoraSegun = [];
-    let listaUndMedida = [];
+    // =============================================================================
+    // FUNCIONES UNIFICADAS Y OPTIMIZADAS
+    // =============================================================================
 
-    // Ejecución al cargar la página
+    // Configuración global (El índice ROW_INDEX es la última columna del array de 8 columnas)
+    const CONFIG = {
+    columnas: { 
+        NUM_PEDIDO: 0, FECHA: 1, CLIENTE: 2, VENDEDOR: 3, COMPANIA: 4,
+        MONTO: 5, MONEDA: 6, ESTADO: 7, ID_CLIENTE: 8, ROW_INDEX: 9 
+    }
+};
+
+    // Función unificada para llamadas a Google Apps Script
+    async function ejecutarGAS(funcion, parametros = null) {
+        mostrarLoading(true, `Ejecutando ${funcion}...`);
+        
+        return new Promise((resolve, reject) => {
+            const llamada = google.script.run
+                .withSuccessHandler(resultado => {
+                    mostrarLoading(false);
+                    resolve(resultado);
+                })
+                .withFailureHandler(error => {
+                    mostrarLoading(false);
+                    console.error(`Error en ${funcion}:`, error);
+                    alert(`❌ Error al ejecutar ${funcion}: ${error.message || error}`);
+                    reject(error);
+                });
+                
+            parametros ? llamada[funcion](parametros) : llamada[funcion]();
+        });
+    }
+
+    // Función unificada para navegación
+    function navegarA(pagina, parametros = {}) {
+        const urlBase = '<?!= getScriptUrl() ?>';
+        const parametrosURL = new URLSearchParams(parametros).toString();
+        const urlCompleta = `${urlBase}?page=${pagina}${parametrosURL ? '&' + parametrosURL : ''}`;
+        
+        window.open(urlCompleta, '_blank');
+    }
+
+    // =============================================================================
+    // FUNCIONES DE INICIALIZACIÓN Y RENDERIZADO
+    // =============================================================================
+
     document.addEventListener("DOMContentLoaded", function() {
-        mostrarLoading(true, "Cargando servicios...");
-        google.script.run
-            .withSuccessHandler(procesarDatosIniciales)
-            .withFailureHandler(mostrarError)
-            .getDatosInicialesServicios(); 
+        console.log("🔄 ResumenComercial.html CARGADO");
+        cargarDatosResumen();
+        
+        // Configurar filtro
+        document.getElementById("filtroPedidos").addEventListener("input", filtrarPedidos);
     });
 
-    function mostrarLoading(mostrar, mensaje) {
-        // Implementación simple de loading si no existe overlay global
-        if(mostrar) console.log("⏳ " + mensaje);
+    async function cargarDatosResumen() {
+        try {
+            // Esta llamada activa la función getListaCotizacionesResumen en el backend
+            const datos = await ejecutarGAS('getListaCotizacionesResumen');
+            datosCotizaciones = datos;
+            renderizarTablaResumen(datos);
+        } catch (error) {
+            console.error("Error cargando datos:", error);
+        }
     }
-    
-    function mostrarError(error) {
-        console.error("Error del servidor:", error);
-        alert("Error: " + error.message);
+// === Variables Globales para Paginación ===
+let paginaActual = 1;
+let filasPorPagina = 80; // Valor inicial
+let datosFiltradosPaginacion = []; // Datos actualmente filtrados para paginar
+
+// === MODIFICAR renderizarTablaResumen ===
+function renderizarTablaResumen(datos) {
+        // Guarda los datos para paginación
+        datosFiltradosPaginacion = datos || [];
+        const selectFilas = document.getElementById("filasPorPagina");
+        filasPorPagina = parseInt(selectFilas.value) || 80;
+        paginaActual = 1; 
+        mostrarPagina(paginaActual); 
     }
 
-    function procesarDatosIniciales(data) {
-        mostrarLoading(false);
-        if (!data.success && data.message) {
-            alert("Error al cargar datos: " + data.message);
+// === NUEVA FUNCIÓN para mostrar una página específica ===
+function mostrarPagina(numeroPagina) {
+        const tbody = document.getElementById("cuerpoTablaResumen");
+        tbody.innerHTML = "";
+
+        const datosParaMostrar = datosFiltradosPaginacion;
+
+        if (!datosParaMostrar || datosParaMostrar.length === 0) {
+            tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
+            actualizarControlesPaginacion(0);
             return;
         }
-
-        dataServicios = data.servicios || [];
-        listaHoraSegun = data.horasSegun || [];
-        listaUndMedida = data.undMedida || [];
         
-        // Llenar las listas de selección (selects)
-        llenarSelect('servicioHoraSegun', listaHoraSegun);
-        llenarSelect('servicioUndMedida', listaUndMedida);
-        
-        // Renderizar la tabla
-        cargarTablaServicios(dataServicios);
-    }
-    
-    function llenarSelect(id, opciones) {
-        const select = document.getElementById(id);
-        if(!select) return;
-        select.innerHTML = '<option value="" disabled selected>-- Seleccione --</option>';
-        if (opciones) {
-            opciones.forEach(opcion => {
-                const opt = document.createElement('option');
-                opt.value = opcion;
-                opt.textContent = opcion;
-                select.appendChild(opt);
-            });
-        }
-    }
-    
-    function mostrarModal(id) {
-        const overlay = document.getElementById('modalOverlay');
-        const modal = document.getElementById(id);
-        if(overlay) overlay.style.display = 'block';
-        if(modal) modal.style.display = 'block';
-    }
-    
-    function ocultarModal(id) {
-        const overlay = document.getElementById('modalOverlay');
-        const modal = document.getElementById(id);
-        if(modal) modal.style.display = 'none';
-        if(overlay) overlay.style.display = 'none';
-    }
-
-    /**
-     * Carga la tabla adaptada para los objetos de Supabase.
-     */
-    function cargarTablaServicios(data) {
-        const tbody = document.getElementById("cuerpoTablaServicios");
-        tbody.innerHTML = '';
-        
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No hay servicios registrados.</td></tr>';
-            return;
+        if (datosParaMostrar.success === false) {
+             tbody.innerHTML = crearFilaVacia("Error al cargar: " + datosParaMostrar.message);
+             return;
         }
 
-        data.forEach((servicio) => {
-            const idServicio = servicio.ID_servicios;
-            const nombre = servicio.Nombre_Servicio || '';
+        paginaActual = numeroPagina;
+        const totalFilasDatos = datosParaMostrar.length;
+        const indiceInicio = (paginaActual - 1) * filasPorPagina;
+        const indiceFin = indiceInicio + filasPorPagina;
+        const filasPagina = datosParaMostrar.slice(indiceInicio, indiceFin); 
+
+        filasPagina.forEach((fila) => {
+            const numPedido = fila.Cot;
+            const fecha = formatearFechaSimple(fila.Fecha_Creacion);
             
-            // ✅ LECTURA CORRECTA: Usamos minúsculas porque así vienen de Supabase
-            const horaSegun = servicio.hora_segun || '-'; 
-            const undMedida = servicio.und_medida || '-'; 
+            let nombreCliente = "Cliente no encontrado";
+            if (fila.Clientes) {
+                if (Array.isArray(fila.Clientes) && fila.Clientes.length > 0) {
+                    nombreCliente = fila.Clientes[0].Nombre_RazonSocial;
+                } else if (fila.Clientes.Nombre_RazonSocial) {
+                    nombreCliente = fila.Clientes.Nombre_RazonSocial;
+                }
+            }
+            if (nombreCliente === "Cliente no encontrado" && fila.RUC) {
+                nombreCliente = fila.RUC; 
+            }
+            
+            // ✅ CORRECCIÓN AQUÍ: Leer 'Ejecitivo'
+            const vendedor = fila.Ejecitivo || '';
+            
+            const compania = fila.Empresa || '';
+            const monto = parseFloat(fila.Total_Cot) || 0;
+            const moneda = String(fila.Moneda || '').toUpperCase();
+            const estado = fila.Estado_Cot || 'Desconocido';
+            const idUnico = numPedido; 
 
-            const tr = document.createElement('tr');
+            if (!numPedido) return;
+
+            const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES' || moneda === 'PEN') ? 'S/ ' : '$ ';
+            const montoFormateado = simboloMoneda + monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const tr = document.createElement("tr");
             tr.innerHTML = `
-                <td><strong>${idServicio}</strong></td>
-                <td>${nombre}</td>
-                <td>${horaSegun}</td>
-                <td>${undMedida}</td>
-                <td>
-                    <button onclick="editarServicio(${idServicio})" class="btn-guardar-top" style="padding: 5px 10px; font-size: 0.8em;">Editar</button>
-                </td>
+                <td>${escapeHtml(numPedido)}</td>
+                <td>${escapeHtml(fecha)}</td>
+                <td>${escapeHtml(nombreCliente)}</td>
+                <td>${escapeHtml(vendedor)}</td>
+                <td>${escapeHtml(compania)}</td>
+                <td class="monto-col">${montoFormateado}</td>
+                <td>${escapeHtml(moneda)}</td>
+                <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado)}</span></td>
+                
+                <td><button onclick="editarCotizacionSegura('${escapeHtml(idUnico)}')" class="btn-editar">✏️ Editar</button></td>
+                <td style="text-align: center;"><button onclick="generarPDF('${escapeHtml(idUnico)}')" class="btn-pdf" data-row="${escapeHtml(idUnico)}">📄 PDF</button></td>
             `;
             tbody.appendChild(tr);
         });
+
+        actualizarControlesPaginacion(totalFilasDatos);
+    }
+
+    function formatearFechaSimple(fechaISO) {
+        if (!fechaISO) return '';
+        try {
+            // La fecha viene como "2025-11-10T00:00:00+00:00"
+            const fecha = new Date(fechaISO);
+            // .toLocaleDateString es la forma más segura de formatear
+            return fecha.toLocaleDateString('es-PE', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        } catch (e) {
+            return fechaISO; // Devuelve el original si falla
+        }
+    }
+
+// === NUEVA FUNCIÓN para actualizar los controles de paginación ===
+function actualizarControlesPaginacion(totalFilasDatos) {
+    const infoPagina = document.getElementById("infoPagina");
+    const btnAnterior = document.getElementById("btnAnterior");
+    const btnSiguiente = document.getElementById("btnSiguiente");
+
+    const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
+
+    if (totalFilasDatos === 0) {
+        infoPagina.textContent = "0 resultados";
+        btnAnterior.disabled = true;
+        btnSiguiente.disabled = true;
+    } else {
+        const inicio = (paginaActual - 1) * filasPorPagina + 1;
+        const fin = Math.min(inicio + filasPorPagina - 1, totalFilasDatos);
+        infoPagina.textContent = `${inicio}-${fin} de ${totalFilasDatos}`;
+
+        btnAnterior.disabled = (paginaActual === 1);
+        btnSiguiente.disabled = (paginaActual === totalPaginas);
+    }
+}
+
+// === NUEVA FUNCIÓN para cambiar de página ===
+function cambiarPagina(direccion) { // direccion es +1 (siguiente) o -1 (anterior)
+    const nuevaPagina = paginaActual + direccion;
+    const totalFilasDatos = datosFiltradosPaginacion.length - 1;
+    const totalPaginas = Math.ceil(totalFilasDatos / filasPorPagina);
+
+    // Validar límites
+    if (nuevaPagina >= 1 && nuevaPagina <= totalPaginas) {
+        mostrarPagina(nuevaPagina);
+    }
+}
+
+ // === NUEVA FUNCIÓN para cambiar filas por página ===
+function cambiarFilasPorPagina() {
+    const selectFilas = document.getElementById("filasPorPagina");
+    filasPorPagina = parseInt(selectFilas.value) || 80;
+    // Volver a mostrar la primera página con la nueva cantidad de filas
+    mostrarPagina(1); 
+}
+
+// === MODIFICAR filtrarPedidos para usar paginación ===
+ function filtrarPedidos() {
+    const filtro = document.getElementById("filtroPedidos").value.toLowerCase();
+
+    let datosParaFiltrar = datosCotizaciones; // Siempre filtrar sobre los datos originales completos
+    let datosFiltradosResultado = [datosParaFiltrar[0]]; // Mantener encabezados
+
+    if (!filtro) {
+        // Si no hay filtro, usar todos los datos
+         datosFiltradosResultado = datosParaFiltrar;
+    } else {
+         // Aplicar filtro
+        datosParaFiltrar.slice(1).forEach(fila => {
+            const numPedido = String(fila[CONFIG.columnas.NUM_PEDIDO] || '').toLowerCase();
+            const cliente = String(fila[CONFIG.columnas.CLIENTE] || '').toLowerCase();
+            const estado = String(fila[CONFIG.columnas.ESTADO] || '').toLowerCase();
+
+            if (numPedido.includes(filtro) || cliente.includes(filtro) || estado.includes(filtro)) {
+                datosFiltradosResultado.push(fila);
+            }
+        });
+    }
+
+    // Llamar a renderizarTablaResumen con los datos filtrados (esta función resetea a pág 1)
+    renderizarTablaResumen(datosFiltradosResultado);
+}
+
+// Inicializar el selector de filas al cargar
+ document.addEventListener("DOMContentLoaded", function() {
+      const selectFilas = document.getElementById("filasPorPagina");
+      selectFilas.value = filasPorPagina; // Asegurar que muestre 80 al inicio
+ });
+
+// === FIN CÓDIGO PAGINACIÓN ===
+
+// ✅ FUNCIÓN AUXILIAR PARA ESCAPAR HTML
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// =============================================================================
+// FUNCIÓN CORREGIDA PARA EDITAR COTIZACIÓN
+// =============================================================================
+function editarCotizacion(scriptUrl, numPedido) {
+    if (!numPedido) {
+        console.error("❌ Error: numPedido no definido");
+        alert("Error: No se puede editar, número de pedido no disponible");
+        return;
     }
     
-    function mostrarFormularioServicio(modo) {
-        document.getElementById('formServicio').reset();
-        document.getElementById('servicioRowIndex').value = 0; 
-        document.getElementById('tituloModalServicio').textContent = 'Añadir Nuevo Servicio';
-        
-        // Habilitar ID solo si quisieras ingresarlo manual (pero es SERIAL en tu DB, mejor que sea automático)
-        // Recomendación: Dejarlo readonly o oculto para creación automática.
-        document.getElementById('servicioID').value = "(Automático)";
-        document.getElementById('servicioID').readOnly = true;
-        document.getElementById('servicioID').style.backgroundColor = '#f5f5f5';
-        
-        mostrarModal('modalServicio');
+    console.log("📝 Editando cotización:", numPedido);
+    console.log("🔗 Script URL:", scriptUrl);
+    
+    // ✅ CONSTRUIR URL CORRECTAMENTE
+    const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+    
+    console.log("🎯 URL final:", url);
+    
+    // ✅ ABRIR EN LA MISMA VENTANA (no en nueva pestaña)
+    window.top.location.href = url;
+}
+
+// ✅ FUNCIÓN AUXILIAR PARA DEBUG
+function debugURL(scriptUrl, numPedido) {
+    console.log("=== 🔗 DEBUG URL ===");
+    console.log("Script URL:", scriptUrl);
+    console.log("Número Pedido:", numPedido);
+    console.log("URL construida:", `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`);
+    console.log("=== FIN DEBUG ===");
+}
+    
+    function crearFilaVacia(mensaje) {
+        return `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 30px; color: #666;">
+                    ${mensaje}
+                </td>
+            </tr>
+        `;
     }
 
-    function editarServicio(idServicio) {
-        document.getElementById('tituloModalServicio').textContent = 'Cargando...';
-        mostrarModal('modalServicio');
-        
-        google.script.run
-            .withSuccessHandler(cargarFormularioServicio)
-            .withFailureHandler(function(error) {
-                alert("Error al cargar servicio: " + error);
-                ocultarModal('modalServicio');
-            })
-            .obtenerServicioPorRowIndex(idServicio);
+    function editarCotizacion(scriptUrl, numPedido) {
+        const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+        window.open(url, '_blank');
     }
 
-    function cargarFormularioServicio(data) {
-        if (!data || !data.row) {
-            alert("Error al cargar los datos del servicio.");
-            ocultarModal('modalServicio');
+    // =============================================================================
+    // FUNCIÓN PARA EDITAR COTIZACIÓN - CORREGIDA
+    // =============================================================================
+    function editarCotizacion(scriptUrl, numPedido) {
+        if (!numPedido) {
+            console.error("❌ Error: numPedido no definido");
+            alert("Error: No se puede editar, número de pedido no disponible");
+            return;
+        }
+    
+        console.log("📝 Editando cotización:", numPedido);
+        const url = `${scriptUrl}?page=Comercial&editar=${encodeURIComponent(numPedido)}`;
+        console.log("🔗 URL de edición:", url);
+        window.open(url, '_blank');
+    }
+
+    // =============================================================================
+    // FUNCIONES DE FILTRADO
+    // =============================================================================
+
+    function filtrarPedidos() {
+        const filtro = document.getElementById("filtroPedidos").value.toLowerCase();
+        
+        if (!filtro) {
+            renderizarTablaResumen(datosCotizaciones);
+            return;
+        }
+
+        const datosFiltrados = [datosCotizaciones[0]]; // Mantener encabezados
+        
+        datosCotizaciones.slice(1).forEach(fila => {
+            const numPedido = String(fila[CONFIG.columnas.NUM_PEDIDO] || '').toLowerCase();
+            const cliente = String(fila[CONFIG.columnas.CLIENTE] || '').toLowerCase();
+            const estado = String(fila[CONFIG.columnas.ESTADO] || '').toLowerCase();
+            
+            if (numPedido.includes(filtro) || cliente.includes(filtro) || estado.includes(filtro)) {
+                datosFiltrados.push(fila);
+            }
+        });
+        
+        renderizarTablaResumen(datosFiltrados);
+    }
+
+    // =============================================================================
+    // FUNCIONES DE ACCIÓN
+    // =============================================================================
+    
+    function abrirNuevoPedido() {
+        navegarA('Comercial');
+    }
+
+    /**
+     * Llama al servidor para generar el PDF del pedido y lo abre.
+     * @param {number} rowIndex El índice de la fila del pedido a procesar (para el detalle completo).
+     */
+    function generarPDF(rowIndex) {
+        if (!confirm(`¿Estás seguro de que deseas generar el PDF para el pedido en la fila ${rowIndex}?`)) {
             return;
         }
         
-        document.getElementById('tituloModalServicio').textContent = 'Editar Servicio';
-        // data.row viene del backend simulando un array: [ID, Nombre, '', '', HoraSegun, UndMedida]
-        // Ajustamos según lo que definiste en obtenerServicioPorRowIndex
-        
-        const datos = data.row;
-        const idReal = datos[0];
-
-        document.getElementById('servicioRowIndex').value = idReal; 
-        document.getElementById('servicioID').value = idReal;
-        document.getElementById('servicioDescripcion').value = datos[1] || '';
-        
-        // Asignar selects si hay coincidencia
-        document.getElementById('servicioHoraSegun').value = datos[4] || '';
-        document.getElementById('servicioUndMedida').value = datos[5] || '';
-        
-        document.getElementById('servicioID').readOnly = true;
-        document.getElementById('servicioDescripcion').focus();
-    }
-
-    function guardarServicio() {
-        const form = document.getElementById('formServicio');
-        const data = {};
-        const formData = new FormData(form);
-
-        for (let [key, value] of formData.entries()) {
-            data[key] = value;
-        }
-        
-        data.rowIndex = document.getElementById('servicioRowIndex').value;
-        
-        if(data.rowIndex == 0) {
-            delete data['ID Servicio'];
+        // 1. Mostrar mensaje de carga
+        const btn = document.querySelector(`.btn-pdf[data-row='${rowIndex}']`);
+        if(btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Generando...';
+        } else {
+            alert('Generando PDF...');
         }
 
-        if (!data['Descripción del Servicio']) {
-            alert("La descripción es obligatoria.");
-            return;
-        }
-        
-        // ✅ MAPEO LIMPIO PARA EL BACKEND
-        data.DESCRIPCION = data['Descripción del Servicio'];
-        data.HORA_SEGUN = data['Hora según'];
-        data.UND_MEDIDA = data['Und. Medida'];
-        
-        // Ya NO sobrescribimos Tipo ni Abreviatura
-        
-        console.log("Enviando:", data);
-        
         google.script.run
             .withSuccessHandler(function(resultado) {
                 if (resultado.success) {
-                    alert("Servicio guardado correctamente.");
-                    refrescarTablaServicios();
+                    // 2. Abrir el PDF en nueva pestaña
+                    window.open(resultado.pdfUrl, '_blank');
+                    alert('✅ PDF generado exitosamente!');
                 } else {
-                    alert("Error al guardar: " + resultado.message);
+                    alert('❌ Error al generar PDF: ' + (resultado.error || resultado.message || 'Error desconocido'));
+                }
+                
+                // 3. Restaurar botón
+                if(btn) {
+                    btn.disabled = false;
+                    btn.textContent = '📄 PDF';
                 }
             })
             .withFailureHandler(function(error) {
-                alert("Error de conexión: " + error.message);
+                alert('❌ Error al conectar con el servidor: ' + error.message);
+                // 3. Restaurar botón
+                if(btn) {
+                    btn.disabled = false;
+                    btn.textContent = '📄 PDF';
+                }
             })
-            .guardarOActualizarServicio(data);
+            .generarYDevolverPDF(rowIndex); // Llama a la función de GS
+    }
+
+    function debugFrontend() {
+        console.log("=== 🐛 DEBUG FRONTEND ===");
+        console.log("URL actual:", window.location.href);
+        console.log("Script URL:", '<?!= getScriptUrl() ?>');
+        console.log("Total cotizaciones cargadas (incl. encabezado):", datosCotizaciones.length);
+        console.log("=== FIN DEBUG ===");
+        
+        alert("Debug ejecutado - Revisa la consola del navegador (F12)");
+    }
+
+    function mostrarLoading(mostrar, mensaje = "Cargando...") {
+        const overlay = document.getElementById("loadingOverlay");
+        const texto = document.getElementById("loadingText");
+        
+        if (overlay && texto) {
+            overlay.style.display = mostrar ? "flex" : "none";
+            texto.textContent = mensaje;
+        }
+    }
+
+    function editarCotizacionSegura(numPedido) {
+    if (!numPedido) {
+        alert("Error: No se puede editar, número de pedido no disponible");
+        return;
     }
     
-    function refrescarTablaServicios() {
-        ocultarModal('modalServicio');
-        google.script.run
-            .withSuccessHandler(procesarDatosIniciales)
-            .getDatosInicialesServicios(); 
-    }
+    console.log("📝 Guardando pedido para edición:", numPedido);
     
-    function navegarAOT() {
-        const urlBase = '<?!= getScriptUrl() ?>';
-        window.open(urlBase + '?page=OT', '_blank');
+    // Guardar en sessionStorage
+    sessionStorage.setItem('pedidoAEditar', numPedido);
+    
+    // Navegar a Comercial
+    const url = '<?!= getScriptUrl() ?>?page=Comercial';
+    console.log("🔗 Navegando a:", url);
+    window.top.location.href = url;
+}
+
+// === Variables Globales para Ordenación ===
+let columnaOrden = -1; // Columna actualmente ordenada (-1 = ninguna)
+let direccionOrden = 'asc'; // 'asc' o 'desc'
+
+/**
+ * Ordena la tabla de cotizaciones por la columna especificada.
+ * @param {number} indiceColumna - El índice de la columna (0, 1, 2...).
+ * @param {string} tipoDato - 'texto', 'numero' o 'fecha'.
+ */
+function ordenarTabla(indiceColumna, tipoDato) {
+    console.log(`Ordenando por columna ${indiceColumna}, tipo ${tipoDato}`);
+    const tbody = document.getElementById("cuerpoTablaResumen");
+    // Convertir filas HTML a un array de arrays para poder ordenar
+    const filasArray = Array.from(tbody.querySelectorAll("tr"));
+
+    // Determinar nueva dirección de orden
+    if (indiceColumna === columnaOrden) {
+        direccionOrden = (direccionOrden === 'asc') ? 'desc' : 'asc';
+    } else {
+        columnaOrden = indiceColumna;
+        direccionOrden = 'asc'; // Por defecto ascendente al cambiar de columna
     }
+
+    // Función de comparación
+    const compararFilas = (filaA, filaB) => {
+        const valorA = filaA.cells[indiceColumna].textContent || filaA.cells[indiceColumna].innerText;
+        const valorB = filaB.cells[indiceColumna].textContent || filaB.cells[indiceColumna].innerText;
+
+        let comparacion = 0;
+
+        switch (tipoDato) {
+            case 'numero':
+                // Extraer solo números y punto decimal
+                const numA = parseFloat(valorA.replace(/[^0-9.-]+/g,""));
+                const numB = parseFloat(valorB.replace(/[^0-9.-]+/g,""));
+                comparacion = (isNaN(numA) ? 0 : numA) - (isNaN(numB) ? 0 : numB);
+                break;
+            case 'fecha':
+                // Asumir formato DD/MM/AAAA y convertir a objeto Date para comparar
+                try {
+                    const partesA = valorA.split('/');
+                    const partesB = valorB.split('/');
+                    // Formato: AAAA, MM-1, DD
+                    const fechaA = new Date(partesA[2], partesA[1] - 1, partesA[0]);
+                    const fechaB = new Date(partesB[2], partesB[1] - 1, partesB[0]);
+                    comparacion = fechaA - fechaB;
+                } catch (e) {
+                    console.warn("Error parseando fecha:", valorA, valorB);
+                    comparacion = valorA.localeCompare(valorB, 'es', { sensitivity: 'base' }); // Fallback a texto
+                }
+                break;
+            case 'texto':
+            default:
+                comparacion = valorA.localeCompare(valorB, 'es', { sensitivity: 'base' }); // Comparación de texto insensible a mayúsculas/acentos
+                break;
+        }
+
+        return (direccionOrden === 'asc') ? comparacion : -comparacion;
+    };
+
+    // Ordenar el array de filas
+    filasArray.sort(compararFilas);
+
+    // Limpiar tbody
+    tbody.innerHTML = "";
+
+    // Volver a añadir las filas ordenadas
+    filasArray.forEach(fila => tbody.appendChild(fila));
+
+    // Actualizar iconos visuales en encabezados
+    actualizarIconosOrden(indiceColumna, direccionOrden);
+}
+
+/**
+ * Actualiza los iconos de flecha en los encabezados de la tabla.
+ */
+function actualizarIconosOrden(indiceColumnaActiva, direccion) {
+    const encabezados = document.querySelectorAll("#tablaResumen th .sort-icon");
+    encabezados.forEach((icono, index) => {
+        icono.classList.remove('asc', 'desc');
+        icono.style.opacity = '0.4'; // Resetear opacidad
+        // El índice del icono puede no coincidir directamente si hay TH no ordenables
+        // Buscamos el índice correcto basado en el TH padre
+        const thPadre = icono.closest('th');
+        if (thPadre && thPadre.cellIndex === indiceColumnaActiva) {
+            icono.classList.add(direccion);
+            icono.style.opacity = '1'; // Hacer visible el icono activo
+        }
+    });
+}
+
+// === FIN CÓDIGO ORDENACIÓN ===
+
 </script>
 </body>
-
 </html>
