@@ -21,24 +21,27 @@ const SUPABASE_KEY = SCRIPT_PROPS.getProperty('SUPABASE_KEY'); // Tu SERVICE_ROL
  * @param {object|array} [opciones.payload] - El objeto (o array de objetos) JSON para enviar.
  * @returns {object|array} El resultado JSON de la API.
  */
+/**
+ * Función central para interactuar con Supabase.
+ * Incluye lógica de REINTENTOS para manejar "Cold Starts" o fallos de red.
+ */
 function supabaseFetch(tabla, opciones = {}) {
   const { method = 'get', params = 'select=*', payload = null } = opciones;
   
-  // Construir la URL del endpoint
+  // Construir URL
   let url = `${SUPABASE_URL}/rest/v1/${tabla}`;
   if (params) {
     url += `?${params}`;
   }
 
-  // Configurar las opciones de UrlFetchApp
   const fetchOptions = {
     'method': method,
     'headers': {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Prefer': 'return=representation' // Pide que Supabase devuelva el objeto(s)
+      'Prefer': 'return=representation' // Para recibir los datos modificados/creados
     },
-    'muteHttpExceptions': true // ¡Importante! Para capturar errores
+    'muteHttpExceptions': true // Manejamos los errores manualmente
   };
 
   if (payload) {
@@ -46,28 +49,59 @@ function supabaseFetch(tabla, opciones = {}) {
     fetchOptions.payload = JSON.stringify(payload);
   }
 
-  // Ejecutar la llamada
-  const response = UrlFetchApp.fetch(url, fetchOptions);
-  const responseCode = response.getResponseCode();
-  const responseBody = response.getContentText();
+  // === LÓGICA DE REINTENTOS (RETRY LOGIC) ===
+  const MAX_RETRIES = 3; // Intentar hasta 3 veces
+  let intentos = 0;
+  let lastError = null;
 
-  // Manejo de Errores
-  if (responseCode >= 200 && responseCode < 300) {
-    if (responseBody) {
-      return JSON.parse(responseBody);
-    }
-    return true; // Éxito sin contenido (ej. en un DELETE)
-  } else {
-    Logger.log(`ERROR ${responseCode} en supabaseFetch (${tabla}): ${responseBody}`);
-    // Lanzar un error claro que el frontend pueda entender
-    let errorMsg = responseBody;
+  while (intentos < MAX_RETRIES) {
     try {
-      errorMsg = JSON.parse(responseBody).message;
-    } catch(e) {
-      // No era JSON, usa el texto plano
+      const response = UrlFetchApp.fetch(url, fetchOptions);
+      const responseCode = response.getResponseCode();
+      const responseBody = response.getContentText();
+
+      // Éxito (Códigos 200-299)
+      if (responseCode >= 200 && responseCode < 300) {
+        if (responseBody) {
+            try {
+                return JSON.parse(responseBody);
+            } catch (e) {
+                return true; // No era JSON, pero fue exitoso
+            }
+        }
+        return true; // Éxito sin cuerpo
+      }
+      
+      // Errores de Servidor (500, 502, 503, 504) -> Vale la pena reintentar
+      if (responseCode >= 500) {
+         Logger.log(`Intento ${intentos + 1}: Error ${responseCode} de Supabase. Reintentando...`);
+         intentos++;
+         Utilities.sleep(1500); // Esperar 1.5 segundos antes de reintentar
+         continue;
+      }
+
+      // Errores de Cliente (400, 401, 404, 409) -> NO reintentar, es error de datos/lógica
+      let errorMsg = responseBody;
+      try { errorMsg = JSON.parse(responseBody).message; } catch(e) {}
+      throw new Error(`Error Supabase (${responseCode}): ${errorMsg}`);
+
+    } catch (e) {
+      // Capturar errores de red (DNS, Timeout, etc.)
+      lastError = e;
+      if (e.message.includes("Timeout") || e.message.includes("DNS") || e.message.includes("socket")) {
+         Logger.log(`Intento ${intentos + 1}: Error de Red (${e.message}). Reintentando...`);
+         intentos++;
+         Utilities.sleep(2000); // Esperar 2 segundos
+      } else {
+         // Si no es error de red ni servidor (ej. error 400 o error de parseo), lanzar inmediato
+         throw e; 
+      }
     }
-    throw new Error(`Error de Supabase: ${errorMsg}`);
   }
+
+  // Si llegamos aquí, fallaron todos los intentos
+  Logger.log(`Fallo definitivo tras ${MAX_RETRIES} intentos.`);
+  throw lastError || new Error("Error desconocido de conexión con Supabase tras varios intentos.");
 }
 
 function enviarASupabase(datos) {
