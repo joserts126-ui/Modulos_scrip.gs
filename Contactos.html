@@ -19,9 +19,14 @@
         </div>
     </div>
 
-    <div class="contenido-servicios">
+    <div class="contenido-servicios" style="max-width: 1100px; margin: 20px auto;">
         
-        <h2>Lista de Clientes (RUC)</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2>Lista de Clientes (RUC)</h2>
+            <button onclick="abrirModalNuevoCliente()" class="btn-guardar-top btn-success" style="background-color: #28a745;">
+                ➕ Crear Nuevo Cliente
+            </button>
+        </div>
 
         <div style="margin-bottom: 15px;">
             <input type="text" id="filtroCliente" placeholder="Buscar por RUC o Nombre..." style="padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px;">
@@ -155,16 +160,50 @@
         </div>
         
     </div>
+    <div id="modalNuevoCliente" class="card modal-flotante modal-pequeno" style="display:none;">
+            <button class="modal-close-btn" onclick="cerrarModalNuevoCliente()">✖</button>
+            <h3>Registrar Nuevo Cliente</h3>
+            <form id="formNuevoCliente" class="formulario-campos">
+                
+                <h2>RUC / DNI</h2>
+                <input type="text" id="newRUC" name="RUC" placeholder="12345678901" required>
+
+                <h2>RAZÓN SOCIAL</h2>
+                <input type="text" id="newNombre" name="NOMBRE" placeholder="Empresa SAC" required>
+
+                <div style="width: 100%; display: flex; justify-content: space-between; margin-top: 15px;">
+                    <button type="button" onclick="registrarNuevoCliente()" class="btn-guardar-top">Guardar</button>
+                    <button type="button" onclick="cerrarModalNuevoCliente()">Cancelar</button>
+                </div>
+            </form>
+        </div>
 
     <script>
         let dataClientes = [];
         let RUC_ACTUAL = null;
         let NOMBRE_ACTUAL = null;
-
+        
         document.addEventListener("DOMContentLoaded", function() {
             google.script.run.withSuccessHandler(cargarTablaClientes).getListaClientes();
             document.getElementById("filtroCliente").addEventListener("keyup", filtrarClientes);
         });
+
+        // ======================================================================
+        // === FUNCIONES DE UTILIDAD (NECESARIAS para evitar el ReferenceError) ===
+        // ======================================================================
+        
+        /**
+         * Función auxiliar para escapar caracteres especiales en strings 
+         * que se usarán dentro de llamadas a funciones JavaScript en HTML.
+         */
+        function escapeJsString(str) {
+            if (str === null || str === undefined) return '';
+            // 1. Escapar el caracter backslash
+            // 2. Escapar comillas simples y dobles para el atributo onclick
+            return String(str).replace(/\\/g, '\\\\')
+                              .replace(/'/g, "\\'")
+                              .replace(/"/g, '\\"');
+        }
 
         // ----------------------------------------------------------------------
         // --- FUNCIONES CORE DE MODALES ---
@@ -192,6 +231,7 @@
             document.getElementById('modalCliente').style.display = 'none';
             document.getElementById('modalContacto').style.display = 'none';
             document.getElementById('modalDireccion').style.display = 'none';
+            document.getElementById('modalNuevoCliente').style.display = 'none'; // ¡Agregado!
             document.getElementById('modalOverlay').style.display = 'none';
             RUC_ACTUAL = null; 
             NOMBRE_ACTUAL = null;
@@ -199,20 +239,32 @@
 
 
         // ----------------------------------------------------------------------
-        // --- SECCIÓN MAESTRO: LISTA DE CLIENTES (sin cambios sustanciales) ---
+        // --- SECCIÓN MAESTRO: LISTA DE CLIENTES (CORREGIDA PARA JSON) ---
         // ----------------------------------------------------------------------
 
         function cargarTablaClientes(data) {
             const tbody = document.getElementById("cuerpoTablaClientes");
             tbody.innerHTML = ''; 
+            
+            // La data ahora es un array de objetos JSON de Supabase.
             dataClientes = data;
 
-            if (!data || data.length <= 1) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px;">No hay clientes registrados.</td></tr>';
+            if (!dataClientes || dataClientes.length === 0) {
+                // El botón "Crear Nuevo Cliente" se añade implícitamente aquí:
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" style="text-align:center; padding: 20px;">
+                            No hay clientes registrados. 
+                            <button onclick="abrirModalNuevoCliente()" class="btn-agregar-linea">
+                                ➕ Crear Nuevo Cliente
+                            </button>
+                        </td>
+                    </tr>`;
                 return; 
             }
             
-            renderizarFilasClientes(data.slice(1)); 
+            // Ya no cortamos la primera fila ya que no hay encabezados
+            renderizarFilasClientes(dataClientes); 
         }
         
         function renderizarFilasClientes(filas) {
@@ -224,15 +276,18 @@
                 return;
             }
 
-            filas.forEach((filaDatos, index) => {
-                const RUC = filaDatos[0];
-                const NOMBRE = filaDatos[1];
+            filas.forEach((filaDatos) => {
+                // ✅ CORRECCIÓN CLAVE: Acceder por nombre de propiedad
+                const RUC = filaDatos.RUC_DNI; 
+                const NOMBRE = filaDatos.Nombre_RazonSocial;
                 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${RUC}</td> 
                     <td>${NOMBRE}</td> 
-                    <td><button onclick="seleccionarCliente('${RUC}', '${NOMBRE}')">Ver Detalle</button></td>
+                    <td>
+                        <button onclick="seleccionarCliente('${RUC}', '${escapeJsString(NOMBRE)}')">Ver Detalle</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -240,16 +295,18 @@
         
         function filtrarClientes() {
             const filtro = document.getElementById("filtroCliente").value.toLowerCase();
-            const filasFiltradas = dataClientes.slice(1).filter(fila => {
-                const ruc = String(fila[0]).toLowerCase();
-                const nombre = String(fila[1]).toLowerCase();
+            
+            // Filtramos sobre el array de objetos JSON
+            const filasFiltradas = dataClientes.filter(fila => {
+                const ruc = String(fila.RUC_DNI).toLowerCase();
+                const nombre = String(fila.Nombre_RazonSocial).toLowerCase();
                 return ruc.includes(filtro) || nombre.includes(filtro);
             });
             renderizarFilasClientes(filasFiltradas);
         }
 
         // ----------------------------------------------------------------------
-        // --- MODAL MAESTRO DEL CLIENTE Y CARGAR DETALLES (sin cambios sustanciales) ---
+        // --- MODAL MAESTRO DEL CLIENTE Y CARGAR DETALLES ---
         // ----------------------------------------------------------------------
 
         function seleccionarCliente(ruc, nombre) {
@@ -278,10 +335,11 @@
             const tbodyContactos = document.getElementById("cuerpoTablaContactos");
             tbodyContactos.innerHTML = '';
             
+            // El backend ya devuelve el array de arrays con encabezados en la posición [0]
             if (datos.contactos && datos.contactos.length > 1) { 
                 datos.contactos.slice(1).forEach((contacto) => {
-                    // El rowIndex (posición 6) es el número de fila real para la edición
-                    const rowIndex = contacto[contacto.length - 1]; 
+                    // El rowIndex (última posición) es el ID ÚNICO DE SUPABASE (ID_Contacto)
+                    const idContacto = contacto[contacto.length - 1]; 
                     
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
@@ -290,7 +348,7 @@
                         <td>${contacto[4]}</td> 
                         <td>${contacto[5]}</td> 
                         <td>
-                            <button onclick="editarContacto(${rowIndex})">Edit</button>
+                            <button onclick="editarContacto(${idContacto})">Edit</button>
                         </td>
                     `;
                     tbodyContactos.appendChild(tr);
@@ -305,8 +363,8 @@
             
             if (datos.direcciones && datos.direcciones.length > 1) { 
                 datos.direcciones.slice(1).forEach((direccion) => {
-                    // El rowIndex (última posición) es el número de fila real para la edición
-                    const rowIndex = direccion[direccion.length - 1]; 
+                    // El rowIndex (última posición) es el ID ÚNICO DE SUPABASE (ID_Direccion)
+                    const idDireccion = direccion[direccion.length - 1]; 
                     
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
@@ -314,7 +372,7 @@
                         <td>${direccion[3]}</td> 
                         <td>${direccion[4]}</td> 
                         <td>
-                            <button onclick="editarDireccion(${rowIndex})">Edit</button>
+                            <button onclick="editarDireccion(${idDireccion})">Edit</button>
                         </td>
                     `;
                     tbodyDirecciones.appendChild(tr);
@@ -325,7 +383,7 @@
         }
         
         // ----------------------------------------------------------------------
-        // --- GESTIÓN DE SUB-MODALES (CONTACTO / DIRECCIÓN) - NUEVO CÓDIGO CLAVE ---
+        // --- GESTIÓN DE SUB-MODALES (CONTACTO / DIRECCIÓN) ---
         // ----------------------------------------------------------------------
         
         /** Muestra el formulario de Contacto y lo configura para Nuevo o Edición. */
@@ -355,6 +413,7 @@
             document.getElementById('modalContacto').querySelector('h3').textContent = 'Cargando datos del Contacto...';
             mostrarModal('modalContacto');
             
+            // Pasamos el ID único de Supabase, que es el rowIndex
             google.script.run
                 .withSuccessHandler(cargarFormularioContacto)
                 .getFilaPorRowIndex(RUC_ACTUAL, rowIndex, 'contacto');
@@ -372,7 +431,7 @@
             document.getElementById('modalContacto').querySelector('h3').textContent = 'Editar Contacto';
             document.getElementById('contactoID').value = data.rowIndex; 
             
-            // 2. Llenar los campos (índices basados en la estructura de la hoja: [ID, RUC, NOMBRE, EMAIL, TELEFONO, CARGO])
+            // 2. Llenar los campos (índices basados en la simulación de array 2D de getFilaPorRowIndex)
             document.getElementById('nombreContacto').value = data.row[2] || '';
             document.getElementById('emailContacto').value = data.row[3] || '';
             document.getElementById('telefonoContacto').value = data.row[4] || '';
@@ -423,6 +482,7 @@
             document.getElementById('modalDireccion').querySelector('h3').textContent = 'Cargando datos de la Dirección...';
             mostrarModal('modalDireccion');
             
+            // Pasamos el ID único de Supabase, que es el rowIndex
             google.script.run
                 .withSuccessHandler(cargarFormularioDireccion)
                 .getFilaPorRowIndex(RUC_ACTUAL, rowIndex, 'direccion');
@@ -440,7 +500,7 @@
             document.getElementById('modalDireccion').querySelector('h3').textContent = 'Editar Dirección';
             document.getElementById('direccionID').value = data.rowIndex; 
             
-            // 2. Llenar los campos (índices basados en la estructura de la hoja: [ID, RUC, TIPO, DIRECCION, CIUDAD])
+            // 2. Llenar los campos (índices basados en la simulación de array 2D de getFilaPorRowIndex)
             document.getElementById('tipoDireccion').value = data.row[2] || 'FISCAL';
             document.getElementById('dirCompleta').value = data.row[3] || '';
             document.getElementById('ciudadDireccion').value = data.row[4] || '';
@@ -470,7 +530,7 @@
         }
         
         // ----------------------------------------------------------------------
-        // --- GUARDADO DE DATOS DEL CLIENTE PRINCIPAL (sin implementar) ---
+        // --- GESTIÓN DEL CLIENTE PRINCIPAL ---
         // ----------------------------------------------------------------------
 
         function guardarClientePrincipal() {
@@ -480,13 +540,67 @@
                  return;
             }
             
-            alert(`Guardando cambio de Razón Social para ${RUC_ACTUAL} a ${nuevoNombre}. (Función de Apps Script 'actualizarNombreCliente' pendiente).`);
+            alert(`Guardando cambio de Razón Social para ${RUC_ACTUAL} a ${nuevoNombre}. (Función de Apps Script 'actualizarNombreCliente' pendiente de implementar).`);
             // Aquí iría google.script.run.withSuccessHandler(refrescarTablaMaestro).actualizarNombreCliente(RUC_ACTUAL, nuevoNombre);
+        }
+        
+        function abrirModalNuevoCliente() {
+            document.getElementById('modalOverlay').style.display = 'block';
+            document.getElementById('modalNuevoCliente').style.display = 'block';
+            document.getElementById('formNuevoCliente').reset(); // Limpiar formulario anterior
         }
 
         function refrescarTablaMaestro() {
             google.script.run.withSuccessHandler(cargarTablaClientes).getListaClientes();
             ocultarTodosLosModales();
+        }
+        function cerrarModalNuevoCliente() {
+            document.getElementById('modalNuevoCliente').style.display = 'none';
+            verificarCierreOverlay(); // Función auxiliar para manejar el fondo oscuro
+        }
+        function verificarCierreOverlay() {
+             if (
+                document.getElementById('modalCliente').style.display !== 'block' &&
+                document.getElementById('modalContacto').style.display !== 'block' &&
+                document.getElementById('modalDireccion').style.display !== 'block' &&
+                document.getElementById('modalNuevoCliente').style.display !== 'block'
+            ) {
+                document.getElementById('modalOverlay').style.display = 'none';
+            }
+        }
+        function registrarNuevoCliente() {
+            const ruc = document.getElementById('newRUC').value.trim();
+            const nombre = document.getElementById('newNombre').value.trim();
+
+            if (!ruc || !nombre) {
+                alert("RUC y Razón Social son obligatorios.");
+                return;
+            }
+            
+            // Validación básica de formato (opcional)
+            if (isNaN(ruc)) {
+                alert("El RUC debe contener solo números.");
+                return;
+            }
+
+            const data = { RUC: ruc, NOMBRE: nombre };
+
+            // Llamada al Backend
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    if (response.success) {
+                        alert("✅ Cliente registrado exitosamente.");
+                        cerrarModalNuevoCliente();
+                        // Recargar la tabla principal para ver el nuevo cliente
+                        google.script.run.withSuccessHandler(cargarTablaClientes).getListaClientes();
+                    } else {
+                        alert("❌ Error: " + response.message);
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    alert("❌ Error de conexión: " + error.message);
+                })
+                .guardarNuevoCliente(data);
         }
 
     </script>
