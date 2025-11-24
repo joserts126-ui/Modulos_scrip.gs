@@ -207,36 +207,58 @@ function getDatosPesadosComercial() {
 }
 
 /**
- * 1. Obtiene los contactos incluyendo el ID para poder guardarlo.
+ * REFACTORIZADO (v3 - Supabase)
+ * Obtiene los contactos para un RUC específico desde la tabla "Contactos"
+ * y "traduce" los nombres de las columnas para el frontend.
  */
 function getContactosParaComercial(ruc) {
   try {
-    if (!ruc) return [];
+    if (!ruc) return []; // Devuelve un array vacío si no hay RUC
+
+    Logger.log(`Ejecutando getContactosParaComercial (Supabase) para RUC: ${ruc}`);
+
+    // 1. Definir la consulta a Supabase
     const tabla = 'Contactos';
-    const columnas = 'ID_Contacto, Nombre_Contacto, Cargo, Correo, Celular'; // ✅ Pedimos ID
+    // Pide las columnas de 'Contactos_rows.csv'
+    const columnas = 'Nombre_Contacto,Cargo,Correo,Celular'; 
+    // Filtra por el RUC (usando el nombre de tu columna en Supabase)
     const filtro = `RUC_DNI=eq.${ruc}`;
-    
+
+    // 2. Usar el traductor
     const contactosDeSupabase = supabaseFetch(tabla, {
       method: 'get',
       params: `${filtro}&select=${columnas}`
     });
 
-    return contactosDeSupabase.map(contacto => {
+    Logger.log(`Se encontraron ${contactosDeSupabase.length} contactos.`);
+
+    // 3. ¡TRADUCCIÓN!
+    // El frontend (Comercial.html) espera: {nombre, cargo, email, telefono, display}
+    // Supabase devuelve: {Nombre_Contacto, Cargo, Correo, Celular}
+    
+    const contactosTraducidos = contactosDeSupabase.map(contacto => {
       const nombre = contacto.Nombre_Contacto || '';
       const cargo = contacto.Cargo || '';
+      
       return {
-        id: contacto.ID_Contacto, // ✅ Devolvemos el ID
         nombre: nombre,
         cargo: cargo,
         email: contacto.Correo || '',
         telefono: contacto.Celular || '',
-        display: `${nombre}${cargo ? ' - ' + cargo : ''}`.trim()
+        display: `${nombre}${cargo ? ' - ' + cargo : ''}`.trim() // El frontend espera esto
       };
     });
+    
+    // 4. Devolver el array de objetos "traducido"
+    return contactosTraducidos;
+
   } catch (e) {
-    return [];
+    Logger.log(`ERROR en getContactosParaComercial (Supabase): ${e.message}`);
+    // Devuelve un array vacío en caso de error para que el frontend no se rompa
+    return []; 
   }
 }
+
 /**
  * Devuelve la representación de fecha segura (ISO string) o un valor por defecto.
  */
@@ -2455,66 +2477,108 @@ function getDatosDePedidoParaOT(lineaID) {
 }
 
 /**
- * 2. Guarda la cotización incluyendo el ID_Contacto.
+ * GUARDA LA COTIZACIÓN EN SUPABASE (vFinal - Corregida para Schema SQL)
  */
 function guardarCotizacion(datos) {
   const permisos = obtenerPermisosUsuario();
-  if (!permisos.puedeEditarCotizacion) return { success: false, message: "Acceso denegado." };
+  if (!permisos.puedeEditarCotizacion) {
+    return { success: false, message: "Acceso denegado." };
+  }
 
   const datosSanitizados = sanitizarDatos(datos);
   const esModoUpdate = !!datosSanitizados.numPedido;
   
   try {
     let codigoPedido;
+    
+    // Validaciones previas
     const lineas = datosSanitizados.Lineas || [];
     if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio.");
 
+    // Parsear RUC a número (Requisito SQL: numeric)
     const rucNumerico = parseFloat(datosSanitizados.RUC);
-    // Validar ID Contacto (si viene vacío o "0", enviamos null)
-    const idContacto = datosSanitizados.Contacto ? parseInt(datosSanitizados.Contacto) : null; 
+    if (isNaN(rucNumerico)) throw new Error("El RUC debe ser numérico.");
 
+    // =====================================================
+    // PREPARACIÓN DE PAYLOADS (Alineados al SQL)
+    // =====================================================
+    
+    // Campos comunes para Create y Update
     const payloadCampos = {
         "Estado_Cot": datosSanitizados.Estado,
         "Total_Cot": parseFloat(datosSanitizados.Total),
         "Moneda": datosSanitizados.Moneda,
-        "Ejecitivo": datosSanitizados.Ejecutivo,
+        // "Ejecitivo": Nota el typo en tu SQL ("i" en vez de "u"). 
+        // Lo mantenemos así para que funcione, o cámbialo a "Ejecutivo" si corriges tu DB.
+        "Ejecitivo": datosSanitizados.Ejecutivo, 
         "Fecha_Inicio": datosSanitizados.fechaEjecucion ? new Date(datosSanitizados.fechaEjecucion).toISOString() : null,
         "Forma_De_Pago": datosSanitizados.Forma_De_Pago || datosSanitizados.Forma_Pago,
         "Empresa": datosSanitizados.Empresa,
-        "RUC": rucNumerico,
-        "ID_Contacto": idContacto, // ✅ GUARDAMOS EL ID
+        "RUC": rucNumerico, // CORREGIDO: En tabla Pedidos se llama "RUC", no "RUC_DNI"
         "Direccion": datosSanitizados.Direccion,
         "Turno": datosSanitizados.Turno,
         "plantillaNotas": datosSanitizados.plantillaNotas || '',
         "aclaracionesServicio": datosSanitizados.aclaracionesServicio || '',
-        "Estado_Factura": "Pendiente"
+        // CAMPO OBLIGATORIO FALTANTE EN TU CÓDIGO ANTERIOR:
+        "Estado_Factura": "Pendiente" 
     };
 
+    // MODO ACTUALIZACIÓN (PATCH)
     if (esModoUpdate) {
       codigoPedido = datosSanitizados.numPedido;
+      Logger.log(`Iniciando MODO UPDATE para: ${codigoPedido}`);
+
       const payloadRPC = {
         "codigo_pedido": codigoPedido,
         "datos_cabecera": payloadCampos,
-        "nuevas_lineas": prepararLineasParaRPC(lineas, codigoPedido)
+        "nuevas_lineas": prepararLineasParaRPC(lineas, codigoPedido) // Función auxiliar abajo
       };
-      supabaseFetch('rpc/actualizar_cotizacion_y_detalles', { method: 'post', payload: payloadRPC });
-    } else {
+      
+      // Usamos la RPC para actualización atómica
+      supabaseFetch('rpc/actualizar_cotizacion_y_detalles', {
+        method: 'post',
+        payload: payloadRPC
+      });
+      
+    } 
+    // MODO CREACIÓN (POST)
+    else {
+      Logger.log("Iniciando MODO CREATE...");
       codigoPedido = generarCodigoPedido(datosSanitizados.Empresa);
+      
+      // Completar campos exclusivos de creación
       payloadCampos.Cot = codigoPedido;
       payloadCampos.Fecha_Creacion = new Date().toISOString();
 
-      supabaseFetch('Pedidos', { method: 'post', payload: payloadCampos });
+      // 1. Insertar Cabecera
+      supabaseFetch('Pedidos', {
+        method: 'post',
+        payload: payloadCampos
+      });
+
+      // 2. Insertar Detalles
       const payloadDetalles = prepararLineasParaInsert(lineas, codigoPedido);
-      supabaseFetch('Detalle_Pedidos', { method: 'post', payload: payloadDetalles });
+      supabaseFetch('Detalle_Pedidos', {
+        method: 'post',
+        payload: payloadDetalles
+      });
     }
     
-    return { success: true, message: esModoUpdate ? "Cotización actualizada" : "Cotización registrada", codigoPedido: codigoPedido };
+    return { 
+      success: true, 
+      message: esModoUpdate ? "Cotización actualizada" : "Cotización registrada",
+      codigoPedido: codigoPedido 
+    };
 
   } catch (error) {
+    // Importante: Devolver el error real para que lo veas en el frontend
     Logger.log(`❌ ERROR en guardarCotizacion: ${error.message}`);
     return { success: false, message: "Error al guardar: " + error.message };
   }
 }
+
+// --- FUNCIONES AUXILIARES PARA LIMPIEZA ---
+
 function prepararLineasParaInsert(lineas, codigoPedido) {
     return lineas.map((linea, i) => ({
         "Cot_Linea_Ref": `${codigoPedido}-L${i + 1}`,
@@ -2536,55 +2600,81 @@ function prepararLineasParaRPC(lineas, codigoPedido) {
 }
 
 /**
- * 3. Obtiene el pedido devolviendo el ID del contacto para que el select lo reconozca.
+ * REFACTORIZADO (vFinal - Corregido Mapeo de Columnas): 
+ * Obtiene los datos para editar un pedido en UNA SOLA LLAMADA a Supabase.
  */
 function obtenerPedidoParaEdicion(numPedido) {
+  Logger.log(`Iniciando obtenerPedidoParaEdicion (vFinal) para: ${numPedido}`);
   try {
+    // 1. Construir la consulta anidada.
+    // IMPORTANTE: 'RUC' es la columna en Pedidos, 'RUC_DNI' es la columna en Clientes.
     const consulta = `
-      select=*,
+      select=
+        *,
         Clientes!inner(RUC_DNI, Nombre_RazonSocial, Direccion_Fiscal),
         Contactos(ID_Contacto, Nombre_Contacto),
-        Detalle_Pedidos (*, Servicios!inner(ID_servicios, Nombre_Servicio))
+        Detalle_Pedidos (
+          *,
+          Servicios!inner(ID_servicios, Nombre_Servicio)
+        )
       &Cot=eq.${numPedido}
     `.replace(/\s/g, '');
 
-    const resultado = supabaseFetch('Pedidos', { method: 'get', params: consulta });
-    if (!resultado || resultado.length === 0) throw new Error(`Pedido ${numPedido} no encontrado.`);
+    // 2. Ejecutar la llamada ÚNICA a Supabase
+    const resultado = supabaseFetch('Pedidos', {
+      method: 'get',
+      params: consulta
+    });
+
+    if (!resultado || resultado.length === 0) {
+      throw new Error(`Pedido ${numPedido} no encontrado.`);
+    }
     
     const pedido = resultado[0];
 
+    // 3. Mapear los datos (AQUÍ ESTABA EL ERROR)
     const datosGenerales = {
       fechaEjecucion: pedido.Fecha_Inicio ? pedido.Fecha_Inicio.split('T')[0] : '',
       Estado: pedido.Estado_Cot,
       Empresa: pedido.Empresa,
-      RUC: pedido.RUC,
-      Cliente: pedido.Clientes.Nombre_RazonSocial,
+      
+      // ✅ CORRECCIÓN 1: La columna en la tabla Pedidos se llama "RUC", no "RUC_DNI"
+      RUC: pedido.RUC, 
+      
+      Cliente: pedido.Clientes.Nombre_RazonSocial, 
       Moneda: pedido.Moneda,
       Forma_De_Pago: pedido.Forma_De_Pago,
       Direccion: pedido.Direccion || (pedido.Clientes ? pedido.Clientes.Direccion_Fiscal : ''),
-      Turno: pedido.Turno || '',
-      Ejecutivo: pedido.Ejecitivo || pedido.Ejecutivo,
+      Turno: pedido.Turno || '', 
       
-      // ✅ CORRECCIÓN: Devolvemos el ID del contacto (si existe), no el nombre
-      Contacto: (pedido.Contactos && pedido.Contactos.ID_Contacto) ? pedido.Contactos.ID_Contacto : ''
+      // ✅ CORRECCIÓN 2: La columna en la tabla Pedidos se llama "Ejecitivo" (typo en DB)
+      Ejecutivo: pedido.Ejecitivo || pedido.Ejecutivo, 
+      
+      // Obtener nombre de contacto si existe relación
+      Contacto: pedido.Contactos ? pedido.Contactos.Nombre_Contacto : '' 
     };
 
-    // Mapeo de líneas (igual que antes, resumido aquí)
-    const lineas = pedido.Detalle_Pedidos.map(linea => ({
+    // 4. Mapear líneas de detalle
+    const lineas = pedido.Detalle_Pedidos.map(linea => {
+      // Calcular subtotal sumando precio*cantidad + movilización
+      const subtotal = (linea.Cantidad * linea.Precio) + (linea.Monto_Movilizacion || 0);
+      return {
         cod: linea.ID_Servicio,
         descripcion: linea.Servicios.Nombre_Servicio,
         cantidad: linea.Cantidad,
         und_medida: linea.UND,
         und_horas_minimas: linea.UND_HORAS_MINIMAS,
-        dias_cotizados: 0,
+        dias_cotizados: 0, 
         horas_minimas_num: linea.Horas_minimas,
         hora_segun: linea.Horas_Segun,
         movilizacion: linea.Monto_Movilizacion,
         precio: linea.Precio,
-        subtotal: (linea.Cantidad * linea.Precio) + (linea.Monto_Movilizacion || 0)
-    }));
+        subtotal: subtotal
+      };
+    });
 
-    return { 
+    // 5. Devolver el objeto combinado
+    const resultadoFinal = { 
       success: true, 
       ...datosGenerales, 
       Lineas: lineas, 
@@ -2593,8 +2683,11 @@ function obtenerPedidoParaEdicion(numPedido) {
       plantillaNotas: pedido.plantillaNotas || '',
       aclaracionesServicio: pedido.aclaracionesServicio || ''
     };
+    
+    return resultadoFinal;
 
   } catch (error) {
+    Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido}: ${error.message}`);
     return manejarError('obtenerPedidoParaEdicion', error);
   }
 }
