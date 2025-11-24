@@ -149,81 +149,78 @@ let datosFiltradosPaginacion = []; // Datos actualmente filtrados para paginar
 
 // === MODIFICAR renderizarTablaResumen ===
 function renderizarTablaResumen(datos) {
-    // Guarda los datos completos (o filtrados) para paginar
-    datosFiltradosPaginacion = datos || [];
-    // Define filasPorPagina según el selector
-    const selectFilas = document.getElementById("filasPorPagina");
-    filasPorPagina = parseInt(selectFilas.value) || 80;
-
-    paginaActual = 1; // Resetear a la primera página cada vez que se renderiza (ej. al filtrar)
-
-    mostrarPagina(paginaActual); // Muestra la primera página
-}
+        // Guarda los datos para paginación
+        datosFiltradosPaginacion = datos || [];
+        const selectFilas = document.getElementById("filasPorPagina");
+        filasPorPagina = parseInt(selectFilas.value) || 80;
+        paginaActual = 1; 
+        mostrarPagina(paginaActual); 
+    }
 
 // === NUEVA FUNCIÓN para mostrar una página específica ===
 function mostrarPagina(numeroPagina) {
         const tbody = document.getElementById("cuerpoTablaResumen");
         tbody.innerHTML = "";
 
-        const datosParaMostrar = datosFiltradosPaginacion; // Esta variable ya la tenías
+        const datosParaMostrar = datosFiltradosPaginacion;
 
-        // Validar si hay datos (datosParaMostrar[0] ya no es encabezado)
-        if (!datosParaMostrar || datosParaMostrar.length === 0 || (datosParaMostrar[0] && datosParaMostrar[0].Cot === "Error")) {
-            const mensaje = (datosParaMostrar[0] && datosParaMostrar[0].Cot === "Error") ? datosParaMostrar[0].Fecha_Creacion : "No hay cotizaciones para mostrar.";
-            tbody.innerHTML = crearFilaVacia(mensaje);
+        if (!datosParaMostrar || datosParaMostrar.length === 0) {
+            tbody.innerHTML = crearFilaVacia("No hay cotizaciones registradas.");
             actualizarControlesPaginacion(0);
             return;
         }
+        
+        if (datosParaMostrar.success === false) {
+             tbody.innerHTML = crearFilaVacia("Error al cargar: " + datosParaMostrar.message);
+             return;
+        }
 
         paginaActual = numeroPagina;
-        const totalFilasDatos = datosParaMostrar.length; // Ya no restamos 1
+        const totalFilasDatos = datosParaMostrar.length;
         const indiceInicio = (paginaActual - 1) * filasPorPagina;
         const indiceFin = indiceInicio + filasPorPagina;
-        
-        // ANTES: .slice(indiceInicio + 1, indiceFin + 1);
-        // AHORA:
         const filasPagina = datosParaMostrar.slice(indiceInicio, indiceFin); 
 
-        const scriptUrl = '<?!= getScriptUrl() ?>';
-
         filasPagina.forEach((fila) => {
-            // ==========================================================
-            // === ¡EL GRAN CAMBIO ESTÁ AQUÍ! ===
-            // Ya no usamos fila[CONFIG.columnas...], usamos los nombres del JSON
-            // ==========================================================
-            
             const numPedido = fila.Cot;
-            const fecha = formatearFechaSimple(fila.Fecha_Creacion); // Usamos una nueva función helper
+            const fecha = formatearFechaSimple(fila.Fecha_Creacion);
             
-            // Obtenemos el nombre del cliente desde el objeto anidado
-            const cliente = (fila.Clientes && fila.Clientes.Nombre_RazonSocial) ? fila.Clientes.Nombre_RazonSocial : (fila.RUC || 'Cliente no encontrado');
+            let nombreCliente = "Cliente no encontrado";
+            if (fila.Clientes) {
+                if (Array.isArray(fila.Clientes) && fila.Clientes.length > 0) {
+                    nombreCliente = fila.Clientes[0].Nombre_RazonSocial;
+                } else if (fila.Clientes.Nombre_RazonSocial) {
+                    nombreCliente = fila.Clientes.Nombre_RazonSocial;
+                }
+            }
+            if (nombreCliente === "Cliente no encontrado" && fila.RUC) {
+                nombreCliente = fila.RUC; 
+            }
             
-            const vendedor = fila.Ejecutivo;
-            const compania = fila.Empresa;
+            // ✅ CORRECCIÓN AQUÍ: Leer 'Ejecitivo'
+            const vendedor = fila.Ejecitivo || '';
+            
+            const compania = fila.Empresa || '';
             const monto = parseFloat(fila.Total_Cot) || 0;
             const moneda = String(fila.Moneda || '').toUpperCase();
-            const estado = fila.Estado_Cot;
-            
-            // ¡IMPORTANTE! El 'rowIndex' que usábamos para PDF/Editar
-            // ahora debe ser el 'numPedido' (Cot), que es el ID único.
+            const estado = fila.Estado_Cot || 'Desconocido';
             const idUnico = numPedido; 
 
             if (!numPedido) return;
 
-            // (El resto de tu lógica de formato de moneda está bien)
-            const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES') ? 'S/ ' : '$ ';
+            const simboloMoneda = (moneda === 'SOL' || moneda === 'SOLES' || moneda === 'PEN') ? 'S/ ' : '$ ';
             const montoFormateado = simboloMoneda + monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
             const tr = document.createElement("tr");
             tr.innerHTML = `
                 <td>${escapeHtml(numPedido)}</td>
                 <td>${escapeHtml(fecha)}</td>
-                <td>${escapeHtml(cliente)}</td>
+                <td>${escapeHtml(nombreCliente)}</td>
                 <td>${escapeHtml(vendedor)}</td>
                 <td>${escapeHtml(compania)}</td>
                 <td class="monto-col">${montoFormateado}</td>
                 <td>${escapeHtml(moneda)}</td>
-                <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado || 'Desconocido')}</span></td>
+                <td><span class="estado-${estado ? escapeHtml(estado.replace(/\s+/g, '-')) : 'Desconocido'}">${escapeHtml(estado)}</span></td>
                 
                 <td><button onclick="editarCotizacionSegura('${escapeHtml(idUnico)}')" class="btn-editar">✏️ Editar</button></td>
                 <td style="text-align: center;"><button onclick="generarPDF('${escapeHtml(idUnico)}')" class="btn-pdf" data-row="${escapeHtml(idUnico)}">📄 PDF</button></td>
@@ -232,7 +229,6 @@ function mostrarPagina(numeroPagina) {
         });
 
         actualizarControlesPaginacion(totalFilasDatos);
-        console.log(`Página ${paginaActual} renderizada (Modo Supabase)...`); 
     }
 
     function formatearFechaSimple(fechaISO) {
