@@ -576,7 +576,7 @@ table.servicios-tabla td button:hover {
 }
 
 .tabla-listado {
-    min-width: 1400px; /* <-- Mantenemos esto (le da un gran ancho) */
+    min-width: 1000px; /* <-- Mantenemos esto (le da un gran ancho) */ servicios-tabla
     /* width: 100%; */ /* <-- LÍNEA ELIMINADA */
     border-collapse: collapse; 
     margin-top: 10px;
@@ -2138,7 +2138,4 @@ input:not([readonly]) {
 .formulario-compacto .formulario-campos.dos-columnas select {
     height: 30px !important;
 }
-
-
-
 </style>
