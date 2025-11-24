@@ -122,49 +122,73 @@ function _getValorizacionesEmitidasSupabase(numPedido) {
 
 
 /**
- * REEMPLAZO (v2 - Supabase RPC)
- * Llama a la RPC 'crear_nueva_valorizacion' para crear la valorización de forma segura.
+ * Crea una valorización llamando a la RPC de Supabase.
+ * (Versión Blindada con manejo de errores interno)
  */
 function crearValorizacion(numPedido, otsSeleccionadas) {
-  const permisos = obtenerPermisosUsuario();
-  if (!permisos.puedeEditarCotizacion) { // Reutiliza un permiso
-    return { success: false, message: "Acceso denegado." };
-  }
-
-  if (!numPedido) return { success: false, message: "No se proporcionó un número de pedido." };
-  if (!otsSeleccionadas || otsSeleccionadas.length === 0) {
-    return { success: false, message: "Debe seleccionar al menos una OT para valorizar." };
-  }
-
-  Logger.log(`Iniciando RPC crear_nueva_valorizacion para ${numPedido} con ${otsSeleccionadas.length} OTs...`);
-  
+  // 1. Validación de Permisos
   try {
-    // 1. Preparar el payload para la RPC
-    // El frontend envía datos extra (rowIndex), los filtramos
-    const payloadOTs = otsSeleccionadas.map(ot => ({
-      "N_OT": ot.otId,
-      "Monto_Servicio": ot.montoServicio,
-      "Monto_Movilizacion": ot.montoMovilizacion,
-      "Fecha": ot.fecha.split('/').reverse().join('-') // Convertir DD/MM/YYYY a YYYY-MM-DD
-    }));
+    const permisos = obtenerPermisosUsuario(); // Asumimos que esta existe en _Core.gs
+    if (!permisos.puedeEditarCotizacion) {
+      return { success: false, message: "Acceso denegado. No tienes permiso para crear valorizaciones." };
+    }
+  } catch (e) {
+    Logger.log("Error al verificar permisos: " + e.message);
+    // Continuamos si falla la verificación de permisos para no bloquear por error de script
+  }
+
+  // 2. Validaciones de Entrada
+  if (!numPedido) return { success: false, message: "Error: No se proporcionó un número de pedido." };
+  if (!otsSeleccionadas || otsSeleccionadas.length === 0) {
+    return { success: false, message: "Error: Debe seleccionar al menos una OT para valorizar." };
+  }
+
+  Logger.log(`Iniciando Valorización para ${numPedido} con ${otsSeleccionadas.length} OTs.`);
+
+  try {
+    // 3. Preparar Payload para Supabase
+    // Transformamos la fecha DD/MM/YYYY a YYYY-MM-DD
+    const payloadOTs = otsSeleccionadas.map(ot => {
+      let fechaFormatoISO = ot.fecha;
+      try {
+        if (ot.fecha && ot.fecha.includes('/')) {
+          fechaFormatoISO = ot.fecha.split('/').reverse().join('-');
+        }
+      } catch (e) {
+        Logger.log("Error al formatear fecha: " + ot.fecha);
+      }
+
+      return {
+        "N_OT": ot.otId,
+        "Monto_Servicio": parseFloat(ot.montoServicio || 0),
+        "Monto_Movilizacion": parseFloat(ot.montoMovilizacion || 0),
+        "Fecha": fechaFormatoISO
+      };
+    });
 
     const payloadRPC = {
       "codigo_pedido": numPedido,
       "ots_json": payloadOTs
     };
-    
-    // 2. Llamar a la RPC
+
+    // 4. Llamada a Supabase (RPC)
     const resultado = supabaseFetch('rpc/crear_nueva_valorizacion', {
       method: 'post',
       payload: payloadRPC
     });
 
-    // 3. Devolver el resultado de la RPC (que ya tiene formato {success: true, ...})
-    Logger.log(`Resultado de la RPC: ${JSON.stringify(resultado)}`);
+    // 5. Retornar resultado
     return resultado;
 
   } catch (e) {
-    Logger.log(`ERROR en crearValorizacion (RPC): ${e.message}`);
-    return manejarError('crearValorizacion', e);
+    // Capturamos CUALQUIER error y lo devolvemos ordenadamente
+    Logger.log(`❌ Error CRÍTICO en crearValorizacion: ${e.message}\nStack: ${e.stack}`);
+    
+    // Devolvemos un objeto success:false para que el frontend muestre el mensaje,
+    // en lugar de lanzar una excepción que provoque "undefined".
+    return { 
+      success: false, 
+      message: "Error del sistema: " + e.message 
+    };
   }
 }
