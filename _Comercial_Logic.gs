@@ -73,34 +73,6 @@ function formatearParaInputDate(rawFecha) {
     return ''; // Fecha inválida
 }
 
-/**
- * Función unificada para obtener datos filtrados (usa crudHoja en _Core.gs)
- */
-function obtenerDatosFiltrados(sheetName, filtro = {}) {
-    return crudHoja('FILTER', sheetName, null, filtro);
-}
-
-/**
- * Función optimizada para búsqueda (usa obtenerDatosHoja en _Core.gs)
- */
-function buscarRegistro(sheetName, criterio, columnaBusqueda = 0) {
-    const allData = obtenerDatosHoja(sheetName);
-    if (allData.length <= 1) return null;
-    
-    const criterioStr = String(criterio).trim();
-    for (let i = 1; i < allData.length; i++) {
-        const valor = String(allData[i][columnaBusqueda] || '').trim();
-        if (valor === criterioStr) {
-            return {
-                datos: allData[i],
-                indiceFila: i + 1,
-                encabezados: allData[0]
-            };
-        }
-    }
-    return null;
-}
-
 // ====================================================
 // === FUNCIONES DE PROCESAMIENTO AUXILIAR CRÍTICO ===
 // === (Aseguran que la edición no se caiga) ===
@@ -121,40 +93,6 @@ function procesarMontoRapido(rawMonto) {
         }
     }
     return parseFloat(numero) || 0;
-}
-
-// ====================================================
-// === FUNCIONES DE BÚSQUEDA Y FILTRO DE DATOS ===
-// ====================================================
-
-/**
- * Función unificada para obtener datos filtrados (usa crudHoja en _Core.gs)
- */
-function obtenerDatosFiltrados(sheetName, filtro = {}) {
-    // Esta función llama a crudHoja('FILTER') definido en _Core.gs
-    return crudHoja('FILTER', sheetName, null, filtro);
-}
-
-/**
- * Función optimizada para búsqueda (usa obtenerDatosHoja en _Core.gs)
- */
-function buscarRegistro(sheetName, criterio, columnaBusqueda = 0) {
-    // obtenerDatosHoja se asume definido en _Core.gs
-    const allData = obtenerDatosHoja(sheetName);
-    if (allData.length <= 1) return null;
-    
-    const criterioStr = String(criterio).trim();
-    for (let i = 1; i < allData.length; i++) {
-        const valor = String(allData[i][columnaBusqueda] || '').trim();
-        if (valor === criterioStr) {
-            return {
-                datos: allData[i],
-                indiceFila: i + 1,
-                encabezados: allData[0]
-            };
-        }
-    }
-    return null;
 }
 
 // ====================================================
@@ -210,27 +148,6 @@ function getDatosInicialesOT() {
     } catch (e) {
         return manejarError('getDatosInicialesOT', e);
     }
-}
-
-
-// ====================================================
-// === UTILIDADES DE DATOS SIMPLIFICADAS (USANDO _Core.gs) ===
-// ====================================================
-
-function getListaHoraSegun() {
-    return getListaValoresUnicos(HOJA_SERVICIOS, 5);
-}
-
-function getListaUnidadesDeMedida() {
-    return getListaValoresUnicos(HOJA_SERVICIOS, 6);
-}
-
-function buscarServicioPorCodigo(codServicio) {
-    return buscarRegistro(HOJA_SERVICIOS, codServicio, 0); 
-}
-
-function getListaServicios() {
-    return obtenerDatosHoja(HOJA_SERVICIOS);
 }
 
 // ====================================================
@@ -290,138 +207,36 @@ function getDatosPesadosComercial() {
 }
 
 /**
- * REFACTORIZADO (v3 - Supabase)
- * Obtiene los contactos para un RUC específico desde la tabla "Contactos"
- * y "traduce" los nombres de las columnas para el frontend.
+ * 1. Obtiene los contactos incluyendo el ID para poder guardarlo.
  */
 function getContactosParaComercial(ruc) {
   try {
-    if (!ruc) return []; // Devuelve un array vacío si no hay RUC
-
-    Logger.log(`Ejecutando getContactosParaComercial (Supabase) para RUC: ${ruc}`);
-
-    // 1. Definir la consulta a Supabase
+    if (!ruc) return [];
     const tabla = 'Contactos';
-    // Pide las columnas de 'Contactos_rows.csv'
-    const columnas = 'Nombre_Contacto,Cargo,Correo,Celular'; 
-    // Filtra por el RUC (usando el nombre de tu columna en Supabase)
+    const columnas = 'ID_Contacto, Nombre_Contacto, Cargo, Correo, Celular'; // ✅ Pedimos ID
     const filtro = `RUC_DNI=eq.${ruc}`;
-
-    // 2. Usar el traductor
+    
     const contactosDeSupabase = supabaseFetch(tabla, {
       method: 'get',
       params: `${filtro}&select=${columnas}`
     });
 
-    Logger.log(`Se encontraron ${contactosDeSupabase.length} contactos.`);
-
-    // 3. ¡TRADUCCIÓN!
-    // El frontend (Comercial.html) espera: {nombre, cargo, email, telefono, display}
-    // Supabase devuelve: {Nombre_Contacto, Cargo, Correo, Celular}
-    
-    const contactosTraducidos = contactosDeSupabase.map(contacto => {
+    return contactosDeSupabase.map(contacto => {
       const nombre = contacto.Nombre_Contacto || '';
       const cargo = contacto.Cargo || '';
-      
       return {
+        id: contacto.ID_Contacto, // ✅ Devolvemos el ID
         nombre: nombre,
         cargo: cargo,
         email: contacto.Correo || '',
         telefono: contacto.Celular || '',
-        display: `${nombre}${cargo ? ' - ' + cargo : ''}`.trim() // El frontend espera esto
+        display: `${nombre}${cargo ? ' - ' + cargo : ''}`.trim()
       };
     });
-    
-    // 4. Devolver el array de objetos "traducido"
-    return contactosTraducidos;
-
   } catch (e) {
-    Logger.log(`ERROR en getContactosParaComercial (Supabase): ${e.message}`);
-    // Devuelve un array vacío en caso de error para que el frontend no se rompa
-    return []; 
+    return [];
   }
 }
-
-/**
- * FUNCIÓN DE AYUDA (PRIORIDAD 2)
- * Crea o actualiza la fila de resumen en la hoja 'ResumenCot'.
- * Esta función es llamada por 'guardarCotizacion'.
- * @param {string} codigoPedido - El ID del pedido (ej. "COT.ALP...").
- * @param {Object} datosSanitizados - Los datos de cabecera del formulario.
- * @param {number} filaInicioDataCot - El N° de fila donde se insertó la *primera* línea en DataCot.
- */
-function _actualizarResumenCot(codigoPedido, datosSanitizados, filaInicioDataCot) {
-    try {
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheetResumen = ss.getSheetByName(HOJA_RESUMEN_COT);
-        
-        if (!sheetResumen) {
-            Logger.log(`Error: No se encontró la hoja de resumen '${HOJA_RESUMEN_COT}'. No se puede actualizar el resumen.`);
-            return; // Salir silenciosamente para no detener el guardado principal
-        }
-
-        const COL_MAP_RESUMEN = getColumnMap(HOJA_RESUMEN_COT);
-        const ID_PEDIDO_COL = COL_MAP_RESUMEN['ID_PEDIDO'];
-
-        if (ID_PEDIDO_COL === undefined) {
-             Logger.log(`Error: No se encontró la columna 'ID_Pedido' en '${HOJA_RESUMEN_COT}'.`);
-             return;
-        }
-
-        const allDataResumen = sheetResumen.getDataRange().getValues();
-        let rowIndexToUpdate = -1;
-
-        // Buscar la fila existente
-        for (let i = 1; i < allDataResumen.length; i++) {
-            if (String(allDataResumen[i][ID_PEDIDO_COL] || '').trim() === codigoPedido) {
-                rowIndexToUpdate = i + 1; // N° de fila (1-based)
-                break;
-            }
-        }
-
-        // Preparar la fila con los datos más recientes
-        const montoTotal = parseFloat(datosSanitizados.Total) || 0;
-        const numColsResumen = sheetResumen.getLastColumn() > 0 ? sheetResumen.getLastColumn() : 10;
-        const filaResumen = new Array(numColsResumen).fill('');
-
-        filaResumen[COL_MAP_RESUMEN['ID_PEDIDO']] = codigoPedido;
-        filaResumen[COL_MAP_RESUMEN['FECHA_COT']] = datosSanitizados.numPedido ? (allDataResumen[rowIndexToUpdate -1][COL_MAP_RESUMEN['FECHA_COT']] || new Date()) : new Date(); // Conservar fecha original si se actualiza
-        filaResumen[COL_MAP_RESUMEN['CLIENTE']] = datosSanitizados.Cliente || '';
-        filaResumen[COL_MAP_RESUMEN['ID_CLIENTE']] = datosSanitizados.RUC || '';
-        filaResumen[COL_MAP_RESUMEN['EJECUTIVO']] = datosSanitizados.Ejecutivo || '';
-        filaResumen[COL_MAP_RESUMEN['EMPRESA']] = datosSanitizados.Empresa || '';
-        filaResumen[COL_MAP_RESUMEN['MONTO_TOTAL']] = montoTotal;
-        filaResumen[COL_MAP_RESUMEN['MONEDA']] = datosSanitizados.Moneda || '';
-        filaResumen[COL_MAP_RESUMEN['ESTADO_PEDIDO']] = datosSanitizados.Estado || '';
-        
-        // Guardar el RowIndex de DataCot solo en la creación
-        if (rowIndexToUpdate === -1) {
-             filaResumen[COL_MAP_RESUMEN['DATACOT_ROWINDEX']] = filaInicioDataCot;
-        } else {
-             // Conservar el RowIndex original si ya existía
-             filaResumen[COL_MAP_RESUMEN['DATACOT_ROWINDEX']] = allDataResumen[rowIndexToUpdate -1][COL_MAP_RESUMEN['DATACOT_ROWINDEX']];
-        }
-
-
-        // Escribir en la hoja de resumen
-        if (rowIndexToUpdate > 1) {
-            // Actualizar fila existente
-            sheetResumen.getRange(rowIndexToUpdate, 1, 1, filaResumen.length).setValues([filaResumen]);
-        } else {
-            // Crear nueva fila
-            sheetResumen.appendRow(filaResumen);
-        }
-
-        // Invalidar caché de resumen
-        cache.remove(`hoja_${HOJA_RESUMEN_COT}`);
-        Logger.log(`ResumenCot actualizado para ${codigoPedido}.`);
-
-    } catch (e) {
-        Logger.log(`ERROR al actualizar ResumenCot: ${e.message}`);
-        enviarNotificacionError(`Fallo al actualizar ResumenCot para ${codigoPedido}: ${e.message}`);
-    }
-}
-
 /**
  * Devuelve la representación de fecha segura (ISO string) o un valor por defecto.
  */
@@ -442,117 +257,162 @@ function getSafeDateString(value, defaultValue) {
     return new Date(defaultValue || new Date()).toISOString();
 }
 /**
- * Guarda o actualiza una Dirección usando crudHoja.
+ * REFACTORIZADO: Guarda o actualiza una Dirección usando supabaseFetch.
+ * Se asegura de que el RUC_DNI sea NUMERIC.
  */
 function guardarOActualizarDireccion(data) {
     try {
         const datosSanitizados = sanitizarDatos(data);
-        const rowIndex = parseInt(datosSanitizados.rowIndex);
+        const idDireccion = datosSanitizados.rowIndex; 
         
-        // Generar un ID solo si es un nuevo registro
-        const idDireccion = datosSanitizados.ID_DIRECCION || (rowIndex > 1 ? datosSanitizados.ID_DIRECCION : `DIR-${new Date().getTime()}`);
+        // 1. Parsear RUC_DNI a NUMERIC (bigint)
+        const rucNumerico = parseFloat(datosSanitizados.RUC);
+        if (isNaN(rucNumerico)) throw new Error("RUC/DNI no es un valor numérico válido para Direcciones.");
         
-        // Valores alineados con las columnas de la hoja Direcciones
-        const nuevosValores = [
-            idDireccion,                            // Columna 1: ID
-            datosSanitizados.RUC,                   // Columna 2: RUC
-            datosSanitizados.TIPO,                  // Columna 3: TIPO
-            datosSanitizados.DIRECCION,             // Columna 4: DIRECCION
-            datosSanitizados.CIUDAD                 // Columna 5: CIUDAD
-        ];
+        const payload = {
+            "RUC_DNI": rucNumerico, 
+            "Tipo": datosSanitizados.TIPO,
+            // Nombres de columna probables si la tabla existiera
+            "Direccion_Completa": datosSanitizados.DIRECCION, 
+            "Ciudad_Distrito": datosSanitizados.CIUDAD      
+        };
         
-        const operacion = rowIndex > 1 ? 'UPDATE' : 'CREATE';
-        
-        const resultado = crudHoja(operacion, HOJA_DIRECCIONES, { rowIndex: rowIndex, valores: nuevosValores });
+        let metodo;
+        let params;
 
-        if (resultado.success) {
-            return { success: true, message: "Dirección guardada exitosamente" };
-        } else {
-            throw new Error(resultado.message);
+        if (idDireccion && parseInt(idDireccion) > 0) { 
+            metodo = 'patch';
+            params = `ID_Direccion=eq.${idDireccion}`; // Clave primaria
+        } else { 
+            metodo = 'post';
+            params = '';
         }
+
+        // Asume que la tabla es 'Direcciones'
+        supabaseFetch('Direcciones', { 
+            method: metodo,
+            payload: payload,
+            params: params
+        });
+        
+        return { success: true, message: "Dirección guardada exitosamente" };
     } catch (error) {
-        throw new Error("Error al guardar la dirección: " + error.message);
+        return manejarError("guardarOActualizarDireccion", error);
     }
 }
 
-// ====================================================
-// === FUNCIONES DE SERVICIOS OPTIMIZADAS (CRUD) ===
-// ====================================================
-
+/**
+ * Obtiene los datos iniciales para el módulo de Servicios desde Supabase.
+ */
 function getDatosInicialesServicios() {
     try {
-        const allServiciosData = obtenerDatosHoja(HOJA_SERVICIOS);
-        if (allServiciosData.length === 0) {
-            return {
-                servicios: [['ID Servicio', 'Descripción del Servicio', 'Precio Unitario', 'Costo Unitario', 'Hora según', 'Und. Medida']],
-                horasSegun: [],
-                undMedida: [],
-            };
-        }
-        
+        // 1. Obtener Servicios de Supabase
+        // Nota: Pedimos todas las columnas.
+        const servicios = supabaseFetch('Servicios', {
+            method: 'get',
+            params: 'select=*&order=Nombre_Servicio.asc'
+        });
+
+        // 2. Devolver estructura combinada
         return {
-            servicios: allServiciosData,
-            horasSegun: getListaValoresUnicosOptimizada(allServiciosData, 4),
-            undMedida: getListaValoresUnicosOptimizada(allServiciosData, 5)
+            success: true,
+            servicios: servicios || [], // Array de objetos JSON
+            horasSegun: LISTA_HORAS_SEGUN, // Constante de _Constants_Lists.gs
+            undMedida: LISTA_UND_MEDIDA    // Constante de _Constants_Lists.gs
         };
+
     } catch (error) {
         return manejarError('getDatosInicialesServicios', error);
     }
 }
 
-function guardarOActualizarServicio(dataObject) {
-  // --- NUEVA VERIFICACIÓN DE PERMISO ---
+/**
+ * Guarda o actualiza un Servicio usando supabaseFetch.
+ * AHORA USA LAS COLUMNAS REALES: Hora_Segun y Und_Medida.
+ */
+function guardarOActualizarServicio(data) {
     const permisos = obtenerPermisosUsuario();
     if (!permisos.puedeEditarServicios) {
-        // Devolver un error manejable
         return { success: false, message: "Acceso denegado. No tiene permiso para editar servicios." };
     }
-    // --- FIN DE VERIFICACIÓN ---
+    
     try {
-        const codigoServicio = (dataObject['ID Servicio'] || '').toString().trim();
-        const descripcion = (dataObject['Descripción del Servicio'] || '').toString().trim();
+        const datosSanitizados = sanitizarDatos(data);
+        const idServicio = datosSanitizados.rowIndex; 
         
-        if (!codigoServicio) throw new Error("El código del servicio es requerido");
-        if (!descripcion) throw new Error("La descripción del servicio es requerida");
+        // Mapeo a las columnas de Supabase
+        // IMPORTANTE: 'hora_segun' y 'und_medida' en minúsculas
+        const payload = {
+            "Nombre_Servicio": datosSanitizados.DESCRIPCION, 
+            "hora_segun": datosSanitizados.HORA_SEGUN,       
+            "und_medida": datosSanitizados.UND_MEDIDA,       
+            
+            "Maquinaria": datosSanitizados.Maquinaria || '', 
+            "Tipo": datosSanitizados.Tipo || '',
+            "Abreviatura": datosSanitizados.Abreviatura || '',
+            "Personal": datosSanitizados.Personal || ''
+        };
+
+        let metodo;
+        let params;
         
-        if (parseInt(dataObject.rowIndex) <= 1) { 
-            const servicioExistente = buscarServicioPorCodigo(codigoServicio);
-            if (servicioExistente) throw new Error(`El código ${codigoServicio} ya existe. Use un código único.`);
+        if (idServicio && parseInt(idServicio) > 0) {
+             metodo = 'patch';
+             params = `ID_servicios=eq.${idServicio}`;
+        } else {
+             metodo = 'post';
+             params = '';
         }
+
+        supabaseFetch('Servicios', { 
+            method: metodo,
+            payload: payload,
+            params: params
+        });
         
-        const valores = [
-            codigoServicio,
-            descripcion,
-            parseFloat(dataObject['Precio Unitario'] || 0),
-            parseFloat(dataObject['Costo Unitario'] || 0),
-            dataObject['Hora según'] || '',
-            dataObject['Und. Medida'] || '',
-            dataObject['Notas'] || ''
-        ];
-        
-        const resultado = crudHoja(
-            parseInt(dataObject.rowIndex) > 1 ? 'UPDATE' : 'CREATE',
-            HOJA_SERVICIOS, 
-            { rowIndex: dataObject.rowIndex, valores: valores }
-        );
-        return resultado;
-        
+        return { success: true, message: "Servicio guardado exitosamente" };
     } catch (error) {
-        throw error;
+        // Devolvemos el error real para facilitar la depuración
+        Logger.log("Error en guardarOActualizarServicio: " + error.message);
+        return { success: false, message: error.message }; 
     }
 }
-
+/**
+ * Obtiene un Servicio por su ID único de Supabase (ID_servicios).
+ */
 function obtenerServicioPorRowIndex(rowIndex) {
     try {
-        const rowData = crudHoja('READ_ROW', HOJA_SERVICIOS, { rowIndex: rowIndex });
-        if (!rowData) throw new Error("No se encontró el servicio.");
-
-        const allData = obtenerDatosHoja(HOJA_SERVICIOS);
-        const encabezados = allData[0];
+        if (!rowIndex || rowIndex <= 0) throw new Error("ID de Servicio inválido.");
         
-        return { row: rowData, rowIndex: rowIndex, encabezados: encabezados };
+        const params = `ID_servicios=eq.${rowIndex}`;
+        const resultado = supabaseFetch('Servicios', { method: 'get', params: params });
+        
+        if (resultado && resultado.length > 0) {
+            const servicio = resultado[0];
+            
+            // Simulamos la estructura de array 2D que el frontend espera
+            // Leemos hora_segun y und_medida (minúsculas)
+            const servicioSimulado = [
+                 servicio.ID_servicios,
+                 servicio.Nombre_Servicio,
+                 '', 
+                 '', 
+                 servicio.hora_segun || '', 
+                 servicio.und_medida || '' 
+             ];
+
+            return { 
+                 success: true, 
+                 row: servicioSimulado, 
+                 rowIndex: rowIndex 
+            };
+        }
+
+        return { success: false, message: 'Servicio no encontrado.' };
+        
     } catch (error) {
-        throw new Error("No se pudo cargar el servicio: " + error.message);
+        Logger.log("Error en obtenerServicioPorRowIndex: " + error.message);
+        return { success: false, message: error.message };
     }
 }
 
@@ -561,86 +421,138 @@ function obtenerServicioPorRowIndex(rowIndex) {
 // === FUNCIONES DE MÓDULO CONTACTOS (DETALLE) ===
 // ====================================================
 
+/**
+ * REEMPLAZO (v4 - Supabase)
+ * Obtiene los Contactos y Direcciones para un RUC específico usando Supabase.
+ * Devuelve arrays 2D (con el ID de Supabase como el último elemento para simular ROW_INDEX)
+ * para mantener la compatibilidad con Contactos.html.
+ */
 function getContactosYDirecciones(ruc) {
     try {
-        const allContactos = obtenerDatosHoja(HOJA_CONTACTOS);
-        const allDirecciones = obtenerDatosHoja(HOJA_DIRECCIONES);
-
-        // Función auxiliar para añadir el rowIndex
-        const obtenerDetallesConRowIndex = (allData, colRUC) => {
-            if (allData.length <= 1) return [allData[0]];
-            const headers = allData[0];
-            const filteredRows = allData.slice(1).filter(row => String(row[colRUC]) == String(ruc));
-            
-            const rowsWithIndex = filteredRows.map(row => {
-                // Buscamos el índice original en la hoja completa para el CRUD
-                const rowIndex = allData.findIndex(dataRow => JSON.stringify(dataRow) === JSON.stringify(row));
-                return row.concat(rowIndex + 1); 
-            });
-            // Devuelve encabezados con ROW_INDEX y filas de datos
-            return [headers.concat("ROW_INDEX")].concat(rowsWithIndex);
-        };
+        if (!ruc) return { contactos: [['ID', 'RUC', 'NOMBRE', 'EMAIL', 'TELÉFONO', 'CARGO', 'ROW_INDEX']], direcciones: [['ID', 'RUC', 'TIPO', 'DIRECCIÓN', 'CIUDAD', 'ROW_INDEX']] };
         
-        // Usamos los índices RUC de las constantes
-        const contactos = obtenerDetallesConRowIndex(allContactos, CONTACTO_COLS.RUC);
-        const direcciones = obtenerDetallesConRowIndex(allDirecciones, DIRECCION_COLS.RUC);
+        // RUC_DNI es NUMERIC en el esquema SQL, lo parseamos
+        const rucNumerico = parseFloat(ruc);
+        if (isNaN(rucNumerico)) throw new Error("RUC no es un valor numérico válido.");
+        
+        // 1. Obtener Contactos
+        const contactoCols = 'ID_Contacto, RUC_DNI, Nombre_Contacto, Correo, Celular, Cargo';
+        const paramsContacto = `RUC_DNI=eq.${rucNumerico}&select=${contactoCols}`;
+        const contactos = supabaseFetch('Contactos', { method: 'get', params: paramsContacto });
 
-        return { contactos: contactos, direcciones: direcciones };
+        // 2. Obtener Direcciones
+        // Asumimos tabla Direcciones con estas columnas, aunque no está en el esquema SQL provisto.
+        const direccionCols = 'ID_Direccion, RUC_DNI, Tipo, Direccion_Completa, Ciudad_Distrito'; 
+        const paramsDireccion = `RUC_DNI=eq.${rucNumerico}&select=${direccionCols}`;
+        const direcciones = supabaseFetch('Direcciones', { method: 'get', params: paramsDireccion });
+
+        // 3. Mapear Contactos a formato 2D + ID
+        const headersContacto = ['ID', 'RUC', 'NOMBRE', 'EMAIL', 'TELÉFONO', 'CARGO', 'ROW_INDEX'];
+        const contactosMapeados = [headersContacto];
+        contactos.forEach(c => {
+            contactosMapeados.push([
+                c.ID_Contacto,        // [0] ID
+                c.RUC_DNI,            // [1] RUC
+                c.Nombre_Contacto,    // [2] NOMBRE
+                c.Correo,             // [3] EMAIL
+                c.Celular,            // [4] TELÉFONO
+                c.Cargo,              // [5] CARGO
+                c.ID_Contacto         // [6] ID_Contacto como ROW_INDEX
+            ]);
+        });
+        
+        // 4. Mapear Direcciones a formato 2D + ID
+        const headersDireccion = ['ID', 'RUC', 'TIPO', 'DIRECCIÓN', 'CIUDAD', 'ROW_INDEX'];
+        const direccionesMapeadas = [headersDireccion];
+        direcciones.forEach(d => {
+            direccionesMapeadas.push([
+                d.ID_Direccion,       // [0] ID
+                d.RUC_DNI,            // [1] RUC
+                d.Tipo,               // [2] TIPO
+                d.Direccion_Completa, // [3] DIRECCIÓN
+                d.Ciudad_Distrito,    // [4] CIUDAD
+                d.ID_Direccion        // [5] ID_Direccion como ROW_INDEX
+            ]);
+        });
+        
+        return { 
+            contactos: contactosMapeados, 
+            direcciones: direccionesMapeadas 
+        };
+
     } catch (error) {
         return manejarError('getContactosYDirecciones', error);
     }
 }
 
+/**
+ * Obtiene una fila de Contacto, Dirección o Servicio por su ID único de Supabase (rowIndex).
+ */
 function getFilaPorRowIndex(ruc, rowIndex, tipo) {
     try {
-        let sheetName;
-        if (tipo === 'contacto') sheetName = HOJA_CONTACTOS;
-        else if (tipo === 'direccion') sheetName = HOJA_DIRECCIONES;
-        else if (tipo === 'servicio') sheetName = HOJA_SERVICIOS;
-        else throw new Error("Tipo de búsqueda inválido.");
+        if (!rowIndex || rowIndex <= 0) {
+            throw new Error(`ID Inválido para ${tipo}`);
+        }
         
-        const rowData = crudHoja('READ_ROW', sheetName, { rowIndex: rowIndex });
+        let tabla;
+        let columnaID;
+        let mapeo;
 
-        if (!rowData) throw new Error("Fila no encontrada o fuera de rango.");
+        if (tipo === 'contacto') {
+            tabla = 'Contactos';
+            columnaID = 'ID_Contacto'; 
+            // Mapea el objeto de Supabase a los índices de array que espera Contactos.html
+            mapeo = (data) => [data.ID_Contacto, data.RUC_DNI, data.Nombre_Contacto, data.Correo, data.Celular, data.Cargo];
+        } else if (tipo === 'direccion') {
+            tabla = 'Direcciones'; 
+            columnaID = 'ID_Direccion'; 
+            mapeo = (data) => [data.ID_Direccion, data.RUC_DNI, data.Tipo, data.Direccion_Completa, data.Ciudad_Distrito];
+        } else if (tipo === 'servicio') {
+            tabla = 'Servicios';
+            columnaID = 'ID_servicios';
+            // Aquí debes devolver el array simulado de 7 columnas que espera Servicios.html
+            mapeo = (data) => [data.ID_servicios, data.Nombre_Servicio, '', '', data.Hora_Segun || '', data.Und_Medida || '', ''];
+        } else {
+            throw new Error('Tipo de dato no reconocido: ' + tipo);
+        }
+        
+        const params = `${columnaID}=eq.${rowIndex}`;
+        const resultado = supabaseFetch(tabla, { method: 'get', params: params });
+        
+        if (resultado && resultado.length > 0) {
+            // El array mapeado es la simulación de la fila de Sheets
+            const filaArraySimulado = mapeo(resultado[0]); 
+            return { 
+                success: true, 
+                row: filaArraySimulado, 
+                rowIndex: rowIndex 
+            };
+        }
 
-        return { row: rowData, rowIndex: rowIndex };
+        return { success: false, message: 'No se encontró la fila.' };
+        
     } catch (error) {
-        return manejarError('getFilaPorRowIndex', error);
+        return manejarError("getFilaPorRowIndex", error);
     }
 }
-
 /**
- * REFACTORIZADO (v3 - Supabase)
- * Obtiene la lista de cotizaciones desde la tabla "Pedidos"
- * y la cruza con "Clientes" para obtener el nombre.
+ * Obtiene la lista de cotizaciones para el Resumen.
+ * CORREGIDO: Usa 'Ejecitivo' (nombre real en DB) en lugar de 'Ejecutivo'.
  */
 function getListaCotizacionesResumen() {
   try {
-    Logger.log("Ejecutando getListaCotizacionesResumen (Versión Supabase)...");
+    // Consulta corregida: "Ejecitivo"
+    const consulta = 'select=Cot,Fecha_Creacion,Ejecitivo,Empresa,Total_Cot,Moneda,Estado_Cot,RUC,Clientes(Nombre_RazonSocial)&order=Fecha_Creacion.desc';
 
-    // 1. Definimos la consulta a Supabase.
-    // Esta consulta especial le pide a Supabase que:
-    // "Selecciona todas estas columnas de 'Pedidos', y de la tabla 'Clientes' 
-    // (que está conectada por el RUC), tráeme solo 'Nombre_RazonSocial'"
-    //
-    // ¡IMPORTANTE! Esto solo funciona si creaste una Foreign Key en Supabase
-    // desde 'Pedidos.RUC' hacia 'Clientes.RUC_DNI'.
-    
-    const consulta = 'select=Cot,Fecha_Creacion,Ejecutivo,Empresa,Total_Cot,Moneda,Estado_Cot,RUC,Clientes(Nombre_RazonSocial)';
-
-    // 2. Usamos el traductor
     const pedidos = supabaseFetch('Pedidos', {
       method: 'get',
       params: consulta
     });
-
-    Logger.log(`Se encontraron ${pedidos.length} pedidos.`);
     
-    // 3. Devolvemos el JSON. El frontend (HTML) se encargará de procesarlo.
-    return pedidos; // Esto es un Array de Objetos JSON
+    return pedidos || []; 
 
   } catch (e) {
-    Logger.log(`❌ ERROR FATAL en getListaCotizacionesResumen (Supabase): ${e.message} \n ${e.stack}`);
+    Logger.log(`Error en getListaCotizacionesResumen: ${e.message}`);
     return manejarError('getListaCotizacionesResumen', e);
   }
 }
@@ -926,149 +838,94 @@ function getListaOT() {
 }
 
 /**
- * Obtiene una Orden de Trabajo por su número de OT (para edición/visualización).
- * Implementa mapeo para extracción robusta.
+ * Obtiene los datos de una OT por su número, desde la tabla Ordenes_Trabajo en Supabase.
  */
-function obtenerOTPorNumero(numeroOT) {
+function obtenerOTPorNumero(numOT) {
     try {
-        const OT_SHEET = HOJA_OT; 
-        const COL_MAP = getColumnMap(OT_SHEET);
-        const allData = obtenerDatosHoja(OT_SHEET);
-        const OT_COL = COL_MAP['N° OT'] || 0; 
+        if (!numOT) return { success: false, message: "Número de OT no proporcionado." };
         
-        const filaOT = allData.slice(1).find(row => String(row[OT_COL] || '').trim() === numeroOT);
-        
-        if (!filaOT) throw new Error(`OT ${numeroOT} no encontrada.`);
-        
-        const getValue = (colName) => getFilaValue(filaOT, COL_MAP, colName);
+        const params = `N_OT=eq.${numOT}&select=*, Detalle_Pedidos!inner(Cot_Linea_Ref)`;
 
-        const datos = {
-            numeroOT: String(getValue('N° OT') || ''),
-            fecha: getSafeDateString(getValue('Fecha')),
-            cliente: String(getValue('Cliente') || ''), 
-            servicio: String(getValue('Servicio/Máquina') || ''),
-            pedido: String(getValue('Pedido') || ''),
-            horaInicio: String(getValue('Hora Inicio') || ''),
-            horaFin: String(getValue('Hora Fin') || ''),
-            tiempoRefrigerio: parseFloat(getValue('Tiempo Refrigerio (min)') || 0) || 0,
-            horometroInicio: parseFloat(getValue('Horómetro Inicio') || 0) || 0,
-            horometroFin: parseFloat(getValue('Horómetro Fin') || 0) || 0,
-            esCamionGrua: String(getValue('Es Camión Grúa') || 'NO'),
-            horometroInicioCamion: parseFloat(getValue('Horómetro Inicio Camión') || 0) || 0,
-            horometroFinCamion: parseFloat(getValue('Horómetro Fin Camión') || 0) || 0,
-            horometroInicioGrua: parseFloat(getValue('Horómetro Inicio Grúa') || 0) || 0,
-            horometroFinGrua: parseFloat(getValue('Horómetro Fin Grúa') || 0) || 0,
-            tiempoTotal: parseFloat(getValue('Horas Trab.') || 0) || 0,
-            horometroTrabajado: parseFloat(getValue('Horómetro Trab.') || 0) || 0,
-            usuario: String(getValue('Usuario Registro') || ''),
-            fechaRegistro: getSafeDateString(getValue('Fecha Registro'))
-        };
+        const resultado = supabaseFetch('Ordenes_Trabajo', {
+            method: 'get',
+            params: params
+        });
 
-        return { success: true, data: datos }; 
-    } catch (e) {
-        return manejarError('obtenerOTPorNumero', e);
+        if (resultado && resultado.length > 0) {
+            const ot = resultado[0]; 
+            const linea = ot.Detalle_Pedidos;
+            
+            // Mapeamos los nombres de Supabase a los nombres del frontend de RegistrarOT.html
+            const datosMapeados = {
+                numeroOT: ot.N_OT,
+                otIDExistente: ot.N_OT,
+                // Usamos la referencia de texto para que el frontend la use al actualizar
+                lineaIDAsociada: linea.Cot_Linea_Ref, 
+                fecha: formatearParaInputDate(ot.Fecha),
+                horaInicio: ot.Hora_Inicio,
+                horaFin: ot.Hora_Fin,
+                tiempoRefrigerio: ot.Tiempo_Refrigerio,
+                horometroInicio: ot.Horometro_Inicio,
+                horometroFin: ot.Horometro_Fin,
+                montoDespacho: ot.Monto_Servicio,
+                montoMovilizacion: ot.Monto_Movilizacion,
+                tiempoTotal: ot.Tiempo_Total_Horas,
+                horometroTrabajado: ot.Horometro_Trabajado_Horas,
+                usuario: ot.Usuario_Registro,
+                fechaRegistro: ot.Fecha_Registro
+                // NOTA: 'clienteOT' y 'servicioOT' no se pueden obtener aquí sin un JOIN muy complejo,
+                // por lo que el frontend los dejará vacíos o los llenará en `cargarDatosOTExistente`
+            };
+            return { success: true, data: datosMapeados }; 
+        }
+
+        return { success: false, message: 'OT no encontrada.' };
+
+    } catch (error) {
+        return manejarError("obtenerOTPorNumero", error);
     }
 }
 
 /**
- * Filtra pedidos por cliente y servicio (Lógica de OT para selects)
+ * Filtra pedidos por RUC del cliente (NUMERIC) y ID del servicio (BIGINT).
+ * Consulta Detalle_Pedidos, hace JOIN a Pedidos.
  */
 function filtrarPedidosPorClienteYServicio(rucCliente, idServicio) {
     try {
-        const COT_SHEET = HOJA_COTIZACIONES;
-        const allData = obtenerDatosHoja(COT_SHEET, true, 5); // Usar caché
+        const rucNumerico = parseFloat(rucCliente);
+        const idServicioNumerico = parseFloat(idServicio);
         
-        if (allData.length <= 1) return [];
+        if (isNaN(rucNumerico)) throw new Error("RUC no es un valor numérico válido.");
+        if (isNaN(idServicioNumerico)) throw new Error("ID de Servicio no es un valor numérico válido.");
 
-        const COL_MAP = getColumnMap(COT_SHEET);
-        const RUC_COL = COL_MAP['ID CLIENTE'];
-        const COD_COL = COL_MAP['COD'];
-        const COT_COL = COL_MAP['COT'];
+        // Filtramos por el ID de Servicio y luego por el RUC a través del JOIN Pedidos.
+        const consulta = `
+          select=Cot
+          &ID_Servicio=eq.${idServicioNumerico}
+          &Pedidos!inner(RUC=eq.${rucNumerico})
+          &order=Cot.desc
+          &limit=100
+        `.replace(/\s/g, '');
 
-        if (RUC_COL === undefined || COD_COL === undefined || COT_COL === undefined) {
-             throw new Error("Columnas 'ID CLIENTE', 'COD' o 'COT' no encontradas en DataCot.");
-        }
+        const detalles = supabaseFetch('Detalle_Pedidos', {
+          method: 'get',
+          params: consulta
+        });
 
-        const rucBuscado = String(rucCliente).trim();
-        const servicioBuscado = String(idServicio).trim();
-        const pedidosEncontrados = new Set();
-        
-        // Iterar desde el final para obtener los más recientes primero
-        for (let i = allData.length - 1; i > 0; i--) {
-            const row = allData[i];
-            const rucFila = String(row[RUC_COL] || '').trim();
-            const codFila = String(row[COD_COL] || '').trim();
+        // Extraer los valores únicos de 'Cot' (Número de Pedido)
+        const pedidosUnicos = new Set();
+        detalles.forEach(d => pedidosUnicos.add(d.Cot));
 
-            if (rucFila === rucBuscado && codFila === servicioBuscado) {
-                const numPedido = String(row[COT_COL] || '').trim();
-                if (numPedido) {
-                    pedidosEncontrados.add(numPedido);
-                }
-            }
-        }
-        
-        // Devolvemos un array de arrays para que coincida con el frontend
-        return Array.from(pedidosEncontrados).map(pedido => [pedido]);
+        // Devolvemos un array de arrays para que coincida con el frontend (RegistrarOT.html)
+        return Array.from(pedidosUnicos).map(pedido => [pedido]);
 
     } catch (e) {
-        return manejarError('filtrarPedidosPorClienteYServicio', e);
+        return manejarError("filtrarPedidosPorClienteYServicio", e);
     }
 }
 
 /**
- * [NUEVO HELPER]
- * Busca una línea en DataCot por su LineaID y devuelve detalles clave.
- * DEBE ser añadido a _Comercial_Logic.gs
- * @param {string} lineaID El ID único de la línea (ej. "COT...-L1").
- * @returns {object} Un objeto {success, precio, cliente, ruc, horasSegun}
- */
-function _getDetallesDeLineaCot(lineaID) {
-    Logger.log(`Buscando detalles de DataCot para lineaID: ${lineaID}`);
-    if (!lineaID) {
-        return { success: false, message: "lineaID nulo o vacío." };
-    }
-    
-    // Usamos obtenerDatosHoja sin caché para asegurar el precio más reciente al *crear* la OT
-    const allDataCot = obtenerDatosHoja(HOJA_COTIZACIONES, false); 
-    const COL_MAP_COT = getColumnMap(HOJA_COTIZACIONES);
-
-    const LINEAID_COL = COL_MAP_COT['NUM'];
-    const PRECIO_COL = COL_MAP_COT['PRECIO'];
-    const CLIENTE_COL = COL_MAP_COT['CLIENTE'];
-    const RUC_COL = COL_MAP_COT['ID CLIENTE'];
-    const HORAS_SEGUN_COL = COL_MAP_COT['HORAS SEGÚN'];
-
-    // Validar que las columnas esenciales existan en DataCot
-    if ([LINEAID_COL, PRECIO_COL, CLIENTE_COL, RUC_COL, HORAS_SEGUN_COL].includes(undefined)) {
-        Logger.log(`Error de configuración en _getDetallesDeLineaCot: Faltan columnas en DataCot.
-            NUM=${LINEAID_COL}, PRECIO=${PRECIO_COL}, CLIENTE=${CLIENTE_COL}, ID CLIENTE=${RUC_COL}, HORAS SEGÚN=${HORAS_SEGUN_COL}`);
-        return { success: false, message: "Error de configuración: Faltan columnas (NUM, PRECIO, CLIENTE, ID CLIENTE, HORAS SEGÚN) en DataCot." };
-    }
-
-    for (let i = 1; i < allDataCot.length; i++) {
-        const row = allDataCot[i];
-        if (String(row[LINEAID_COL] || '').trim() === lineaID) {
-            const detalles = {
-                success: true,
-                precio: parseFloat(row[PRECIO_COL] || 0),
-                cliente: String(row[CLIENTE_COL] || ''),
-                ruc: String(row[RUC_COL] || ''),
-                horasSegun: String(row[HORAS_SEGUN_COL] || '').trim().toUpperCase()
-            };
-            Logger.log(`Detalles encontrados: ${JSON.stringify(detalles)}`);
-            return detalles;
-        }
-    }
-    
-    Logger.log(`Error: No se encontró la línea con ID ${lineaID} en DataCot.`);
-    return { success: false, message: `No se encontró la línea con ID ${lineaID} en DataCot.` };
-}
-
-
-/**
- * REEMPLAZO TOTAL de guardarOT (v7.1 - Corregido con ID Híbrido)
- * Escribe en la tabla "Ordenes_Trabajo" de Supabase
- * y actualiza "Detalle_Pedidos" usando el ID numérico.
+ * Guarda la Orden de Trabajo en Supabase (Versión con Diagnóstico de Error).
  */
 function guardarOT(data) {
     const permisos = obtenerPermisosUsuario();
@@ -1076,86 +933,101 @@ function guardarOT(data) {
         return { success: false, message: "Acceso denegado. No tiene permiso para editar OTs." };
     }
 
-    Logger.log("INICIO guardarOT (v7.1 - Supabase). Datos recibidos: " + JSON.stringify(data));
+    Logger.log("INICIO guardarOT (Debug). Datos recibidos: " + JSON.stringify(data));
     
     try {
         const datos = sanitizarDatos(data);
-        // Este es el ID de TEXTO (ej. "COT...-L1")
         const lineaIDRef = datos.lineaID; 
         const esModoUpdate = (datos.modo === 'editar' || datos.modo === 'editarGlobal');
-
-        if (!lineaIDRef) {
-            return manejarError('guardarOT', new Error("Error Crítico: No se proporcionó un lineaID (referencia). No se puede enlazar al pedido."));
+        
+        if (!lineaIDRef && !esModoUpdate) {
+            throw new Error("Error: No se encontró la referencia de línea (lineaID).");
         }
         
-        // --- PASO 1: Obtener detalles del Pedido (Precio y ID REAL) ---
-        // Usamos la RPC que busca por texto
-        Logger.log(`Buscando detalles de línea para: ${lineaIDRef}`);
+        // --- 1. Validaciones de Tipos de Datos (Para evitar error 400/500 en Supabase) ---
+        const rucClienteNum = parseFloat(datos.clienteRUC);
+        const idServicioNum = parseInt(datos.servicio);
+
+        if (isNaN(rucClienteNum)) {
+            throw new Error(`El RUC del cliente '${datos.clienteRUC}' no tiene un formato numérico válido. Asegúrese de seleccionar un cliente de la lista.`);
+        }
+        if (isNaN(idServicioNum)) {
+            throw new Error(`El ID del servicio '${datos.servicio}' no tiene un formato numérico válido. Asegúrese de seleccionar un servicio de la lista.`);
+        }
+
+        // --- 2. Obtener detalles técnicos de la línea ---
         const detallesLinea = supabaseFetch('rpc/get_detalles_linea_para_ot', {
             method: 'post',
             payload: { "linea_ref_param": lineaIDRef }
-        })[0]; 
-        
+        })[0];
+
         if (!detallesLinea || !detallesLinea.success) {
-            throw new Error(detallesLinea.message || `No se encontraron detalles para la línea ${lineaIDRef}.`);
+            throw new Error(`No se encontraron detalles en base de datos para la línea ${lineaIDRef}. Verifique que el pedido tenga líneas guardadas.`);
         }
         
-        // ¡ESTE ES EL ID REAL (el número)!
         const lineaIdRealNumerico = detallesLinea.linea_id_real;
-        Logger.log(`ID real (numérico) encontrado: ${lineaIdRealNumerico}`);
-
-        // --- PASO 2: Calcular Montos (Sin cambios) ---
+        
+        // --- 3. Calcular Montos ---
         const horasSegun = (detallesLinea.horas_segun || '').toUpperCase();
-        let horasParaActualizar = 0;
+        let horasParaCobrar = 0;
         
         if (horasSegun.includes("HORÓMETRO") || horasSegun.includes("HOROMETRO")) {
-            horasParaActualizar = parseFloat(datos.horometroTrabajado || 0);
+            horasParaCobrar = parseFloat(datos.horometroTrabajado || 0);
         } else {
-            horasParaActualizar = parseFloat(datos.tiempoTotal || 0);
+            horasParaCobrar = parseFloat(datos.tiempoTotal || 0);
         }
 
         const precioUnitario = parseFloat(detallesLinea.precio || 0);
-        const montoServicioCalculado = horasParaActualizar * precioUnitario;
+        const montoServicioCalculado = horasParaCobrar * precioUnitario;
         const montoMovilizacionForm = parseFloat(datos.montoMovilizacion || 0);
         
-        // --- PASO 3: Preparar el payload para la tabla "Ordenes_Trabajo" ---
+        // --- 4. Preparar Payload ---
         const payloadOT = {
             "N_OT": datos.numeroOT,
-            "Cot_Linea": lineaIdRealNumerico, // <-- Usamos el ID NUMÉRICO
-            "Fecha": datos.fecha,
+            "Cot": datos.pedido,                   
+            "Fecha": datos.fecha,                  
+            "Cot_Linea": lineaIdRealNumerico,      
+            "Cot_Linea_Ref": lineaIDRef,           
+            "RUC_Cliente": rucClienteNum, // Usamos el validado
+            "ID_Servicio": idServicioNum, // Usamos el validado
+            
             "Hora_Inicio": datos.horaInicio || null,
             "Hora_Fin": datos.horaFin || null,
             "Tiempo_Refrigerio": parseFloat(datos.tiempoRefrigerio || 0),
+            "Tiempo_Total": parseFloat(datos.tiempoTotal || 0),
+            
             "Horometro_Inicio": parseFloat(datos.horometroInicio || 0),
             "Horometro_Fin": parseFloat(datos.horometroFin || 0),
-            "Tiempo_Total_Horas": parseFloat(datos.tiempoTotal || 0),
-            "Horometro_Trabajado_Horas": parseFloat(datos.horometroTrabajado || 0),
+            "Horometro_Trabajado": parseFloat(datos.horometroTrabajado || 0),
+            
+            "Es_Camion_Grua": datos.esCamionGrua === 'true' || datos.esCamionGrua === true, 
+            "Horometro_Inicio_Camion": parseFloat(datos.horometroInicioCamion || 0),
+            "Horometro_Fin_Camion": parseFloat(datos.horometroFinCamion || 0),
+            "Horometro_Inicio_Grua": parseFloat(datos.horometroInicioGrua || 0),
+            "Horometro_Fin_Grua": parseFloat(datos.horometroFinGrua || 0),
+            
             "Monto_Servicio": montoServicioCalculado,
             "Monto_Movilizacion": montoMovilizacionForm,
             "Estado_Valorizacion": 'Pendiente'
         };
 
-        // --- PASO 4: Guardar en Supabase (Crear o Actualizar) ---
+        // --- 5. Ejecutar Guardado ---
         if (esModoUpdate) {
-            // --- MODO ACTUALIZAR (PATCH) ---
+            // UPDATE
             const otIDExistente = datos.otIDExistente;
-            Logger.log(`Modo UPDATE para OT: ${otIDExistente}`);
-            
             delete payloadOT.Estado_Valorizacion; 
+            delete payloadOT.Fecha_Registro;      
+            delete payloadOT.Usuario_Registro;    
             
             supabaseFetch('Ordenes_Trabajo', {
                 method: 'patch',
                 payload: payloadOT,
                 params: `N_OT=eq.${otIDExistente}`
             });
-            
-            Logger.log(`OT ${otIDExistente} actualizada. La actualización de Detalle_Pedidos en modo edición no está implementada.`);
             return { success: true, message: `OT ${otIDExistente} actualizada.` };
 
         } else {
-            // --- MODO CREAR (POST) ---
-            Logger.log(`Modo CREATE para OT: ${datos.numeroOT}`);
-            
+            // CREATE
             payloadOT.Usuario_Registro = obtenerEmailSeguro();
             payloadOT.Fecha_Registro = new Date().toISOString();
 
@@ -1164,31 +1036,34 @@ function guardarOT(data) {
                 payload: payloadOT
             });
 
-            // --- PASO 5: Actualizar (ACUMULAR) en "Detalle_Pedidos" ---
-            // Usamos la RPC que actualiza por el ID numérico
-            Logger.log(`Llamando a RPC 'actualizar_despacho_detalle' para ${lineaIdRealNumerico}...`);
+            // Actualizar acumulados (RPC)
             const payloadAcumular = {
-                "linea_id_real_param": lineaIdRealNumerico, // <-- Usamos el ID NUMÉRICO
-                "horas_sumar": horasParaActualizar,
+                "linea_id_real_param": lineaIdRealNumerico,
+                "horas_sumar": horasParaCobrar,
                 "monto_sumar": montoServicioCalculado,
                 "movilizacion_sumar": montoMovilizacionForm
             };
-            
             supabaseFetch('rpc/actualizar_despacho_detalle', {
                 method: 'post',
                 payload: payloadAcumular
             });
+            
+            return { success: true, message: `OT ${datos.numeroOT} registrada exitosamente.` };
+        }
 
-            Logger.log(`OT ${datos.numeroOT} creada y Detalle_Pedidos actualizado.`);
-            return { success: true, message: `OT ${datos.numeroOT} registrada y Pedido actualizado.` };
+    } catch (e) {
+        Logger.log(`❌ ERROR REAL en guardarOT: ${e.message}`);
+        
+        // Manejo de errores comunes para dar mensajes claros
+        if (e.message.includes('duplicate key')) {
+            return { success: false, message: `El número de OT '${data.numeroOT}' ya existe. Use otro número.` };
+        }
+        if (e.message.includes('violates foreign key constraint')) {
+             return { success: false, message: `Error de datos: El Pedido, Cliente o Servicio no existen en la base de datos.` };
         }
         
-    } catch (e) {
-        Logger.log(`ERROR FATAL en guardarOT (v7.1): ${e.message} \n Stack: ${e.stack}`);
-        if (e.message.includes('duplicate key value violates unique constraint "Ordenes_Trabajo_pkey"')) {
-            return manejarError('guardarOT', new Error(`El número de OT '${datos.numeroOT}' ya existe. Por favor, ingrese un número único.`));
-        }
-        return manejarError('guardarOT', e);
+        // DEVOLVEMOS EL MENSAJE REAL DEL ERROR
+        return { success: false, message: "Error del sistema: " + e.message };
     }
 }
 // ====================================================
@@ -1306,33 +1181,6 @@ function generarPDFCotizacion(cotizacionData) {
             ssTemplate.deleteSheet(hojaEliminar);
         }
     }
-}
-
-
-/**
- * Función de prueba para diagnosticar si el sistema de lectura de datos funciona.
- * Ejecutar SÓLO desde el editor de Apps Script (Run -> testCargaDatos).
- */
-function testCargaDatos() {
-  try {
-    // Intenta usar la función central de lectura
-    const datosCot = obtenerDatosHoja(HOJA_COTIZACIONES);
-    
-    // Intenta usar el mapeo de columnas
-    const map = getColumnMap(HOJA_COTIZACIONES);
-    
-    Logger.log("✅ ÉXITO en la carga de datos.");
-    Logger.log("Filas cargadas de DataCot: " + datosCot.length);
-    Logger.log("Columnas en DataCot: " + datosCot[0].length);
-    Logger.log("Índice de columna CONTACTO: " + map['CONTACTO']);
-
-    // Si llega hasta aquí, significa que las bases funcionan.
-    return "Éxito: La lectura y el mapeo de columnas funcionan.";
-  } catch (e) {
-    Logger.log("❌ ERROR CRÍTICO DE CARGA: " + e.message);
-    // Si falla, el error aparecerá en los logs con el archivo y la línea.
-    return "Fallo: Verifique el log (Ctrl+Enter) en el editor. El error es: " + e.message;
-  }
 }
 
 /**
@@ -1605,103 +1453,7 @@ function buscarInfoContacto(ruc, nombreContacto) {
     }
 }
 
-/**
- * REEMPLAZO FINAL v4 de obtenerDetallesCompletosDePedido
- * Corrige la obtención de la descripción (maneja 'DESCRIPCION' y 'DESCRIPCIÓN').
- */
-function obtenerDetallesCompletosDePedido(numPedido) {
-    // Logger.log(`Iniciando obtenerDetallesCompletosDePedido para: ${numPedido}`); 
-    
-    const COL_MAP_COT = getColumnMap(HOJA_COTIZACIONES);
-    const allDataCot = obtenerDatosHoja(HOJA_COTIZACIONES); 
-    const allDataServ = obtenerDatosHoja(HOJA_SERVICIOS);   
-    
-    const pedidoBuscado = String(numPedido).trim().toUpperCase();
-    const CODIGO_PEDIDO_COL = COL_MAP_COT['COT'] || 0; 
 
-    const filasCoincidentes = allDataCot.slice(1)
-        .filter(fila => String(fila[CODIGO_PEDIDO_COL] || '').trim().toUpperCase() === pedidoBuscado);
-        
-    if (filasCoincidentes.length === 0) {
-        throw new Error(`No se encontraron líneas de servicio para el pedido: ${numPedido}`);
-    }
-
-    // Preparar mapa de servicios (para abreviatura)
-    const mapaServicios = new Map();
-    const COL_MAP_SERV = getColumnMap(HOJA_SERVICIOS);
-    const COD_SERV_COL = COL_MAP_SERV['COD']; 
-    const ABREV_SERV_COL = COL_MAP_SERV['ABREVIATURA']; 
-    if (COD_SERV_COL === undefined) throw new Error("No se encontró el encabezado 'COD' en la hoja Servicios.");
-    const indiceAbreviatura = (ABREV_SERV_COL !== undefined) ? ABREV_SERV_COL : 7; 
-
-    allDataServ.slice(1).forEach(filaServ => {
-        const codServ = String(filaServ[COD_SERV_COL] || '').trim();
-        if (codServ) mapaServicios.set(codServ, filaServ); 
-    });
-
-    // Mapear líneas de cotización Y buscar abreviatura
-    const lineas = filasCoincidentes.map((filaCot) => {
-        const getValueCot = (colName) => getFilaValue(filaCot, COL_MAP_COT, colName);
-        
-        const codServicioCot = String(getValueCot('COD') || '').trim(); 
-        let abreviaturaEncontrada = '';
-
-        if (codServicioCot && mapaServicios.has(codServicioCot)) {
-            const filaServicioCompleta = mapaServicios.get(codServicioCot);
-            if (indiceAbreviatura < filaServicioCompleta.length) {
-                abreviaturaEncontrada = String(filaServicioCompleta[indiceAbreviatura] || '').trim();
-            }
-        }
-        
-        // --- INICIO DE CORRECCIÓN DESCRIPCIÓN ---
-        // Intenta obtener con 'DESCRIPCION', si falla, intenta con 'DESCRIPCIÓN' (acento)
-        let descripcion = String(getValueCot('DESCRIPCION') || getValueCot('DESCRIPCIÓN') || '').trim(); 
-        // --- FIN DE CORRECCIÓN DESCRIPCIÓN ---
-
-        const moneda = String(getValueCot('MONEDA') || 'USD'); 
-        const precioUnitario = parseFloat(getValueCot('PRECIO') || 0); 
-        const horasMinimasNum = parseFloat(getValueCot('HORAS MINIMAS') || 0); 
-        const undHorasMinimas = String(getValueCot('UND. HORAS. MINIMAS') || ''); 
-        const totalDias = parseFloat(getValueCot('TOTAL DIAS') || 0); 
-
-        return {
-            cod: codServicioCot, 
-            descripcion: descripcion, // <-- Usa la descripción corregida
-            abreviatura: abreviaturaEncontrada, 
-            valor: parseFloat(getValueCot('M. PEDIDO') || 0) || 0, 
-            movilizacion: parseFloat(getValueCot('MOV. Y DES. MOV.') || 0) || 0, 
-            moneda: moneda,
-            precioUnitario: precioUnitario,
-            horasMinimasNum: horasMinimasNum,
-            undHorasMinimas: undHorasMinimas,
-            totalDias: totalDias
-        };
-    });
-    
-    // Obtener datos generales (sin cambios)
-    const primeraFila = filasCoincidentes[0];
-    const getGenValue = (colName) => getFilaValue(primeraFila, COL_MAP_COT, colName);
-    const rucCliente = String(getGenValue('ID CLIENTE') || '');
-    const nombreContacto = String(getGenValue('CONTACTO') || '');
-    const infoContacto = buscarInfoContacto(rucCliente, nombreContacto);
-
-    // Devolver objeto completo
-    const resultadoFinal = {
-        success: true,
-        ruc: rucCliente, 
-        cliente: String(getGenValue('CLIENTE') || ''),
-        fecha: getSafeDateString(getGenValue('FECHA COT')),
-        contacto: nombreContacto, 
-        contactoInfo: infoContacto, 
-        lugar: String(getGenValue('UBICACIÓN') || ''),
-        turno: String(getGenValue('TURNO') || ''), 
-        empresa: String(getGenValue('EMPRESA') || ''),
-        ejecutivo: String(getGenValue('EJECUTIVO') || ''),
-        total: parseFloat(getGenValue('Total servicio') || 0) || 0,
-        servicios: lineas 
-    };
-    return resultadoFinal;
-}
 /**
  * NUEVA FUNCIÓN DE AYUDA
  * Obtiene el ID del archivo plantilla y el nombre de la PESTAÑA de plantilla
@@ -1742,59 +1494,64 @@ function findOrCreateFolder(parentFolder, childName) {
 }
 
 /**
- * REEMPLAZO de getDestinationFolder
- * Ahora navega los 4 NIVELES de carpetas.
+ * REEMPLAZO de getDestinationFolder (CORREGIDO para Supabase)
+ * Ahora maneja 'Lineas' (Supabase) y 'servicios' (Legacy).
  */
 function getDestinationFolder(ejecutivo, empresa, fechaObj, cotizacionData) {
     let parentFolderId;
 
-    const empresaUpper = empresa.toUpperCase();
+    // 1. Determinar Carpeta del Ejecutivo (Nivel 1)
+    // Normalización robusta para evitar errores si el ejecutivo viene nulo
+    const ejecutivoNombre = (ejecutivo || '').toUpperCase();
     
-    // Nivel 1: Carpeta del Ejecutivo
-    if (ejecutivo && ejecutivo.toUpperCase() === 'CARMEN') {
+    if (ejecutivoNombre.includes('CARMEN')) {
         parentFolderId = FOLDER_ID_CARMEN;
     } else {
-        const empresaUpper = empresa.toUpperCase();
-        if (empresaUpper === 'GYM') parentFolderId = FOLDER_ID_GYM;
-        else if (empresaUpper === 'SAN JOSE') parentFolderId = FOLDER_ID_SJ;
+        // Lógica de fallback por empresa si no es Carmen
+        const empresaUpper = (empresa || '').toUpperCase();
+        if (empresaUpper.includes('GYM')) parentFolderId = FOLDER_ID_GYM;
+        else if (empresaUpper.includes('SAN JOSE')) parentFolderId = FOLDER_ID_SJ;
         else parentFolderId = FOLDER_ID_ALP;
     }
     
     let currentFolder = DriveApp.getFolderById(parentFolderId);
 
-    // Nivel 2: Carpeta de la Empresa (Ej. "GRUAS SAN JOSE PERU SAC")
-    const nombreCarpetaEmpresa = MAPA_NOMBRES_EMPRESAS[empresa.toUpperCase()] || empresa;
+    // 2. Carpeta de la Empresa (Nivel 2)
+    const empresaNombre = (empresa || '').toUpperCase();
+    const nombreCarpetaEmpresa = MAPA_NOMBRES_EMPRESAS[empresaNombre] || empresaNombre || "EMPRESA_DESCONOCIDA";
     currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaEmpresa);
 
-    // Nivel 3: Carpeta Mes/Año (Ej. "COT.SJ.2025.09 COT_SETIEMBRE")
+    // 3. Carpeta Mes/Año (Nivel 3)
     const prefijos = {"ALPAMAYO": "COT.ALP", "SAN JOSE": "COT.SJ", "GYM": "COT.GYM"};
     const meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SETIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
     
-    const prefijoEmpresa = prefijos[empresa.toUpperCase()] || 'COT.GEN';
+    const prefijoEmpresa = prefijos[empresaNombre] || 'COT.GEN';
     const anio = fechaObj.getFullYear();
     const mesNum = String(fechaObj.getMonth() + 1).padStart(2, '0');
     const mesNombre = meses[fechaObj.getMonth()];
-    const separador = (empresaUpper === 'ALPAMAYO') ? '_' : ' ';
     
     const nombreSubfolderMes = `${prefijoEmpresa}.${anio}.${mesNum} COT_${mesNombre}`;
     currentFolder = findOrCreateFolder(currentFolder, nombreSubfolderMes);
 
-    // Nivel 4: Carpeta de Cotización Específica (Ej. "COT.SJ.2025.09.2006 STRACON GT100TN")
+    // 4. Carpeta de Cotización Específica (Nivel 4)
     let servicioNombre = "VARIOS";
-    if (cotizacionData.servicios.length === 1) {
-        const servicioUnico = cotizacionData.servicios[0];
-        servicioNombre = servicioUnico.abreviatura || servicioUnico.cod || servicioUnico.descripcion.substring(0, 10);
+    
+    // ✅ CORRECCIÓN AQUÍ: Detectar 'Lineas' (Supabase) o 'servicios' (Legacy)
+    const listaServicios = cotizacionData.Lineas || cotizacionData.servicios || [];
+
+    if (listaServicios.length === 1) {
+        const servicioUnico = listaServicios[0];
+        // Priorizar Abreviatura, luego Cod, luego Descripción
+        servicioNombre = servicioUnico.abreviatura || servicioUnico.cod || (servicioUnico.descripcion || '').substring(0, 10);
     }
     
-    const nombreCarpetaCotizacion = `${cotizacionData.numPedido} ${cotizacionData.cliente} ${servicioNombre}`;
-    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaCotizacion); // <-- Crea o encuentra la carpeta de cotización (Nivel 4)
+    const nombreCarpetaCotizacion = `${cotizacionData.numPedido} ${cotizacionData.cliente || cotizacionData.Cliente} ${servicioNombre}`;
+    currentFolder = findOrCreateFolder(currentFolder, nombreCarpetaCotizacion); 
 
-    // --- AÑADIDO: Nivel 5 ---
-    // Crear la subcarpeta "cot" DENTRO de la carpeta de cotización
-    currentFolder = findOrCreateFolder(currentFolder, "cot"); 
-    // --- FIN DE AÑADIDO ---
+    // 5. Subcarpeta "cot" (Nivel 5)
+    currentFolder = findOrCreateFolder(currentFolder, "cot");
 
-    return currentFolder; // Devuelve la carpeta "cot" de Nivel 5
+    return currentFolder;
 }
 
 /**
@@ -2456,107 +2213,16 @@ function guardarDatosComplementarios(codigoPedido, datos) {
 }
 
 /**
- * REEMPLAZO 1 (Backend)
- * Actualiza (acumula) los valores de despacho en la hoja DataCot.
- * ¡CORREGIDO! Ahora busca usando 'lineaID' (columna 'NUM')
- */
-function actualizarDataCotDesdeOT(lineaID, horasDespachadas, montoDespachado, montoMovilizacion) {
-    Logger.log(`INICIO actualizarDataCotDesdeOT: LineaID=${lineaID}, Horas=${horasDespachadas}, Monto=${montoDespachado}, Mov=${montoMovilizacion}`);
-    
-    if (!lineaID) {
-        Logger.log("ERROR: Faltó lineaID para actualizar DataCot.");
-        return false;
-    }
-
-    // Modificamos esta lógica: si las horas son 0, PERO los montos no lo son, debe continuar.
-    if (horasDespachadas === 0 && montoDespachado === 0 && montoMovilizacion === 0) {
-        Logger.log("Advertencia: No hay valores (horas o montos) para actualizar en DataCot. Saliendo.");
-        return true; 
-    }
-
-    try {
-        const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-        const sheet = ss.getSheetByName(HOJA_COTIZACIONES);
-        if (!sheet) {
-            Logger.log(`ERROR FATAL: No se encontró la hoja ${HOJA_COTIZACIONES}`);
-            return false;
-        }
-
-        Logger.log("Paso 1: Obteniendo mapa de columnas para " + HOJA_COTIZACIONES);
-        const COL_MAP = getColumnMap(HOJA_COTIZACIONES);
-        Logger.log("Mapa de DataCot: " + JSON.stringify(COL_MAP));
-
-        // Validación de columnas clave
-        const LINEAID_COL = COL_MAP['NUM'];
-        const UND_DESPACHO_COL = COL_MAP['UND. DESPACHO'];
-        const M_DESPACHO_COL = COL_MAP['M. DESPACHO'];
-        const MYDM_VALORIZADA_COL = COL_MAP['MYDM VALORIZADA'];
-
-        if ([LINEAID_COL, UND_DESPACHO_COL, M_DESPACHO_COL, MYDM_VALORIZADA_COL].includes(undefined)) {
-            Logger.log("ERROR FATAL: Faltan columnas clave en DataCot. Revisa encabezados: 'NUM', 'UND. DESPACHO', 'M. DESPACHO', 'MYDM VALORIZADA'");
-            Logger.log(`Valores actuales: NUM=${LINEAID_COL}, UND. DESPACHO=${UND_DESPACHO_COL}, M. DESPACHO=${M_DESPACHO_COL}, MYDM VALORIZADA=${MYDM_VALORIZADA_COL}`);
-            return false;
-        }
-
-        Logger.log("Paso 2: Leyendo datos de DataCot para buscar la fila...");
-        const allData = sheet.getDataRange().getValues();
-        let rowIndexToUpdate = -1;
-
-        for (let i = 1; i < allData.length; i++) {
-            const idEnFila = String(allData[i][LINEAID_COL] || '').trim();
-            if (idEnFila === lineaID) {
-                rowIndexToUpdate = i + 1;
-                Logger.log(`Paso 3: Fila encontrada. Coincide en la Fila ${rowIndexToUpdate}`);
-                break;
-            }
-        }
-
-        if (rowIndexToUpdate === -1) {
-            Logger.log(`ERROR FATAL: No se encontró la fila en DataCot para LineaID=${lineaID}.`);
-            return false;
-        }
-
-        // --- Lógica de Actualización ---
-        Logger.log("Paso 4: Leyendo valores actuales de la Fila " + rowIndexToUpdate);
-        
-        // (Col + 1 porque getRange es 1-based, y los índices del mapa son 0-based)
-        const undDespachoActual = parseFloat(sheet.getRange(rowIndexToUpdate, UND_DESPACHO_COL + 1).getValue() || 0);
-        const mDespachoActual = parseFloat(sheet.getRange(rowIndexToUpdate, M_DESPACHO_COL + 1).getValue() || 0);
-        const mydmValorizadaActual = parseFloat(sheet.getRange(rowIndexToUpdate, MYDM_VALORIZADA_COL + 1).getValue() || 0);
-
-        Logger.log(`Valores Actuales: Horas=${undDespachoActual}, Monto=${mDespachoActual}, Mov=${mydmValorizadaActual}`);
-
-        const nuevasUndDespacho = undDespachoActual + horasDespachadas;
-        const nuevoMDespacho = mDespachoActual + montoDespachado;
-        const nuevaMydmValorizada = mydmValorizadaActual + montoMovilizacion;
-
-        Logger.log(`Paso 5: Escribiendo nuevos valores... Horas=${nuevasUndDespacho}, Monto=${nuevoMDespacho}, Mov=${nuevaMydmValorizada}`);
-        
-        sheet.getRange(rowIndexToUpdate, UND_DESPACHO_COL + 1).setValue(nuevasUndDespacho);
-        sheet.getRange(rowIndexToUpdate, M_DESPACHO_COL + 1).setValue(nuevoMDespacho);
-        sheet.getRange(rowIndexToUpdate, MYDM_VALORIZADA_COL + 1).setValue(nuevaMydmValorizada);
-        
-        Logger.log("ÉXITO: DataCot actualizada exitosamente para Fila " + rowIndexToUpdate);
-        return true;
-        
-    } catch (e) {
-        Logger.log(`ERROR CRÍTICO en actualizarDataCotDesdeOT: ${e.message}\nStack: ${e.stack}`);
-        enviarNotificacionError(`Error en actualizarDataCotDesdeOT: ${e.message}`);
-        return false;
-    }
-}
-
-/**
- * REEMPLAZO (v2 - Supabase): Obtiene el resumen de líneas de un pedido.
+ * Obtiene el resumen de líneas de un pedido (vFinal - Corregido RUC).
  * Lee directamente de 'Detalle_Pedidos' y sus tablas relacionadas.
- * Es mucho más rápido porque los totales (UND_DESPACHO) ya están calculados.
  */
 function getResumenOTPorPedido(numPedido) {
-  Logger.log(`INICIO getResumenOTPorPedido (v2 - Supabase) para: ${numPedido}`);
+  Logger.log(`INICIO getResumenOTPorPedido para: ${numPedido}`);
   try {
     if (!numPedido) throw new Error("Número de pedido no proporcionado.");
 
-    // 1. Construir la consulta anidada
+    // ✅ CORRECCIÓN: Cambiamos RUC_DNI por RUC dentro de Pedidos!inner(...)
+    // También aseguramos el orden correcto de los joins
     const consulta = `
       select=
         Cot,
@@ -2565,30 +2231,36 @@ function getResumenOTPorPedido(numPedido) {
         UND,
         UND_DESPACHO,
         Servicios!inner(ID_servicios, Nombre_Servicio),
-        Pedidos!inner(RUC_DNI, Clientes!inner(Nombre_RazonSocial))
+        Pedidos!inner(RUC, Clientes!inner(Nombre_RazonSocial))
       &Cot=eq.${numPedido}
     `.replace(/\s/g, '');
 
-    // 2. Obtener los detalles
     const lineasDetalle = supabaseFetch('Detalle_Pedidos', {
       method: 'get',
       params: consulta
     });
 
     if (!lineasDetalle || lineasDetalle.length === 0) {
-      throw new Error("No se encontraron líneas para el pedido: " + numPedido);
+       return { success: true, pedido: numPedido, cliente: "Desconocido", lineas: [] };
     }
 
-    // 3. Mapear los datos al formato que espera el frontend
-    // Obtenemos el nombre del cliente desde la *primera* línea
-    let clienteNombre = lineasDetalle[0].Pedidos.Clientes.Nombre_RazonSocial;
+    // Obtener el nombre del cliente de forma segura (maneja arrays u objetos)
+    let clienteNombre = "Cliente no encontrado";
+    const primerPedido = lineasDetalle[0].Pedidos;
+    
+    if (primerPedido && primerPedido.Clientes) {
+         if (Array.isArray(primerPedido.Clientes)) {
+             clienteNombre = primerPedido.Clientes[0]?.Nombre_RazonSocial || clienteNombre;
+         } else {
+             clienteNombre = primerPedido.Clientes.Nombre_RazonSocial || clienteNombre;
+         }
+    }
 
-    const lineasMapeadas = lineasDetalle.map((linea, index) => {
-      // Asumimos que 'horasPedidas' es 'Cantidad' si la unidad es HORAS o DÍAS
+    const lineasMapeadas = lineasDetalle.map((linea) => {
       let horasPedidas = (linea.UND === 'HORAS' || linea.UND === 'DÍAS') ? linea.Cantidad : 0;
 
       return {
-        lineaID: linea.Cot_Linea_Ref, // El ID de texto (COT...-L1)
+        lineaID: linea.Cot_Linea_Ref, 
         cod: linea.Servicios.ID_servicios,
         descripcion: linea.Servicios.Nombre_Servicio,
         horasPedidas: horasPedidas,
@@ -2596,7 +2268,6 @@ function getResumenOTPorPedido(numPedido) {
       };
     });
 
-    Logger.log(`ÉXITO: Se encontraron ${lineasMapeadas.length} líneas.`);
     return { 
       success: true, 
       pedido: numPedido,
@@ -2605,44 +2276,63 @@ function getResumenOTPorPedido(numPedido) {
     };
 
   } catch (e) {
-    Logger.log(`ERROR FATAL en getResumenOTPorPedido (v2): ${e.message} \n Stack: ${e.stack}`);
+    Logger.log(`ERROR en getResumenOTPorPedido: ${e.message}`);
     return manejarError('getResumenOTPorPedido', e);
   }
 }
 
 /**
- * Obtiene los datos de una LÍNEA específica de DataCot para pre-llenar una OT.
+ * Obtiene los datos de una LÍNEA específica para pre-llenar una OT (MIGRADO A SUPABASE).
  */
 function getDatosDeLineaParaOT(lineaID) {
   try {
     if (!lineaID) throw new Error("ID de Línea no proporcionado.");
-    
-    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-    const sheet = ss.getSheetByName(HOJA_COTIZACIONES);
-    const mapCot = getColumnMap(HOJA_COTIZACIONES);
-    const allData = sheet.getDataRange().getValues();
 
-    const LINEAID_COL = mapCot['NUM'];
-    if (LINEAID_COL === undefined) throw new Error("No se encontró la columna 'NUM' en DataCot.");
+    // Consultar Detalle_Pedidos con Joins a Pedidos, Clientes y Servicios
+    // Filtramos por Cot_Linea_Ref (ej. COT.ALP.2025.11.3019-L1)
+    const consulta = `
+        select=
+            Cot,
+            Cot_Linea_Ref,
+            Servicios!inner(ID_servicios, Nombre_Servicio),
+            Pedidos!inner(
+                RUC, 
+                Clientes!inner(Nombre_RazonSocial)
+            )
+        &Cot_Linea_Ref=eq.${lineaID}
+    `.replace(/\s/g, '');
 
-    let filaEncontrada = null;
-    for (let i = 1; i < allData.length; i++) {
-      if (String(allData[i][LINEAID_COL] || '').trim() === lineaID) {
-        filaEncontrada = allData[i];
-        break;
-      }
+    const resultado = supabaseFetch('Detalle_Pedidos', {
+        method: 'get',
+        params: consulta
+    });
+
+    if (!resultado || resultado.length === 0) {
+        throw new Error("No se encontró la línea con ID: " + lineaID);
     }
 
-    if (!filaEncontrada) throw new Error("No se encontró la línea con ID: " + lineaID);
+    const linea = resultado[0];
+    
+    // Manejo seguro del cliente (objeto o array)
+    let clienteNombre = "";
+    let clienteRUC = "";
+    
+    if (linea.Pedidos) {
+        clienteRUC = linea.Pedidos.RUC;
+        if (linea.Pedidos.Clientes) {
+            clienteNombre = Array.isArray(linea.Pedidos.Clientes) 
+                ? linea.Pedidos.Clientes[0]?.Nombre_RazonSocial 
+                : linea.Pedidos.Clientes.Nombre_RazonSocial;
+        }
+    }
 
-    // Extraer los datos que el formulario de OT necesita
     const datosLinea = {
-      lineaID: lineaID,
-      numPedido: String(filaEncontrada[mapCot['COT']] || ''),
-      clienteRUC: String(filaEncontrada[mapCot['ID CLIENTE']] || ''),
-      clienteNombre: String(filaEncontrada[mapCot['CLIENTE']] || ''),
-      codServicio: String(filaEncontrada[mapCot['COD']] || ''),
-      descServicio: String(filaEncontrada[mapCot['DESCRIPCION']] || '')
+      lineaID: linea.Cot_Linea_Ref,
+      numPedido: linea.Cot,
+      clienteRUC: clienteRUC,
+      clienteNombre: clienteNombre,
+      codServicio: linea.Servicios.ID_servicios,
+      descServicio: linea.Servicios.Nombre_Servicio
     };
 
     return { success: true, data: datosLinea };
@@ -2716,364 +2406,196 @@ function eliminarOTPorID(numeroOT) {
 }
 
 /**
- * Obtiene los datos de una línea específica Y TAMBIÉN la lista de todos 
- * los servicios asociados con el pedido de esa línea.
- * @param {string} lineaID El ID de la línea (ej. "COT.ALP...-L1").
- * @returns {object} { success: true, dataLinea: {...}, serviciosDelPedido: [...] }
+ * Obtiene los datos de una línea Y la lista de servicios del pedido (MIGRADO A SUPABASE).
  */
 function getDatosDePedidoParaOT(lineaID) {
   try {
-    if (!lineaID) throw new Error("ID de Línea no proporcionado.");
-    
-    // 1. Obtener datos de la línea específica (reutilizando tu función existente)
+    // 1. Obtener datos de la línea específica
     const resultadoLinea = getDatosDeLineaParaOT(lineaID);
-    if (!resultadoLinea.success) {
-      throw new Error("No se pudieron encontrar los datos de la línea original: " + lineaID);
-    }
+    if (!resultadoLinea.success) throw new Error(resultadoLinea.message);
     
     const datosLinea = resultadoLinea.data;
     const numPedido = datosLinea.numPedido;
-    
-    if (!numPedido) {
-      throw new Error("La línea " + lineaID + " no tiene un número de pedido asociado.");
-    }
 
-    // 2. Buscar TODOS los servicios para ese numPedido
-    const ss = SpreadsheetApp.openById(HOJA_ID_PRINCIPAL);
-    const sheet = ss.getSheetByName(HOJA_COTIZACIONES);
-    const mapCot = getColumnMap(HOJA_COTIZACIONES);
-    const allData = sheet.getDataRange().getValues();
+    // 2. Buscar TODOS los servicios de ese pedido para llenar el combo
+    const consultaServicios = `
+        select=ID_Servicio, Servicios(Nombre_Servicio)
+        &Cot=eq.${numPedido}
+    `.replace(/\s/g, '');
 
-    const COT_COL_COT = mapCot['COT'];
-    const COD_COL_COT = mapCot['COD'];
-    const DESC_COL_COT = mapCot['DESCRIPCION'] || mapCot['DESCRIPCIÓN']; // Soporta ambos
-    
-    if (COT_COL_COT === undefined || COD_COL_COT === undefined || DESC_COL_COT === undefined) {
-      throw new Error("Faltan columnas 'COT', 'COD' o 'DESCRIPCION' en DataCot.");
-    }
+    const resultadoServicios = supabaseFetch('Detalle_Pedidos', {
+        method: 'get',
+        params: consultaServicios
+    });
 
     const serviciosDelPedido = [];
-    const codigosVistos = new Set(); // Para evitar duplicados si hay varias líneas del mismo servicio
+    const vistos = new Set();
 
-    for (let i = 1; i < allData.length; i++) {
-      const row = allData[i];
-      if (String(row[COT_COL_COT] || '').trim() === numPedido) {
-        
-        const codServicio = String(row[COD_COL_COT] || '');
-        
-        if (codServicio && !codigosVistos.has(codServicio)) {
-          serviciosDelPedido.push({
-            cod: codServicio,
-            desc: String(row[DESC_COL_COT] || '')
-          });
-          codigosVistos.add(codServicio);
-        }
-      }
+    if (resultadoServicios) {
+        resultadoServicios.forEach(item => {
+            const cod = item.ID_Servicio;
+            const desc = item.Servicios ? item.Servicios.Nombre_Servicio : '';
+            
+            if (!vistos.has(cod)) {
+                serviciosDelPedido.push({ cod: cod, desc: desc });
+                vistos.add(cod);
+            }
+        });
     }
 
-    Logger.log(`Encontrados ${serviciosDelPedido.length} servicios únicos para el pedido ${numPedido}.`);
-
-    // 3. Devolver ambos resultados
     return { 
       success: true, 
-      dataLinea: datosLinea, // Datos de la línea específica
-      serviciosDelPedido: serviciosDelPedido // Lista de TODOS los servicios del pedido
+      dataLinea: datosLinea, 
+      serviciosDelPedido: serviciosDelPedido 
     };
 
   } catch (e) {
-    Logger.log(`Error en getDatosDePedidoParaOT: ${e.message}`);
     return manejarError('getDatosDePedidoParaOT', e);
   }
 }
 
 /**
- * Busca en DataCot una lineaID específica y devuelve el valor de su
- * columna "HORAS SEGÚN".
- * @param {string} lineaID El ID único de la línea (ej. "COT...-L1").
- * @returns {string} El valor de "HORAS SEGÚN" (ej. "HORÓMETRO" o "INICIO/FIN"), o una cadena vacía.
- */
-function obtenerHorasSegunPorLineaID(lineaID) {
-  if (!lineaID) return '';
-
-  try {
-    const sheetName = HOJA_COTIZACIONES;
-    const mapCot = getColumnMap(sheetName);
-    const allData = obtenerDatosHoja(sheetName, false); // Leer sin caché para asegurar datos frescos
-
-    const LINEAID_COL = mapCot['NUM'];
-    const HORAS_SEGUN_COL = mapCot['HORAS SEGÚN'];
-
-    if (LINEAID_COL === undefined || HORAS_SEGUN_COL === undefined) {
-      Logger.log(`ADVERTENCIA (obtenerHorasSegun): No se encontraron las columnas 'NUM' o 'HORAS SEGÚN' en ${sheetName}.`);
-      return '';
-    }
-
-    for (let i = 1; i < allData.length; i++) {
-      if (String(allData[i][LINEAID_COL] || '').trim() === lineaID) {
-        const horasSegun = String(allData[i][HORAS_SEGUN_COL] || '').trim().toUpperCase();
-        Logger.log(`Horas Según encontrado para ${lineaID}: ${horasSegun}`);
-        return horasSegun;
-      }
-    }
-    
-    Logger.log(`ADVERTENCIA (obtenerHorasSegun): No se encontró la línea ${lineaID} en ${sheetName}.`);
-    return ''; // No se encontró la línea
-
-  } catch (e) {
-    Logger.log(`ERROR en obtenerHorasSegunPorLineaID: ${e.message}`);
-    return ''; // Devolver vacío en caso de error
-  }
-}
-/**
- * GUARDA LA COTIZACIÓN EN SUPABASE (v1.2 - CORREGIDA)
- * Soluciona el problema de nombres de columnas inconsistentes
+ * 2. Guarda la cotización incluyendo el ID_Contacto.
  */
 function guardarCotizacion(datos) {
   const permisos = obtenerPermisosUsuario();
-  if (!permisos.puedeEditarCotizacion) {
-    return { success: false, message: "Acceso denegado." };
-  }
+  if (!permisos.puedeEditarCotizacion) return { success: false, message: "Acceso denegado." };
 
   const datosSanitizados = sanitizarDatos(datos);
   const esModoUpdate = !!datosSanitizados.numPedido;
   
   try {
     let codigoPedido;
-    
-    // Preparar las líneas PRIMERO
     const lineas = datosSanitizados.Lineas || [];
     if (lineas.length === 0) throw new Error("Debe agregar al menos un servicio.");
-    
-    // ✅ CORRECCIÓN: Normalizar el nombre de la propiedad
-    // Convertir 'Forma_Pago' a 'Forma_De_Pago' si existe
-    if (datosSanitizados.Forma_Pago && !datosSanitizados.Forma_De_Pago) {
-      datosSanitizados.Forma_De_Pago = datosSanitizados.Forma_Pago;
-    }
-    
-    //=====================================================
-    // MODO ACTUALIZACIÓN (PATCH) - RPC
-    //=====================================================
+
+    const rucNumerico = parseFloat(datosSanitizados.RUC);
+    // Validar ID Contacto (si viene vacío o "0", enviamos null)
+    const idContacto = datosSanitizados.Contacto ? parseInt(datosSanitizados.Contacto) : null; 
+
+    const payloadCampos = {
+        "Estado_Cot": datosSanitizados.Estado,
+        "Total_Cot": parseFloat(datosSanitizados.Total),
+        "Moneda": datosSanitizados.Moneda,
+        "Ejecitivo": datosSanitizados.Ejecutivo,
+        "Fecha_Inicio": datosSanitizados.fechaEjecucion ? new Date(datosSanitizados.fechaEjecucion).toISOString() : null,
+        "Forma_De_Pago": datosSanitizados.Forma_De_Pago || datosSanitizados.Forma_Pago,
+        "Empresa": datosSanitizados.Empresa,
+        "RUC": rucNumerico,
+        "ID_Contacto": idContacto, // ✅ GUARDAMOS EL ID
+        "Direccion": datosSanitizados.Direccion,
+        "Turno": datosSanitizados.Turno,
+        "plantillaNotas": datosSanitizados.plantillaNotas || '',
+        "aclaracionesServicio": datosSanitizados.aclaracionesServicio || '',
+        "Estado_Factura": "Pendiente"
+    };
+
     if (esModoUpdate) {
       codigoPedido = datosSanitizados.numPedido;
-      Logger.log(`Iniciando MODO UPDATE (RPC) para: ${codigoPedido}`);
-
-      // ✅ CORRECCIÓN: Payload con nombres consistentes
-      const payloadCabecera = {
-        Estado_Cot: datosSanitizados.Estado,
-        Total_Cot: parseFloat(datosSanitizados.Total),
-        Moneda: datosSanitizados.Moneda,
-        Ejecutivo: datosSanitizados.Ejecutivo,
-        Fecha_Inicio: datosSanitizados.fechaEjecucion, 
-        Forma_De_Pago: datosSanitizados.Forma_De_Pago, // ✅ CORREGIDO
-        Empresa: datosSanitizados.Empresa,
-        RUC_DNI: datosSanitizados.RUC,
-        Direccion: datosSanitizados.Direccion,
-        Turno: datosSanitizados.Turno
-      };
-
-      // Preparar las líneas
-      const payloadDetalles = [];
-      for (let i = 0; i < lineas.length; i++) {
-        const linea = lineas[i];
-        const lineaIDRef = `${codigoPedido}-L${i + 1}`;
-        
-        const detalle = {
-          "Cot_Linea_Ref": lineaIDRef,
-          "Cot": codigoPedido,
-          "ID_Servicio": linea.cod,
-          "Cantidad": parseFloat(linea.cantidad) || 0, // ✅ Asegurar número
-          "Precio": parseFloat(linea.precio) || 0,     // ✅ Asegurar número
-          "Monto_Movilizacion": parseFloat(linea.movilizacion) || 0, // ✅ Asegurar número
-          "Horas_Segun": linea.hora_segun || '',
-          "UND": linea.und_medida || '',
-          "UND_HORAS_MINIMAS": linea.und_horas_minimas || '',
-          "Horas_minimas": parseFloat(linea.horas_minimas_num) || 0 // ✅ Asegurar número
-        };
-        payloadDetalles.push(detalle);
-      }
-
-      // Llamar a la RPC
       const payloadRPC = {
         "codigo_pedido": codigoPedido,
-        "datos_cabecera": payloadCabecera,
-        "nuevas_lineas": payloadDetalles
+        "datos_cabecera": payloadCampos,
+        "nuevas_lineas": prepararLineasParaRPC(lineas, codigoPedido)
       };
-      
-      Logger.log("📤 Payload RPC UPDATE: " + JSON.stringify(payloadRPC));
-      
-      const resultado = supabaseFetch('rpc/actualizar_cotizacion_y_detalles', {
-        method: 'post',
-        payload: payloadRPC
-      });
-      
-      Logger.log(`✅ Cotización ${codigoPedido} actualizada vía RPC.`);
-
-    } 
-    //=====================================================
-    // MODO CREACIÓN (POST)
-    //=====================================================
-    else {
-      Logger.log("Iniciando MODO CREATE...");
+      supabaseFetch('rpc/actualizar_cotizacion_y_detalles', { method: 'post', payload: payloadRPC });
+    } else {
       codigoPedido = generarCodigoPedido(datosSanitizados.Empresa);
-      Logger.log(`Nuevo código generado: ${codigoPedido}`);
-      
-      // ✅ CORRECCIÓN: Payload con nombres consistentes
-      const payloadPedido = {
-        Cot: codigoPedido,
-        Fecha_Creacion: new Date().toISOString(),
-        Estado_Cot: datosSanitizados.Estado,
-        Total_Cot: parseFloat(datosSanitizados.Total),
-        Moneda: datosSanitizados.Moneda,
-        Ejecutivo: datosSanitizados.Ejecutivo,
-        Fecha_Inicio: datosSanitizados.fechaEjecucion,
-        Forma_De_Pago: datosSanitizados.Forma_De_Pago, // ✅ CORREGIDO
-        Empresa: datosSanitizados.Empresa,
-        RUC_DNI: datosSanitizados.RUC,
-        Direccion: datosSanitizados.Direccion,
-        Turno: datosSanitizados.Turno
-      };
-      
-      Logger.log("📤 Payload CREATE Cabecera: " + JSON.stringify(payloadPedido));
-      
-      supabaseFetch('Pedidos', {
-        method: 'post',
-        payload: payloadPedido
-      });
-      
-      Logger.log(`✅ Cabecera ${codigoPedido} creada.`);
+      payloadCampos.Cot = codigoPedido;
+      payloadCampos.Fecha_Creacion = new Date().toISOString();
 
-      // Preparar e Insertar líneas
-      const payloadDetalles = [];
-      for (let i = 0; i < lineas.length; i++) {
-        const linea = lineas[i];
-        const lineaIDRef = `${codigoPedido}-L${i + 1}`;
-        
-        const detalle = {
-          "Cot_Linea_Ref": lineaIDRef,
-          "Cot": codigoPedido,
-          "ID_Servicio": linea.cod,
-          "Cantidad": parseFloat(linea.cantidad) || 0,
-          "Precio": parseFloat(linea.precio) || 0,
-          "Monto_Movilizacion": parseFloat(linea.movilizacion) || 0,
-          "Horas_Segun": linea.hora_segun || '',
-          "UND": linea.und_medida || '',
-          "UND_HORAS_MINIMAS": linea.und_horas_minimas || '',
-          "Horas_minimas": parseFloat(linea.horas_minimas_num) || 0
-        };
-        payloadDetalles.push(detalle);
-      }
-      
-      Logger.log("📤 Payload CREATE Detalles: " + JSON.stringify(payloadDetalles));
-      
-      supabaseFetch('Detalle_Pedidos', {
-        method: 'post',
-        payload: payloadDetalles
-      });
-      
-      Logger.log(`✅ ${payloadDetalles.length} líneas guardadas para ${codigoPedido}.`);
+      supabaseFetch('Pedidos', { method: 'post', payload: payloadCampos });
+      const payloadDetalles = prepararLineasParaInsert(lineas, codigoPedido);
+      supabaseFetch('Detalle_Pedidos', { method: 'post', payload: payloadDetalles });
     }
     
-    return { 
-      success: true, 
-      message: esModoUpdate ? "Cotización actualizada" : "Cotización registrada",
-      codigoPedido: codigoPedido 
-    };
-    
+    return { success: true, message: esModoUpdate ? "Cotización actualizada" : "Cotización registrada", codigoPedido: codigoPedido };
+
   } catch (error) {
-    Logger.log(`❌ ERROR en guardarCotizacion: ${error.message}\nStack: ${error.stack}`);
-    return manejarError('guardarCotizacion', error);
+    Logger.log(`❌ ERROR en guardarCotizacion: ${error.message}`);
+    return { success: false, message: "Error al guardar: " + error.message };
   }
+}
+function prepararLineasParaInsert(lineas, codigoPedido) {
+    return lineas.map((linea, i) => ({
+        "Cot_Linea_Ref": `${codigoPedido}-L${i + 1}`,
+        "Cot": codigoPedido,
+        "ID_Servicio": parseInt(linea.cod), // Asegurar entero
+        "Cantidad": parseFloat(linea.cantidad) || 0,
+        "Precio": parseFloat(linea.precio) || 0,
+        "Monto_Movilizacion": parseFloat(linea.movilizacion) || 0,
+        "Horas_Segun": linea.hora_segun || '',
+        "UND": linea.und_medida || '',
+        "UND_HORAS_MINIMAS": linea.und_horas_minimas || '',
+        "Horas_minimas": parseFloat(linea.horas_minimas_num) || 0
+    }));
+}
+
+function prepararLineasParaRPC(lineas, codigoPedido) {
+    // La estructura es idéntica para la RPC
+    return prepararLineasParaInsert(lineas, codigoPedido);
 }
 
 /**
- * REFACTORIZADO (v2.1 - CORREGIDO CON RUC_DNI): Obtiene los datos para editar un pedido
- * en UNA SOLA LLAMADA a Supabase, usando joins anidados basados en el esquema real.
+ * 3. Obtiene el pedido devolviendo el ID del contacto para que el select lo reconozca.
  */
 function obtenerPedidoParaEdicion(numPedido) {
-  Logger.log(`Iniciando obtenerPedidoParaEdicion (v2.1) para: ${numPedido}`);
   try {
-    // 1. Construir la consulta anidada.
-    // La magia ocurre gracias a las Foreign Keys que creaste.
-    // Pedimos todo de 'Pedidos', y Supabase sabe cómo "unir"
-    // Clientes, Contactos, y Detalle_Pedidos (con sus Servicios).
     const consulta = `
-      select=
-        *,
+      select=*,
         Clientes!inner(RUC_DNI, Nombre_RazonSocial, Direccion_Fiscal),
         Contactos(ID_Contacto, Nombre_Contacto),
-        Detalle_Pedidos (
-          *,
-          Servicios!inner(ID_servicios, Nombre_Servicio)
-        )
+        Detalle_Pedidos (*, Servicios!inner(ID_servicios, Nombre_Servicio))
       &Cot=eq.${numPedido}
-    `.replace(/\s/g, ''); // Limpiar espacios y saltos de línea para la URL
+    `.replace(/\s/g, '');
 
-    Logger.log(`Ejecutando consulta anidada: ${consulta}`);
-
-    // 2. Ejecutar la llamada ÚNICA a Supabase
-    const resultado = supabaseFetch('Pedidos', {
-      method: 'get',
-      params: consulta
-    });
+    const resultado = supabaseFetch('Pedidos', { method: 'get', params: consulta });
+    if (!resultado || resultado.length === 0) throw new Error(`Pedido ${numPedido} no encontrado.`);
     
-    if (!resultado || resultado.length === 0) {
-      throw new Error(`Pedido ${numPedido} no encontrado.`);
-    }
-    
-    const pedido = resultado[0]; // Solo esperamos un resultado
+    const pedido = resultado[0];
 
-    // 3. Mapear los datos de Supabase al formato que espera tu HTML
     const datosGenerales = {
       fechaEjecucion: pedido.Fecha_Inicio ? pedido.Fecha_Inicio.split('T')[0] : '',
       Estado: pedido.Estado_Cot,
       Empresa: pedido.Empresa,
-      RUC: pedido.RUC_DNI, // <-- Usamos el nombre de columna correcto
-      Cliente: pedido.Clientes.Nombre_RazonSocial, // Usamos !inner, así que 'Clientes' siempre existirá
+      RUC: pedido.RUC,
+      Cliente: pedido.Clientes.Nombre_RazonSocial,
       Moneda: pedido.Moneda,
       Forma_De_Pago: pedido.Forma_De_Pago,
-      // Usamos la 'Direccion' del pedido (que añadiste) o la 'Direccion_Fiscal' del cliente como fallback
       Direccion: pedido.Direccion || (pedido.Clientes ? pedido.Clientes.Direccion_Fiscal : ''),
-      Turno: pedido.Turno || '', // Leerá la nueva columna 'Turno' que añadiste
-      Ejecutivo: pedido.Ejecutivo,
-      Contacto: pedido.Contactos ? pedido.Contactos.Nombre_Contacto : '' // Contactos puede ser nulo
+      Turno: pedido.Turno || '',
+      Ejecutivo: pedido.Ejecitivo || pedido.Ejecutivo,
+      
+      // ✅ CORRECCIÓN: Devolvemos el ID del contacto (si existe), no el nombre
+      Contacto: (pedido.Contactos && pedido.Contactos.ID_Contacto) ? pedido.Contactos.ID_Contacto : ''
     };
 
-    // 4. Mapear líneas de detalle
-    const lineas = pedido.Detalle_Pedidos.map(linea => {
-      const subtotal = (linea.Cantidad * linea.Precio) + linea.Monto_Movilizacion;
-      return {
+    // Mapeo de líneas (igual que antes, resumido aquí)
+    const lineas = pedido.Detalle_Pedidos.map(linea => ({
         cod: linea.ID_Servicio,
-        descripcion: linea.Servicios.Nombre_Servicio, // Usamos !inner, 'Servicios' siempre existirá
+        descripcion: linea.Servicios.Nombre_Servicio,
         cantidad: linea.Cantidad,
         und_medida: linea.UND,
         und_horas_minimas: linea.UND_HORAS_MINIMAS,
-        dias_cotizados: 0, // Calculado en frontend, no se almacena
+        dias_cotizados: 0,
         horas_minimas_num: linea.Horas_minimas,
         hora_segun: linea.Horas_Segun,
         movilizacion: linea.Monto_Movilizacion,
         precio: linea.Precio,
-        subtotal: subtotal
-      };
-    });
-    
-    // 5. Devolver el objeto combinado
-    const resultadoFinal = { 
+        subtotal: (linea.Cantidad * linea.Precio) + (linea.Monto_Movilizacion || 0)
+    }));
+
+    return { 
       success: true, 
       ...datosGenerales, 
       Lineas: lineas, 
       Total: pedido.Total_Cot, 
       numPedido: numPedido,
-      // (Opcional) Leer las notas si las añadiste a la tabla Pedidos
       plantillaNotas: pedido.plantillaNotas || '',
       aclaracionesServicio: pedido.aclaracionesServicio || ''
     };
-    
-    Logger.log(`Éxito: Pedido ${numPedido} cargado en una sola llamada.`);
-    return resultadoFinal;
-        
+
   } catch (error) {
-    Logger.log(`❌ ERROR CRÍTICO al extraer pedido ${numPedido} (v2.1): ${error.message}\nStack: ${error.stack}`);
-    return manejarError('obtenerPedidoParaEdicion', error); // Llama a tu manejador de errores
+    return manejarError('obtenerPedidoParaEdicion', error);
   }
 }
 
@@ -3098,58 +2620,71 @@ function getListaClientes() {
 }
 
 /**
- * REFACTORIZADO: Guarda un nuevo cliente en Supabase
+ * Guarda un nuevo cliente en Supabase.
+ * Usado por Contactos.html y Comercial.html
  */
 function guardarNuevoCliente(data) {
-  try {
-    const datosSanitizados = sanitizarDatos(data); //
+    try {
+        const datosSanitizados = sanitizarDatos(data);
+        
+        // Validación: El RUC debe ser numérico para Supabase (tipo numeric/bigint)
+        const rucNumerico = parseFloat(datosSanitizados.RUC);
+        if (isNaN(rucNumerico)) throw new Error("El RUC/DNI debe ser un valor numérico válido.");
 
-    const nuevoCliente = {
-      RUC_DNI: datosSanitizados.RUC,
-      Nombre_RazonSocial: datosSanitizados.NOMBRE
-    };
+        const nuevoCliente = {
+            "RUC_DNI": rucNumerico,
+            "Nombre_RazonSocial": datosSanitizados.NOMBRE
+        };
 
-    const resultado = supabaseFetch('Clientes', {
-      method: 'post',
-      payload: nuevoCliente,
-      params: 'select=RUC_DNI,Nombre_RazonSocial'
-    });
+        // Insertar en Supabase
+        const resultado = supabaseFetch('Clientes', {
+            method: 'post',
+            payload: nuevoCliente,
+            // Pedimos que nos devuelva los datos insertados para confirmar
+            params: 'select=RUC_DNI,Nombre_RazonSocial'
+        });
 
-    return { 
-      success: true, 
-      message: "Cliente registrado exitosamente.",
-      nuevoCliente: resultado[0] 
-    };
-  } catch (error) {
-    return manejarError("guardarNuevoCliente", error); //
-  }
+        return { 
+            success: true, 
+            message: "Cliente registrado exitosamente.",
+            nuevoCliente: resultado[0] 
+        };
+
+    } catch (error) {
+        return manejarError("guardarNuevoCliente", error);
+    }
 }
 
 /**
- * REFACTORIZADO: Guarda o actualiza un Contacto en Supabase
+ * REFACTORIZADO: Guarda o actualiza un Contacto en Supabase.
+ * Se asegura de que el RUC_DNI sea NUMERIC.
  */
 function guardarOActualizarContacto(data) {
   try {
-    const datosSanitizados = sanitizarDatos(data); //
+    const datosSanitizados = sanitizarDatos(data);
     
+    // 1. Parsear RUC_DNI a NUMERIC (bigint)
+    const rucNumerico = parseFloat(datosSanitizados.RUC);
+    if (isNaN(rucNumerico)) throw new Error("RUC/DNI no es un valor numérico válido para Contactos.");
+
     // 'rowIndex' ahora es 'ID_Contacto'
-    const idContacto = datosSanitizados.rowIndex; 
+    const idContacto = datosSanitizados.rowIndex;
 
-    // Mapeo a 'Contactos_rows.csv'
+    // 2. Mapeo a las columnas de Supabase
     const payload = {
-      RUC_DNI: datosSanitizados.RUC,
-      Nombre_Contacto: datosSanitizados.NOMBRE,
-      Correo: datosSanitizados.EMAIL,
-      Celular: datosSanitizados.TELEFONO,
-      Cargo: datosSanitizados.CARGO
+      "RUC_DNI": rucNumerico, // NUMERICO
+      "Nombre_Contacto": datosSanitizados.NOMBRE,
+      "Correo": datosSanitizados.EMAIL,
+      "Celular": parseFloat(datosSanitizados.TELEFONO) || null, // Celular es NUMERICO
+      "Cargo": datosSanitizados.CARGO
     };
-
+    
     let metodo;
     let params;
 
     if (idContacto && parseInt(idContacto) > 0) {
       metodo = 'patch';
-      params = `ID_Contacto=eq.${idContacto}`;
+      params = `ID_Contacto=eq.${idContacto}`; // Clave primaria
     } else {
       metodo = 'post';
       params = '';
@@ -3161,9 +2696,9 @@ function guardarOActualizarContacto(data) {
       params: params
     });
 
-    return { success: true, message: "Contacto guardado exitosamente" }; //
+    return { success: true, message: "Contacto guardado exitosamente" };
 
   } catch (error) {
-    return manejarError("guardarOActualizarContacto", error); //
+    return manejarError("guardarOActualizarContacto", error);
   }
 }
