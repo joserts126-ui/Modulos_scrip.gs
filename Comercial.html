@@ -42,68 +42,60 @@
                     
                     <div>
                         <div class="form-group">
-                            <h2>RUC / DNI</h2>
-                            <input type="text" id="rucCliente" name="RUC" placeholder="Escriba RUC o DNI" required
-                                list="datalist-rucs-clientes"
-                                onchange="manejarSeleccionCliente(this, 'clienteNombre')">
-                        </div>
-
-                        <div class="form-group">
-                            <h2>EJECUTIVO/ASESOR</h2>
-                            <select id="ejecutivo" name="Ejecutivo" required>
-                                <option value="" disabled selected>-- Seleccione --</option>
-                                <option value="ANTHONY">ANTHONY</option>
-                                <option value="CARMEN">CARMEN</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                           <h2>CONTACTO</h2>
-                           <select id="contacto" name="Contacto" required>
-                               <option value="" disabled selected>-- Seleccione Contacto --</option>
-                           </select>
-                        </div>
-
-                        <div class="form-group">
-                            <h2>TURNO</h2>
-                            <select id="turno" name="Turno" required></select>
-                        </div>
-
-                        <div class="form-group">
                             <h2>MONEDA</h2>
                             <select id="moneda" name="Moneda" required>
                                 <option value="Soles">Soles (S/.)</option>
                                 <option value="Dolares">Dólares ($)</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <h2>RUC / DNI</h2>
+                            <input type="text" id="rucCliente" name="RUC" placeholder="Escriba RUC o DNI" required
+                                list="datalist-rucs-clientes"
+                                onchange="manejarSeleccionCliente(this, 'clienteNombre')">
+                        </div>
+                        <div class="form-group">
+                            <h2>DIRECCIÓN</h2>
+                            <input type="text" id="direccion" name="Direccion" placeholder="Dirección de la obra" required>
+                        </div>
+                        <div class="form-group">
+                            <h2>TURNO</h2>
+                            <select id="turno" name="Turno" required></select>
+                        </div>
+                        <div class="form-group">
+                            <h2>EJECUTIVO/ASESOR</h2>
+                            <select id="ejecutivo" name="Ejecutivo" required>
+                            <option value="" disabled selected>-- Seleccione --</option>
+                            <option value="ANTHONY">ANTHONY</option>
+                            <option value="CARMEN">CARMEN</option>
+                            </select>
+                        </div>
                     </div>
                     
                     <div>
+                        <div class="form-group">
+                            <h2>FORMA DE PAGO</h2>
+                            <select id="formaPago" name="Forma_Pago" required></select>
+                        </div>
                         <div class="form-group">
                             <h2>CLIENTE / RAZÓN SOCIAL</h2>
                             <input type="text" id="clienteNombre" name="Cliente" placeholder="Escriba el nombre o Razón Social" required
                                 list="datalist-nombres-clientes"
                                 onchange="manejarSeleccionCliente(this, 'rucCliente')">
                         </div>
-
                         <div class="form-group">
                             <h2>EMPRESA (Operadora)</h2>
                             <select id="empresa" name="Empresa" required></select>
                         </div>
-
-                        <div class="form-group">
-                            <h2>DIRECCIÓN</h2>
-                            <input type="text" id="direccion" name="Direccion" placeholder="Dirección de la obra" required>
-                        </div>
-
                         <div class="form-group">
                              <h2>FECHA EJECUCIÓN SERVICIO</h2>
                              <input type="date" id="fechaEjecucion" name="fechaEjecucion" value="" required>
                         </div>
-
                         <div class="form-group">
-                            <h2>FORMA DE PAGO</h2>
-                            <select id="formaPago" name="Forma_Pago" required></select>
+                           <h2>CONTACTO</h2>
+                           <select id="contacto" name="Contacto" required>
+                           <option value="" disabled selected>-- Seleccione Contacto --</option>
+                           </select>
                         </div>
                     </div>
 
@@ -1685,19 +1677,21 @@ function precargarFormulario(datos) {
                         console.log("📞 Cargando lista de contactos para RUC:", datos.RUC);
                         google.script.run
                             .withSuccessHandler(function(contactosData) {
+                                console.log("✅ Lista de contactos recibida:", contactosData);
                                 listaContactos = contactosData || [];
-                                llenarDatalistContactos(); 
+                                llenarDatalistContactos(); // Llena el select con TODOS los contactos
                                 
-                                // ✅ CORRECCIÓN: Asignación directa por ID
+                                // Ahora selecciona el contacto específico que vino de la carga
                                 if (datos.Contacto) {
-                                    document.getElementById('contacto').value = datos.Contacto;
+                                    seleccionarContactoEspecifico(datos.Contacto);
                                 }
                             })
                             .withFailureHandler(function(error) {
-                                console.error("Error contactos:", error);
+                                console.error("❌ Error cargando lista de contactos en modo edición:", error);
+                                listaContactos = [];
+                                llenarDatalistContactos();
                             })
                             .getContactosParaComercial(datos.RUC);
-                    }
                     } else {
                          listaContactos = [];
                          llenarDatalistContactos();
